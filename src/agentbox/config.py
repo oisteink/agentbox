@@ -1,0 +1,214 @@
+"""Strict environment configuration. No Docker flags or shell evaluation."""
+
+import ipaddress
+import re
+from dataclasses import asdict, dataclass
+from pathlib import Path, PurePosixPath
+
+import yaml
+
+from .errors import AgentboxError
+
+NAME = re.compile(r"[a-z][a-z0-9-]{0,47}\Z")
+IMAGE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._/@:-]{0,255}\Z")
+MEMORY = re.compile(r"[1-9][0-9]*[mg]\Z")
+
+
+class StrictLoader(yaml.SafeLoader):
+    pass
+
+
+def _mapping(loader, node, deep=False):
+    result = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if not isinstance(key, str) or key in result:
+            raise AgentboxError("YAML keys must be unique strings (merge keys are unsupported)")
+        result[key] = loader.construct_object(value_node, deep=deep)
+    return result
+
+
+StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping)
+
+
+def fields(value, allowed, required=()):
+    if not isinstance(value, dict) or set(value) - set(allowed) or set(required) - set(value):
+        raise AgentboxError(f"Expected fields {sorted(allowed)}; required: {sorted(required)}")
+    return value
+
+
+def name(value):
+    if not isinstance(value, str) or not NAME.fullmatch(value):
+        raise AgentboxError(
+            "Names must use lowercase letters, digits and hyphens; max 48 characters"
+        )
+    return value
+
+
+def text(value):
+    if not isinstance(value, str) or not value or any(ord(c) < 32 for c in value):
+        raise AgentboxError("Expected nonempty text without control characters")
+    return value
+
+
+def hostname(value):
+    value = text(value).lower().rstrip(".")
+    if len(value) > 253 or "." not in value:
+        raise AgentboxError("Use an exact fully qualified DNS name")
+    try:
+        ipaddress.ip_address(value)
+    except ValueError:
+        pass
+    else:
+        raise AgentboxError("IP literals are not permitted")
+    if any(
+        not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+        for label in value.split(".")
+    ):
+        raise AgentboxError("Invalid DNS name; wildcards and implicit subdomains are unsupported")
+    return value
+
+
+def target(value):
+    value = text(value)
+    path = PurePosixPath(value)
+    if not path.is_absolute() or ".." in path.parts or str(path) != value or "," in value:
+        raise AgentboxError("Mount targets must be normalized absolute paths without commas")
+    reserved = [
+        "/etc",
+        "/proc",
+        "/sys",
+        "/dev",
+        "/run",
+        "/var",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/lib",
+        "/lib64",
+        "/tmp",
+    ]
+    if value in ("/", "/home", "/home/agent") or any(
+        path == PurePosixPath(p) or PurePosixPath(p) in path.parents for p in reserved
+    ):
+        raise AgentboxError("Mount target overlaps a reserved container path")
+    return value
+
+
+@dataclass(frozen=True)
+class Mount:
+    project: str
+    target: str
+    mode: str = "rw"
+
+
+@dataclass(frozen=True)
+class Rule:
+    host: str
+    port: int
+
+
+@dataclass(frozen=True)
+class Resources:
+    cpus: float = 2.0
+    memory: str = "4g"
+    pids: int = 512
+
+
+@dataclass(frozen=True)
+class Environment:
+    name: str
+    image: str
+    workdir: str
+    command: tuple[str, ...]
+    mounts: tuple[Mount, ...]
+    allow: tuple[Rule, ...]
+    resources: Resources
+
+    def to_dict(self):
+        return asdict(self)
+
+
+def parse(data):
+    fields(
+        data,
+        {"name", "image", "workdir", "command", "mounts", "network", "resources"},
+        {"name", "image", "mounts"},
+    )
+    image = text(data["image"])
+    if not IMAGE.fullmatch(image):
+        raise AgentboxError("Invalid image reference")
+    command = data.get("command", ["bash"])
+    if not isinstance(command, list) or not 1 <= len(command) <= 128:
+        raise AgentboxError("Command must be a nonempty argument list")
+    command = tuple(text(arg) for arg in command)
+    mounts = data["mounts"]
+    if not isinstance(mounts, list) or not 1 <= len(mounts) <= 32:
+        raise AgentboxError("Choose between 1 and 32 project mounts")
+    parsed_mounts = []
+    for entry in mounts:
+        fields(entry, {"project", "target", "mode"}, {"project", "target"})
+        mode = entry.get("mode", "rw")
+        if mode not in ("rw", "ro"):
+            raise AgentboxError("Mount mode must be rw or ro")
+        mount = Mount(name(entry["project"]), target(entry["target"]), mode)
+        current = PurePosixPath(mount.target)
+        if any(
+            current == PurePosixPath(old.target)
+            or current in PurePosixPath(old.target).parents
+            or PurePosixPath(old.target) in current.parents
+            for old in parsed_mounts
+        ):
+            raise AgentboxError("Mount targets must not overlap")
+        parsed_mounts.append(mount)
+    workdir = text(data.get("workdir", parsed_mounts[0].target))
+    workpath = PurePosixPath(workdir)
+    if (
+        not any(
+            workpath == PurePosixPath(m.target) or PurePosixPath(m.target) in workpath.parents
+            for m in parsed_mounts
+        )
+        or ".." in workpath.parts
+        or str(workpath) != workdir
+    ):
+        raise AgentboxError("Working directory must be inside a mounted project")
+    network = fields(data.get("network", {}), {"allow"})
+    entries = network.get("allow", [])
+    if not isinstance(entries, list) or len(entries) > 128:
+        raise AgentboxError("network.allow must be a list with at most 128 rules")
+    rules = []
+    for entry in entries:
+        fields(entry, {"host", "port"}, {"host", "port"})
+        if type(entry["port"]) is not int or entry["port"] not in (80, 443):
+            raise AgentboxError("Only integer ports 80 and 443 are supported")
+        rule = Rule(hostname(entry["host"]), entry["port"])
+        if rule in rules:
+            raise AgentboxError("Duplicate destination rule")
+        rules.append(rule)
+    raw = fields(data.get("resources", {}), {"cpus", "memory", "pids"})
+    cpus, memory, pids = raw.get("cpus", 2.0), raw.get("memory", "4g"), raw.get("pids", 512)
+    if type(cpus) not in (int, float) or not 0.1 <= cpus <= 128:
+        raise AgentboxError("cpus must be a number between 0.1 and 128")
+    if not isinstance(memory, str) or not MEMORY.fullmatch(memory):
+        raise AgentboxError("memory must be a positive size with m or g suffix")
+    if type(pids) is not int or not 16 <= pids <= 65536:
+        raise AgentboxError("pids must be an integer between 16 and 65536")
+    return Environment(
+        name(data["name"]),
+        image,
+        workdir,
+        command,
+        tuple(parsed_mounts),
+        tuple(rules),
+        Resources(float(cpus), memory, pids),
+    )
+
+
+def load(path):
+    try:
+        source = Path(path).read_text()
+        if len(source) > 65536:
+            raise AgentboxError("Configuration is too large")
+        return parse(yaml.load(source, Loader=StrictLoader))
+    except (OSError, yaml.YAMLError, RecursionError) as exc:
+        raise AgentboxError(f"Cannot load configuration: {type(exc).__name__}") from exc

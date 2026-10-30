@@ -1,0 +1,14 @@
+name: example-dev
+image: agentbox-dev:local
+workdir: /home/agent/src/example
+command: ["codex"]
+mounts:
+  - project: example
+    target: /home/agent/src/example
+    mode: rw
+network:
+  allow: []
+resources:
+  cpus: 2
+  memory: 4g
+  pids: 512
