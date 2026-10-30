@@ -77,6 +77,9 @@ from agentbox.watch import main
 main()
 EOF
 chmod 0755 /usr/local/bin/agentbox /usr/local/libexec/agentbox-control /usr/local/libexec/agentbox-watch
+install -d -m 0755 /usr/local/share/bash-completion/completions
+install -m 0644 "$repo_dir/src/agentbox/completions/agentbox.bash" \
+  /usr/local/share/bash-completion/completions/agentbox
 install -d -m 0755 /etc/systemd/user
 cat > /etc/systemd/user/agentbox-watch.service <<'EOF'
 [Unit]
@@ -98,11 +101,13 @@ install -d -o "$operator_uid" -g "$(id -g "$operator_name")" -m 0700 /var/lib/ag
 python3 -I - "$operator_uid" "$service_uid" <<'PY'
 import json, sys
 from pathlib import Path
+settings_path = Path('/etc/agentbox/settings.json')
+previous = json.loads(settings_path.read_text()) if settings_path.exists() else {}
 Path('/etc/agentbox/settings.json').write_text(json.dumps({
     'operator_uid': int(sys.argv[1]), 'service_uid': int(sys.argv[2]),
     'home': '/var/lib/agentbox', 'operator_state': '/var/lib/agentbox-operator',
     'proxy_image': 'agentbox-proxy:local', 'seccomp': '/opt/agentbox/security/seccomp.json',
-    'network_pool': '172.28.0.0/16',
+    'network_pool': previous.get('network_pool', '172.28.0.0/16'),
 }, indent=2) + '\n')
 PY
 chmod 0644 /etc/agentbox/settings.json

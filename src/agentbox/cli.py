@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import config, projects
+from . import completion, config, projects
 from .control import Control
 from .errors import AgentboxError
 from .settings import load_settings
@@ -146,6 +146,9 @@ def parser():
     commands.add_parser("doctor")
     commands.add_parser("status")
     commands.add_parser("build-images")
+    complete = commands.add_parser("completion", help="Print shell completion setup")
+    complete.add_argument("shell", choices=["bash"], nargs="?", default="bash")
+    complete.add_argument("--names", choices=["environments", "projects"], help=argparse.SUPPRESS)
     pull = commands.add_parser("pull-image")
     pull.add_argument("image")
     validate = commands.add_parser("validate")
@@ -177,6 +180,15 @@ def parser():
 def main():
     try:
         args = parser().parse_args()
+        if args.action == "completion":
+            if args.names:
+                settings = load_settings()
+                if os.getuid() != settings["operator_uid"]:
+                    return
+                print("\n".join(completion.names(args.names)))
+            else:
+                print(completion.bash_script(), end="")
+            return
         if args.action == "validate":
             print(json.dumps(config.load(args.config).to_dict(), indent=2))
             return

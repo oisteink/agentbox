@@ -1,10 +1,16 @@
 """Pinned local daemon access. All subprocesses use a clean environment and argv."""
 
+import errno
 import fcntl
 import json
 import os
+import pty
+import signal
 import stat
 import subprocess
+import termios
+import tty
+from contextlib import ExitStack
 from pathlib import Path
 
 from .errors import AgentboxError
@@ -92,6 +98,24 @@ class Docker:
         return self.run(*arguments, **kwargs)
 
     def exec_stream(self, identifier, command, log_directory, terminal=None):
+        with ExitStack() as cleanup:
+            output = subprocess.PIPE
+            reader = None
+            if terminal:
+                reader, writer = pty.openpty()
+                cleanup.callback(os.close, reader)
+                output = cleanup.enter_context(os.fdopen(writer, "wb", buffering=0))
+                tty.setraw(output.fileno())
+
+                def resize(signum=None, frame=None):
+                    termios.tcsetwinsize(reader, termios.tcgetwinsize(terminal.fileno()))
+
+                resize()
+                previous = signal.signal(signal.SIGWINCH, resize)
+                cleanup.callback(signal.signal, signal.SIGWINCH, previous)
+            return self._exec_stream(identifier, command, log_directory, terminal, output, reader)
+
+    def _exec_stream(self, identifier, command, log_directory, terminal, output, reader):
         arguments = ["exec"] + (["-it"] if terminal else []) + [identifier, *command]
         env = {
             "PATH": "/usr/bin:/bin",
@@ -103,12 +127,25 @@ class Docker:
             ["/usr/bin/docker", "--host", f"unix://{self.socket}", *arguments],
             env=env,
             stdin=terminal or subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
+            stdout=output,
             stderr=subprocess.STDOUT,
         )
+        if reader is not None:
+            # Only the child keeps the writer open; EOF arrives when Docker exits.
+            output.close()
+        else:
+            reader = process.stdout.fileno()
         directory = Path(log_directory)
         try:
-            while block := os.read(process.stdout.fileno(), 4096):
+            while True:
+                try:
+                    block = os.read(reader, 4096)
+                except OSError as exc:
+                    if terminal and exc.errno == errno.EIO:
+                        break
+                    raise
+                if not block:
+                    break
                 os.write(1, block)
                 # Agent output is untrusted and can contain credentials. This
                 # bounded log lives only in the private service state directory.

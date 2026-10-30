@@ -1,6 +1,6 @@
 # Spesifikasjon for MVP
 
-Status: implementasjon under verifikasjon. Se [teststatus](test-results.md) og
+Status: MVP godkjent som versjon 1.0 den 30. oktober 2026. Se [teststatus](test-results.md) og
 [implementasjonsvalg](decisions-mvp.md) for resultater og presiseringer.
 
 ## 1. Formål og omfang
@@ -12,7 +12,9 @@ at kodeendringer er tilgjengelige både i editoren på verten og hos agenten.
 
 Arkitekturvalgene er beskrevet i [arkitektur for første versjon](architecture-v1.md).
 Denne spesifikasjonen konkretiserer oppførsel og akseptansekriterier.
-Kommandonavn og konfigurasjonsformat nedenfor er forslag til implementasjonen.
+Kommandonavn og konfigurasjonsformat nedenfor er implementert. Kravene er
+normative; [teststatus](test-results.md) angir verifikasjon og kjente
+testavgrensninger for versjon 1.0.
 
 MVP-en omfatter:
 
@@ -68,8 +70,8 @@ ikke sendes ut gjennom en tillatt tjeneste.
 - Administrativt oppsett og eventuelle ACL-endringer som krever det, skal
   skilles fra daglig oppstart og bruk.
 
-Valg av transport mellom utviklerens CLI og daemonen skal dokumenteres før
-implementasjon. Tilgang til daemonens socket innebærer kontroll over
+Transporten er en fast kontrollhjelper kjørt som `agentbox` via avgrenset sudo,
+med JSON på stdin og fast lokal Docker-socket. Tilgang til socketen innebærer kontroll over
 `agentbox` sine containerressurser og skal begrenses til den betrodde utvikleren.
 
 ## 4. Prosjektmapper og ACL-er
@@ -137,7 +139,7 @@ ikke filer som senere flyttes eller deles gjennom andre stier på verten.
 - Oppstart skal kunne angi image, arbeidskatalog og kommando uten endringer
   i ACL- eller nettverksimplementasjonen.
 - Det medfølgende imaget skal ha Bash, Git, CA-sertifikater og et HTTP-verktøy
-  for diagnostikk. Valg av første agent og språkverktøy avklares ved imagebygging.
+  for diagnostikk. Første agent er Codex CLI 0.166.0 i `images/dev/`.
 - Images må støtte den dokumenterte kjøremodellen med UID 0 og eksplisitt hjem.
   Andre images er valgbare, men ikke automatisk kompatible.
 - Agenten skal kjøre uten privilegert modus, vertsnettverk, vertens PID-namespace
@@ -184,17 +186,18 @@ tilgang. Agentcontaineren kobles bare til det lukkede nettverket.
 - Policyfiler skal monteres skrivebeskyttet i proxyen og ikke være tilgjengelige
   for endring fra agenten. Ingen proxyporter publiseres til vert eller LAN.
 - Bortfall eller feilkonfigurasjon av proxyen skal stenge utgående tilgang.
-- Endret policy skal aktiveres ved kontrollert restart av miljøet, slik at
-  eksisterende tunneler ikke beholder en tilbakekalt tillatelse.
+- Endret policy skal aktiveres ved eksplisitt `remove` og ny `start`, slik at
+  eksisterende tunneler ikke beholder en tilbakekalt tillatelse. Dette sletter
+  containerlaget, inkludert innlogging; montert kode beholdes.
 
 Nødvendige domener for agentinnlogging, API-er og pakkeregistre må velges
 eksplisitt. Avviste forbindelser skal kunne diagnostiseres uten automatisk
 utvidelse av listen over tillatte destinasjoner.
 
-## 7. Foreslått brukerflyt og konfigurasjon
+## 7. Brukerflyt og konfigurasjon
 
-Foreløpig CLI-navn er `agentbox`. Følgende illustrerer ønsket brukerflyt;
-kommandoene er ikke implementert ennå:
+CLI-en heter `agentbox`. Opprett miljøfilene for de registrerte prosjektene
+før oppstart; filnavnene nedenfor er eksempler:
 
 ```sh
 agentbox doctor
@@ -209,7 +212,7 @@ agentbox stop pacman-dev
 agentbox remove pacman-dev
 ```
 
-Foreslått miljøkonfigurasjon, med to monterte prosjekter:
+Miljøkonfigurasjon med to monterte prosjekter:
 
 ```yaml
 name: pacman-dev
@@ -233,7 +236,8 @@ resources:
   pids: 512
 ```
 
-Ressursverdiene er eksempler. Konfigurasjonen skal valideres før oppstart,
+Ressursverdiene viser agentens standardgrenser. Proxyen har faste grenser
+på 0,5 CPU, 256 MiB og 128 prosesser. Konfigurasjonen skal valideres før oppstart,
 med tydelige feil for ukjente prosjekter, ugyldige verdier og manglende tilgang.
 Den skal ikke tillate vilkårlige Docker-flagg som omgår sikkerhetsmodellen.
 Hemmelige verdier skal ikke lagres i innsjekkede miljøfiler eller logger.
@@ -242,8 +246,10 @@ SSH-agent-sockets skal ikke deles automatisk.
 
 ## 8. Livssyklus og diagnostikk
 
-- `doctor` skal kontrollere daemonidentitet, rootless-modus, ACL-støtte,
-  nødvendig UID/GID-oppsett og håndheving av ressursgrenser.
+- `doctor` kontrollerer socket, daemonidentitet, rootless-modus, datasti,
+  Docker-versjon, cgroup v2/systemd og rapportert støtte for ressursgrenser.
+  UID/GID-forutsetninger kontrolleres ved installasjon; prosjektets tilgang
+  kontrolleres med `project check`. Faktisk håndheving verifiseres i laben.
 - Status skal vise miljønavn, tilstand, image, mounts og aktiv nettverkspolicy.
 - Logging skal vise agentens utdata og proxyens tillatte/avviste destinasjoner.
   Kontroll- og proxylogger skal ikke inkludere nøkkelverdier eller forespørselsinnhold.
@@ -254,7 +260,10 @@ SSH-agent-sockets skal ikke deles automatisk.
 - Miljøressurser skal merkes slik at opprydding bare fjerner prosjektets egne
   containere og nettverk. Globale Docker-prune-operasjoner skal ikke brukes.
 - Kodeendringer i bind mounts skal overleve stopp, fjerning og gjenoppretting.
-  Containerens øvrige skrivbare lag kan slettes ved fjerning; dette må opplyses.
+  Containerlaget, inkludert `/home/agent` og innlogging, beholdes ved stopp
+  og gjenopptak med uendret konfigurasjon. Fjerning sletter laget. Separat
+  profilvolum er ikke implementert. Endret konfigurasjon eller vertsadresse
+  krever eksplisitt fjerning og ny opprettelse.
 - MVP-en trenger ikke automatisk gjenoppstart etter vertsreboot.
 
 ## 9. Akseptansekriterier

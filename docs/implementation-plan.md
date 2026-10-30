@@ -6,10 +6,32 @@ Status: opprinnelig implementeringsplan. Gjennomføringen dokumenteres i
 er utført i en disponibel VM, adskilt fra utviklerens Docker-instans.
 Planen er gjennomgått av en uavhengig sub-agent og revidert etter funnene.
 
-Planen bygger på [MVP-spesifikasjonen](spec-mvp.md) og
-[arkitekturen](architecture-v1.md). Vi implementerer i rekkefølgen under,
-med fungerende leveranser og dokumentert verifikasjon etter hvert steg.
-MVP-en skal montere vanlige prosjektmapper direkte; worktrees er utsatt.
+## Gjennomføringsstatus per 30. oktober 2026
+
+| Steg | Status |
+| --- | --- |
+| 0: teknisk prøve | Gjennomført i Ubuntu-VM; versjoner og funn står i teststatus |
+| 1: kontrollverktøy | Python-pakke, CLI, YAML-validering, låsing og tilstand implementert |
+| 2: installasjon og daemon | Installert og prøvd i VM, inkludert sameksistens med rootful Docker |
+| 3: prosjekter og ACL | Registrering, sjekk, reparasjon, tilbakekalling og mounts implementert og prøvd |
+| 4: nettverk og proxy | Squid, fastlåst DNS og adressevakt implementert; kontrollerte nettverksprøver bestått |
+| 5: livssyklus | Kommandoer, samtidige miljøer, logger og gjenopptak etter daemonrestart prøvd |
+| 6: agentimage | Codex 0.166.0 og separat image prøvd; manuell Codex-bruk bekreftet av utvikleren |
+| 7: samlet verifikasjon | Labprøver, bruksveiledning og manuell utprøving gjennomført; MVP godkjent som versjon 1.0 |
+
+Åpne prøvepunkter og testavgrensninger finnes i [teststatus](test-results.md).
+Installasjon på utviklerens Debian-vert er gjennomført. Utvikleren godkjente
+MVP-en som versjon 1.0 den 30. oktober 2026.
+Worktrees og sammenligning med OpenShell/Docker Sandboxes er fortsatt utsatt.
+
+Resten av dokumentet bevarer den opprinnelige planen, basert på
+[MVP-spesifikasjonen](spec-mvp.md) og [arkitekturen](architecture-v1.md).
+Formuleringer om åpne beslutninger nedenfor beskriver planleggingstidspunktet.
+Løsningene som erstattet forslagene er dokumentert i
+[implementasjonsvalgene](decisions-mvp.md): sperre på prosjektroten ved
+tilbakekalling, strengere seccomp for Unix-sockets, fastlåst DNS og asynkron
+adressevakt. Policyendring krever `remove` og ny `start`; det finnes ingen egen
+`restart`-kommando. Agentutdata beskyttes og roteres uten generell filtrering.
 
 ## 1. Gjennomføringsprinsipper og teknologivalg
 

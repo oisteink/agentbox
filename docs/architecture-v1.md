@@ -1,86 +1,94 @@
 # Arkitektur for første versjon
 
-Første versjon skal kjøre agentmiljøer i en egen rootless Docker-instans,
-med eksplisitt tilgang til prosjektmapper og utgående trafikk via proxy.
-Dette er vedtatt design. Se [implementasjonsvalg](decisions-mvp.md) og
-[teststatus](test-results.md) for implementasjonens presiseringer og verifikasjon.
+Agentbox kjører agentmiljøer i en egen rootless Docker-instans med eksplisitt
+tilgang til prosjektmapper og utgående trafikk via Squid. Dette dokumentet
+beskriver implementasjonen. Se [C1 og C2](architecture-c4.md) for diagrammer,
+[implementasjonsvalg](decisions-mvp.md) for begrunnelser og
+[teststatus](test-results.md) for verifikasjon og gjenstående arbeid.
 
 ## Eierskap og kontroll
 
-- En egen Linux-bruker, `agentbox`, eier daemon, socket, images og volumer.
-- Brukeren skal ha `/var/lib/agentbox` som hjemmekatalog på verten, med
-  Docker-data og konfigurasjon adskilt fra personlige hjemmekataloger.
-  Denne katalogen skal ikke monteres inn i agentcontainerne. Containerens
-  hjemmekatalog er `/home/agent` og ligger i containerens eget filsystem.
-- Oppstart skal eksplisitt velge prosjektets Docker-instans.
-- Docker-socketen skal ikke monteres i agentcontainerne.
-- Kontrollverktøyet kjører utenfor agentmiljøene. En fast administratorinstallert
-  hjelper kjøres som `agentbox` gjennom en avgrenset sudo-regel.
+Linux-brukeren `agentbox` eier daemon, images og containerdata. Hjemmet
+`/var/lib/agentbox` er privat og monteres ikke inn i agentcontainerne.
+Containerens hjem er `/home/agent` i dens skrivbare lag.
+
+Utvikleren bruker en Python-CLI. En fast administratorinstallert hjelper
+kjører som `agentbox` via en avgrenset sudo-regel og mottar JSON på stdin.
+Kontrollkoden ligger under `/opt/agentbox`, innstillinger under `/etc/agentbox`,
+og kontrolltilstand under `/var/lib/agentbox/state`. Utviklerens private
+ACL-journal ligger separat i `/var/lib/agentbox-operator`.
+
+Docker-operasjoner bruker fast socket `/run/user/<uid>/docker.sock` og
+kontrollerer daemonidentitet og rootless-modus. Docker-socketen og kontrollfiler
+eksponeres ikke for agenten. Andre Docker-instansers konfigurasjon endres ikke.
 
 ## Tilgang til prosjektmapper
 
-Prosjekter skal kunne velges og byttes uten å flyttes. Flere arbeidsmiljøer
-skal kunne kjøre samtidig, og ett miljø kan få flere eksplisitte mounts.
-MVP-en skal montere eksisterende prosjektmapper direkte. Endringer i koden
-skal være synlige både på verten og i containeren.
+Eksisterende prosjektmapper registreres og monteres direkte, uten flytting
+eller kopiering. Ett miljø kan montere flere prosjekter som `rw` eller `ro`;
+flere miljøer kan kjøre samtidig. Endringer i montert kode lagres på verten.
 
-ACL-er skal gi `agentbox` traversering av nødvendige foreldrekataloger og
-lese- og skrivetilgang til valgte arbeidsmapper. Foreldrekatalogene trenger
-ikke listetilgang. Symbolske lenker gir ikke ekstra rettigheter.
-
-Eksempel på mounts:
+ACL-er gir tjenestebrukeren nødvendig traversering av foreldrekataloger og
+tilgang til prosjektinnholdet. Foreldrene trenger ikke listetilgang.
+Prosjektroten må eies av utvikleren. Overlappende registreringer, hardlenkede
+filer og spesialfiler avvises; symlinker i innholdet og nestede mounts utelates
+fra rekursiv ACL-behandling.
 
 | På verten | I containeren |
 | --- | --- |
 | `/home/ok/src/pacman` | `/home/agent/src/pacman` |
 | `/home/ok/project/pub-pc` | `/home/agent/project/pub-pc` |
 
-Agenten skal som utgangspunkt kjøre som UID 0 i den rootlesse containeren,
-som mappes til `agentbox` på verten. Nye filer vil normalt eies av
-`agentbox`. ACL-er på eksisterende filer og standard-ACL-er på kataloger
-skal sikre at både den personlige brukeren og `agentbox` kan arbeide videre.
-Modusendringer og filutskifting må testes med aktuelle utviklingsverktøy.
+Agentens UID 0 mappes til `agentbox` på verten. ACL-er tillater samarbeid med
+utvikleren; restriktive filmoduser kan kreve eksplisitt reparasjon.
+Reparasjon og tilbakekalling krever at alle berørte miljøer er stoppet.
+Tilbakekalling sperrer tilgang gjennom prosjektroten uten å slette innhold,
+endre eierskap eller fjerne innholdets ACL-er.
 
 ## Nettverk og images
 
-Hvert arbeidsmiljø skal ha eget lukket nettverk. En Squid-proxy eller
-tilsvarende kobles til dette og et eksternt nettverk. Bare eksplisitt tillatte
-destinasjoner og porter skal kunne nås. Proxyoppsett i miljøvariabler skal
-støttes av nettverksregler som blokkerer direkte utgående forbindelser.
+Hvert miljø har en agent, en Squid-proxy, et lukket `isolated` bridge-nettverk
+og et separat eksternt nettverk. Bare proxyen kobles til begge nettverk.
+Agenten har ingen direkte internettrute eller publiserte porter; IPv6 er deaktivert.
 
-Start med ett agentimage. Image og oppstartskommando skal kunne velges
-uavhengig av nettverks-, ACL- og monteringslogikken.
+Policyen avviser alt unntatt eksakte domene/port-par for HTTP på 80 og CONNECT
+på 443. Kontrollsiden validerer navnenes adresser og fastlåser én offentlig
+IPv4-adresse per navn. Proxyen har ingen ekstern DNS-fallback.
+En systemd-adressevakt stopper miljøer ved endrede vertsadresser;
+vakten er asynkron, og nettverksadministrasjon på verten er betrodd.
 
-## Sikkerhetsgrense og verifikasjon
+Codex-imaget og det separate testimaget bruker samme isolering. Andre
+kompatible images velges i YAML. Images må støtte UID 0, `/bin/sh` og
+`sleep infinity`; deklarerte `VOLUME`-mounts avvises.
+Imagebygging og imagehenting skjer på den betrodde kontrollsiden.
 
-Mountene avgrenser hvilke vertsmapper agenten ser i normal containerkjøring.
-Ved et utbrudd som gir daemonbrukerens rettigheter, gjelder alle rettighetene
-til `agentbox`, inkludert andre delte prosjekter og filer som allerede er
-tilgjengelige for lokale brukere. Felles daemonbruker gir ikke separat
-vertsisolering mellom prosjektene.
+## Livssyklus og sikkerhetsgrense
 
-Før første versjon godkjennes, skal vi verifisere:
+`stop` bevarer containerlaget, inkludert Codex-innlogging. Uendret konfigurasjon
+kan startes igjen. Endret konfigurasjon eller vertsadresse krever `remove` og
+ny `start`; hjem og innlogging slettes da, mens monterte prosjektfiler består.
+Separat profilvolum og automatisk oppstart av miljøer etter vertsreboot er
+ikke implementert.
 
-- Tillatt proxytrafikk fungerer; andre destinasjoner og direkte trafikk blokkeres.
-- Proxyfeil åpner ingen alternativ vei ut.
-- DNS, IPv6, vertsadresser og private destinasjoner ikke omgår policyen.
-- Bare valgte mapper vises, og begge brukerne kan redigere nye filer.
-- To arbeidsmiljøer kan kjøre samtidig med ulike mounts og images.
-- Ressursgrenser håndheves av vertens cgroup-oppsett.
+Agenten kjører med droppede capabilities, `no-new-privileges`, ressursgrenser
+og en strengere Moby-seccomp-profil som blant annet blokkerer nye Unix-sockets.
+Dette begrenser kompatibilitet med verktøy som trenger slike sockets.
+
+Mountene avgrenser normal filtilgang. Rootless-containerne deler vertens
+kjerne. Ved utbrudd med tjenestebrukerens rettigheter gjelder all tilgang
+`agentbox` har, inkludert andre registrerte prosjekter og allment lesbare filer.
+Felles daemonbruker gir ikke separat vertsisolering mellom prosjektene.
 
 ## Videre arbeid etter MVP
 
-Worktree-støtte er utenfor MVP-en. Senere skal vi vurdere hvordan linked
-worktrees kan brukes, inkludert tilgang til Git-metadata utenfor arbeidsmappen.
+MVP-en er godkjent som versjon 1.0; se [teststatus](test-results.md) for
+labprøver, manuell bruk og testavgrensninger. Linked worktrees er utsatt, inkludert tilgang
+til delte Git-metadata utenfor arbeidsmappen. Separat profillagring er et
+mulig senere valg.
 
-Når MVP-en fungerer, skal den sammenlignes med OpenShell og Docker Sandboxes.
-Sammenligningen skal bygge på vår testede løsning og undersøkelser av
-alternativenes faktiske egenskaper. Vurder særlig:
-
-- Isoleringsgrenser, vertsrettigheter og nettverkspolicy.
-- Direkte montering av eksisterende prosjekter og filrettigheter.
-- Prosjektbytte, samtidige arbeidsmiljøer og støtte for ulike images.
-- Oppsett, daglig bruk, vedlikehold og plattformkrav.
+Neste vurdering er sammenligning med OpenShell og Docker
+Sandboxes: isoleringsgrenser, nettverkspolicy, mounts og rettigheter,
+samtidige miljøer, imagevalg, plattformkrav og vedlikehold.
 
 ## Teknisk grunnlag
 

@@ -1,17 +1,34 @@
-# Agentbox
+# Agentbox 1.0
 
 Rootless Docker-miljøer for kodeagenter, med direkte prosjektmontering,
 ACL-er og eksplisitt tillatt nettverkstrafikk gjennom Squid. Første image
 inneholder Codex CLI 0.166.0. Flere prosjekter og images kan brukes samtidig.
 
-Implementasjonen testes i en disponibel Ubuntu-VM. Se
+MVP-en er godkjent som versjon 1.0 etter automatiserte prøver i en disponibel
+Ubuntu-VM og manuell installasjon og Codex-bruk på utviklerens Debian-vert. Se
 [teststatus](docs/test-results.md) før bruk og
 [implementasjonsvalg](docs/decisions-mvp.md) for sikkerhetsgrenser.
+Se også [C4-diagrammene for systemkontekst og containere](docs/architecture-c4.md).
+
+## Dokumentasjon
+
+| Dokument | Innhold |
+| --- | --- |
+| [Arkitektur](docs/architecture-v1.md) | Dagens oppbygning, eierskap og sikkerhetsgrenser |
+| [C4-diagrammer](docs/architecture-c4.md) | Systemkontekst, containere og lokal rendering |
+| [MVP-spesifikasjon](docs/spec-mvp.md) | Krav og akseptansekriterier |
+| [Implementasjonsvalg](docs/decisions-mvp.md) | Løsninger valgt gjennom labprøvene |
+| [Implementeringsplan](docs/implementation-plan.md) | Opprinnelig plan med gjennomføringsstatus |
+| [Teststatus](docs/test-results.md) | Observerte resultater, reproduksjon og gjenstående prøver |
+
+Worktrees, separat profilvolum og sammenligning med OpenShell og Docker
+Sandboxes er videre arbeid.
 
 ## Oppsett
 
 Referanseplattformen er Ubuntu 24.04 med systemd, cgroup v2, POSIX ACL,
-user namespaces og rootless Docker. Docker 29.9.2 er testet. Installer
+user namespaces og rootless Docker. Python 3.12 eller nyere kreves.
+Koden krever Docker 28 eller nyere; bare 29.9.2 er testet. Installer
 [Docker Engine og rootless extras](https://docs.docker.com/engine/security/rootless/)
 før prosjektets installer kjøres. Andre nødvendige pakker på Ubuntu:
 
@@ -32,12 +49,29 @@ konfigurasjon og context endres ikke. CPU-/minne-/prosesskontroll delegeres til
 den konkrete systemd-brukerinstansen for `agentbox`.
 Stopp miljøene før reinstallasjon eller oppdatering av kontrollverktøyet.
 
+## Tab-completion i Bash
+
+Installeren legger inn Bash-completion. Med `bash-completion` aktivert lastes
+den automatisk i nye skall. Aktiver den i terminalen du allerede bruker med:
+
+```sh
+source <(agentbox completion bash)
+```
+
+Tab fullfører underkommandoer, flagg, eksisterende miljønavn og registrerte
+prosjekter. Etter `--config` og `--key-file` foreslås filstier; etter `--path`
+foreslås kataloger. Eksempel: `agentbox shell pub<Tab>` eller
+`agentbox project repair pub<Tab>`.
+Oppslag ber aldri om sudo-passord. Hvis kontrollhjelperen er utilgjengelig
+eller opptatt i mer enn to sekunder, utelates navneforslag.
+
 ## Registrer eksisterende prosjekter
 
 ```sh
 agentbox project add pacman --path "$HOME/src/pacman"
 agentbox project add pub-pc --path "$HOME/project/pub-pc"
 agentbox project list
+agentbox project check pacman
 ```
 
 Prosjektroten må eies av utvikleren. Registrering gir begge brukerne `rwX`
@@ -102,6 +136,16 @@ innlogging og installerte filer bevares. Endret konfigurasjon eller vertsadresse
 krever eksplisitt `remove` og ny `start`. Det sletter containerens skrivbare
 lag, inkludert innlogging; montert kode blir liggende.
 
+| Operasjon | Monterte prosjektfiler | Hjem og Codex-innlogging |
+| --- | --- | --- |
+| `stop`, deretter `start` med samme konfigurasjon og vertsadresser | Beholdes | Beholdes |
+| Restart av Docker-daemon, deretter manuell `start` | Beholdes | Beholdes |
+| `remove`, deretter ny `start` | Beholdes | Slettes og opprettes på nytt |
+
+Det finnes ikke et separat profilvolum. Hvert miljø har egen innlogging.
+Miljøene startes ikke automatisk etter vertsreboot. DNS-adressene beholdes
+ved gjenopptak; ny navneoppløsning krever fjerning og ny opprettelse.
+
 Andre kompatible 64-bits images kan hentes med `agentbox pull-image IMAGE` og
 velges i YAML. De må ha `/bin/sh` og `sleep infinity` og støtte UID 0.
 Images med implisitte `VOLUME`-mounts avvises. De samme nettverks- og
@@ -157,8 +201,9 @@ rettighetsretting fra fileieren før reparasjon kan fullføres.
 ```sh
 uv sync --extra dev --locked
 uv run --locked pytest
-uv run --locked ruff check src tests scripts/lab
-uv run --locked ruff format --check src tests scripts/lab
+uv run --locked ruff check src tests scripts
+uv run --locked ruff format --check src tests scripts
+bash -n scripts/install.sh scripts/lab/*.sh
 ```
 
 Den disponible KVM-laben krever QEMU, `qemu-img`, `xorriso`, curl og SSH.

@@ -1,9 +1,9 @@
-# Teststatus for MVP
+# Teststatus for versjon 1.0
 
 Dato: 30. oktober 2026. Implementasjonen er kjørt i en disponibel KVM-VM med
 egne brukere og midlertidige prosjektmapper. Ingen personlige prosjektmapper
-er delt inn i VM-en. Installasjon på utviklerens hovedmaskin og manuell
-Codex-innlogging med en reell oppgave gjenstår før full MVP-godkjenning.
+er delt inn i VM-en. Installasjon og manuell Codex-bruk er deretter prøvd på
+utviklerens Debian-vert. Utvikleren godkjente MVP-en som versjon 1.0 samme dag.
 
 ## Referansemiljø
 
@@ -24,8 +24,9 @@ og `DOCKER_CONTEXT` satt til den andre instansen.
 
 ## Gjennomførte kontroller
 
-- Lokal testpakke: **48 bestått**.
-- VM: enhetstester og installert CLI-integrasjon: **49 bestått**.
+- Lokal testpakke ved versjon 1.0: **64 bestått**, inkludert terminal- og completion-tester.
+- Opprinnelig VM-prøve: **49 bestått** (48 enhetstester og installert CLI-integrasjon).
+  VM-prøven er ikke kjørt på nytt etter terminal- og completion-rettelsene.
 - Ruff lint og formatteringskontroll: bestått.
 - Bash-syntakskontroll for installasjon og labskript: bestått.
 - Teknisk grunnprøve og kontrollert HTTP-/HTTPS-/DNS-prøve: bestått.
@@ -63,21 +64,39 @@ at tjenestene faktisk svarer før blokkering godtas som resultat.
 
 ## Avgrensning mot akseptansekriteriene
 
-A1–A13 er dekket av testpakke og labprøver på referanseplattformen.
-Dette er ikke en generell sikkerhetssertifisering eller uttømmende
-feilinjektionstest av alle kombinasjoner. Følgende gjenstår eksplisitt:
+Testpakken og labprøvene undersøker områdene i A1–A13 på referanseplattformen.
+Resultatene over beskriver de konkrete kontrollene; de innebærer ikke at alle
+varianter i akseptansekriteriene er uttømmende verifisert. Følgende områder
+har fortsatt begrenset testdekning:
 
-- Manuell Codex-innlogging og en faktisk kodeoppgave med brukerens konto.
-  Ingen personlige tokens er hentet og ingen modellforespørsel er sendt.
-- Manuell vurdering av brukerens konkrete nettverk, prosjektmapper og ønskede
-  agentdestinasjoner før installasjon på hovedmaskinen.
 - Bredere prøver av samtidige manuelle ACL-endringer, vertsreboot og krasj
   midt i hver enkelt oppstartsoperasjon.
-- Andre distribusjoner, arm64, andre agentsystemer og annen Docker/Squid-versjon.
+- Andre distribusjoner enn labens Ubuntu og den manuelt prøvde Debian-verten,
+  arm64, andre agentsystemer og annen Docker/Squid-versjon.
 
 Adressevakten er asynkron og deler lås med kontrolloperasjoner. Nettverksendringer
 på verten behandles som betrodd administrasjon; testen viser stopp etter
 oppdaget endring, ikke atomisk sperring i endringsøyeblikket.
+
+## Manuell utprøving på Debian-verten
+
+Utvikleren installerte tjenestebruker, rootless Docker og kontrollverktøy,
+bygget images og registrerte et eksisterende prosjekt. `doctor` bekreftet
+rootless Docker 29.9.2 med systemd-cgroups. Utvikleren bekreftet fungerende
+Codex-terminal etter retting av terminalstørrelsen, og godkjente deretter MVP-en.
+
+To problemer fra utprøvingen er rettet:
+
+- Standardområdet `172.28.0.0/16` kolliderte med et eksisterende Docker-nettverk.
+  Et ledig område ble valgt i vertsinnstillingene. Installeren bevarer nå valget,
+  og feilmeldingen forklarer hvor adresseområdet konfigureres.
+- Terminalen rapporterte `0 × 0` til Codex. En pseudoterminal bevarer nå størrelse
+  og videresender størrelsesendringer mens agentutdata fortsatt logges.
+  En separat prøve mot den installerte CLI-en bekreftet `30 × 100`.
+
+Bash-completion er også installert og kontrollert mot vertens faktiske miljø-
+og prosjektnavn. Context7 ble diskutert som ønsket integrasjon; den er ikke
+verifisert som del av denne leveransen. Ingen personlige tokens inngår i testbevisene.
 
 ## Reproduser laben
 

@@ -65,3 +65,36 @@ def test_daemon_environment_is_not_inherited(monkeypatch):
     assert "DOCKER_HOST" not in seen["env"]
     assert "DOCKER_CONTEXT" not in seen["env"]
     assert "OPENAI_API_KEY" not in seen["env"]
+
+
+@pytest.mark.parametrize("interactive", [False, True])
+def test_exec_stream_preserves_terminal_size_and_logs(monkeypatch, tmp_path, capfd, interactive):
+    import pty
+    import subprocess
+    import sys
+    import termios
+
+    popen = subprocess.Popen
+
+    def child(command, **kwargs):
+        program = (
+            "import os; print('size=%sx%s' % tuple(os.get_terminal_size(1)))"
+            if interactive
+            else "print('pipe output')"
+        )
+        return popen([sys.executable, "-c", program], **kwargs)
+
+    monkeypatch.setattr("agentbox.runtime.subprocess.Popen", child)
+    master, slave = pty.openpty()
+    try:
+        termios.tcsetwinsize(slave, (30, 100))
+        with os.fdopen(slave, "r") as terminal:
+            code = Docker(os.getuid(), str(tmp_path)).exec_stream(
+                "container", ["probe"], tmp_path, terminal=terminal if interactive else None
+            )
+        assert code == 0
+        expected = "size=100x30\n" if interactive else "pipe output\n"
+        assert capfd.readouterr().out == expected
+        assert (tmp_path / "agent.log").read_text() == expected
+    finally:
+        os.close(master)

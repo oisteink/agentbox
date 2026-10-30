@@ -79,6 +79,10 @@ Kontrollverktøyet logger ikke forespørsler eller nøkkelverdier. Proxyens
 tilgangslogg viser bare destinasjon og resultat. Agentens egne utdata streames
 og lagres i private, roterte logger; de kan inneholde det agenten skriver.
 
-Stopp bevarer containerlaget og Codex-innlogging. Fjerning sletter laget og
+Stopp og gjenopptak med uendret konfigurasjon bevarer containerlaget og
+Codex-innlogging. Separat profilvolum er ikke implementert.
+Endret konfigurasjon eller vertsadresse krever eksplisitt fjerning og ny
+opprettelse; gjenopptak beholder eksisterende fastlåste DNS-adresser.
+Fjerning sletter laget og
 miljøets logger. Prosjektfiler, registreringer og ACL-er består til egne
 operasjoner endrer dem. Kjøremiljøer gjenopptas ikke automatisk etter vertsreboot.

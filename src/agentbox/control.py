@@ -168,7 +168,11 @@ class Control:
                 available.append(subnet)
                 if len(available) == 2:
                     return available
-        raise AgentboxError("No collision-free subnets available in the configured pool")
+        raise AgentboxError(
+            f"No two collision-free /28 subnets available in network_pool "
+            f"{self.settings['network_pool']}; choose an unused IPv4 range in "
+            "/etc/agentbox/settings.json (host routes and Docker networks are excluded)"
+        )
 
     def check_mounts(self, data, environment):
         mounts = []
