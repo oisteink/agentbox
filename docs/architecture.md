@@ -1,4 +1,4 @@
-# Arkitektur for Agentbox 1.0
+# Arkitektur for Agentbox 1.0.1
 
 Agentbox kjører agentmiljøer i en egen rootless Docker-instans med eksplisitt
 tilgang til prosjektmapper og utgående trafikk via Squid. Dette dokumentet
@@ -64,6 +64,13 @@ Imagebygging og imagehenting skjer på den betrodde kontrollsiden.
 
 ## Livssyklus og sikkerhetsgrense
 
+Fra 1.0.1 finnes `scripts/uninstall.sh`, kjørt fra repoet som administrator
+på samme måte som installeren. Det stopper tjenestebrukerens
+prosesser, overfører eierskap i registrerte prosjekter og fjerner installasjonen.
+Skriptet bruker systemets Python uavhengig av den installerte CLI-en.
+Vanlige kontrolloperasjoner får ikke denne root-tilgangen. Se
+[avinstallasjon](installation.md#avinstallasjon) for omfang og filrydding.
+
 `stop` bevarer containerlaget, inkludert Codex-innlogging. Uendret konfigurasjon
 kan startes igjen. Endret konfigurasjon eller vertsadresse krever `remove` og
 ny `start`; hjem og innlogging slettes da, mens monterte prosjektfiler består.
@@ -82,7 +89,7 @@ Felles daemonbruker gir ikke separat vertsisolering mellom prosjektene.
 ## Avgrensninger og videre arbeid
 
 Se [teststatus](test-results.md) for labprøver, manuell bruk og testavgrensninger.
-Linked worktrees støttes ikke i versjon 1.0, inkludert tilgang
+Linked worktrees støttes ikke i versjon 1.0.1, inkludert tilgang
 til delte Git-metadata utenfor arbeidsmappen. Separat profillagring er et
 mulig senere valg.
 

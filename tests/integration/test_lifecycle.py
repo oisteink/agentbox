@@ -65,7 +65,7 @@ def test_two_environments_and_revocation():
                     cfg["mounts"].append({"project": second, "target": "/readonly", "mode": "ro"})
                 path = root / (environment + ".yaml")
                 path.write_text(yaml.safe_dump(cfg))
-                result = json.loads(cli("start", environment, "--config", str(path)).stdout)
+                result = json.loads(cli("start", str(path)).stdout)
                 assert result["status"] == "running"
                 environments.append(environment)
             assert (
@@ -197,7 +197,7 @@ def test_two_environments_and_revocation():
             assert (
                 cli("project", "revoke", second, check=False).returncode != 0
             )  # env1 has a read-only mount.
-            cli("start", env2, "--config", str(root / (env2 + ".yaml")))
+            cli("start", str(root / (env2 + ".yaml")))
             # New Unix sockets are blocked at syscall creation, independently of directory scans.
             denied = cli(
                 "exec",
@@ -243,7 +243,7 @@ def test_two_environments_and_revocation():
             checked = json.loads(cli("project", "check", first).stdout)
             assert not checked["operator_access_issues"] and not checked["service_access_issues"]
             # Resuming an unchanged environment preserves its writable layer.
-            cli("start", env1, "--config", str(root / (env1 + ".yaml")))
+            cli("start", str(root / (env1 + ".yaml")))
             assert (
                 cli("exec", env1, "--", "cat", "/workspace/from-agent").stdout == "agent-developer"
             )
@@ -281,7 +281,7 @@ def test_two_environments_and_revocation():
                 timeout=45,
             )
             for attempt in range(20):
-                resumed = cli("start", env2, "--config", str(root / (env2 + ".yaml")), check=False)
+                resumed = cli("start", str(root / (env2 + ".yaml")), check=False)
                 if resumed.returncode == 0:
                     break
                 time.sleep(0.2)

@@ -1,4 +1,4 @@
-# Installasjon av Agentbox 1.0
+# Installasjon av Agentbox 1.0.1
 
 Kjør installasjonen fra repoet på Linux-verten som skal kjøre agentmiljøene.
 Daglig bruk skjer deretter som utvikleren, uten `sudo agentbox`.
@@ -13,10 +13,20 @@ før prosjektets installer kjøres. Andre nødvendige pakker på Ubuntu:
 
 ```sh
 sudo apt-get install acl uidmap dbus-user-session slirp4netns python3-venv sudo iproute2
-sudo scripts/install.sh --operator "$(id -un)"
+sudo scripts/install.sh
 agentbox doctor
 agentbox build-images
 ```
+
+Utviklerbrukeren hentes fra `SUDO_USER`, altså brukeren som kjører `sudo`.
+For å installere for en annen bruker, oppgi navnet eksplisitt:
+
+```sh
+sudo scripts/install.sh --operator annen-bruker
+```
+
+Ved direkte kjøring som root må `--operator` oppgis. Root og `agentbox`
+kan ikke velges som utvikler. Vis alternativene med `scripts/install.sh --help`.
 
 Installeren oppretter `agentbox` med hjem `/var/lib/agentbox`, installerer
 kontrollkode under `/opt/agentbox` og gir den valgte utvikleren tilgang til
@@ -53,12 +63,39 @@ Versjonsmatrise og skillet mellom labprøver og manuell Debian-utprøving står 
 
 ## Avinstallasjon
 
-Bruk `agentbox remove NAVN` og tilbakekall prosjekter før avinstallasjon.
-Stopp deretter Docker-brukertjenesten og `agentbox-watch.service` for den
-konkrete tjenestebrukeren. Fjern prosjektets sudo-regel, entrypoints og
-`/opt/agentbox` først når miljøene er avviklet.
+Kjør fra repoet, på samme måte som installasjonen. Se omfanget uten å endre
+installasjonen:
 
-Ikke slett `agentbox`-brukeren, hjemmet eller journalen under
-`/var/lib/agentbox-operator` automatisk: brukeren kan fortsatt eie prosjektfiler,
-og journalen kan være nødvendig for å rydde ACL-er. Agentbox 1.0 har ingen automatisk
-brukersletting eller destruktiv fullavinstallasjon.
+```sh
+sudo scripts/uninstall.sh --dry-run
+```
+
+Avinstaller hele Agentbox-installasjonen:
+
+```sh
+sudo scripts/uninstall.sh
+```
+
+Skriptet bruker systemets Python og trenger ikke den installerte CLI-en.
+Det varsler om at
+miljøene stoppes og at containerhjem, innlogging og images slettes. Deretter:
+
+1. Stoppes den dedikerte brukerinstansen, Docker og øvrige agentbox-prosesser.
+2. Overføres agentbox-eide filer, kataloger og selve symlinkene i registrerte
+   prosjekter til utviklerens UID og primærgruppe. Dette omfatter også
+   tilbakekalte prosjekter som fortsatt finnes i registeret.
+3. Fjernes tjenestebrukerens tilgangs- og standard-ACL-er. Andre ACL-oppføringer
+   og masker beholdes. Foreldrenes opprinnelige ACL gjenopprettes når den ikke
+   er endret manuelt; ellers fjernes bare tjenestebrukerens oppføring.
+4. Fjernes tjenestebrukeren, dens egne UID/GID-områder, udelte gruppe,
+   systemd-oppsett, sudo-regel, programmer, completion og Agentbox sine data.
+
+Prosjektinnhold og miljøfiler utenfor installasjonen beholdes. Andre
+Docker-instansers brukere, konfigurasjon og data berøres ikke. Docker-pakkene
+avinstalleres ikke.
+
+Filryddingen følger ikke symlinker og krysser ikke nestede mounts.
+Endret prosjektrot, manglende aktiv prosjektmappe eller berørte hardlenker gir
+feil før brukeren og installasjonsdataene slettes. Rett årsaken og kjør
+`sudo scripts/uninstall.sh` igjen. Miljøene kan allerede være stoppet ved en slik feil.
+Gamle tilbakekalte prosjekter som er slettet, hoppes over.

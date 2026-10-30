@@ -1,4 +1,4 @@
-# Agentbox 1.0 på C4 nivå 1 og 2
+# Agentbox 1.0.1 på C4 nivå 1 og 2
 
 Agentbox kjører kodeagenter med valgte prosjektmapper og kontrollert utgående
 nettverkstilgang. C1 viser systemet og omgivelsene; C2 viser
@@ -68,6 +68,7 @@ System_Boundary(agentbox, "Agentbox") {
     Container(cli, "agentbox CLI", "Python; utviklerens UID", "Validerer miljøfiler og administrerer utviklerens ACL-endringer.")
     ContainerDb(journal, "ACL-journal", "Private JSON-filer", "/var/lib/agentbox-operator; eies av utvikleren.")
     Container(control, "Kontrollhjelper", "Python; agentbox UID", "Administrerer prosjekter, policy, miljøer og terminalsesjoner.")
+    Container(uninstall, "Avinstallering", "scripts/uninstall.sh; Bash / Python; root", "Kjøres fra repoet. Rydder ACL-er og overfører prosjektfiler til utvikleren før installasjonen fjernes. ")
     Container(watch, "Adressevakt", "Python / systemd; agentbox UID", "Stopper miljøer ved endrede vertsadresser.")
     ContainerDb(state, "Kontrolltilstand og policy", "Private filer; agentbox UID", "/var/lib/agentbox/state; miljøregister, proxyregler og logger.")
     Container(docker, "Rootless Docker-instans", "Docker Engine / RootlessKit", "Egen daemon som agentbox; administrerer containere, nettverk og images.")
@@ -84,6 +85,10 @@ Rel(developer, projects, "Redigerer", "Editor / filsystem")
 Rel(cli, journal, "Registrerer og avstemmer ACL-endringer", "Filsystem")
 Rel(cli, projects, "Tildeler og tilbakekaller tilgang som fileier", "POSIX ACL")
 Rel(cli, control, "Sender kontrolloperasjoner", "Avgrenset sudo; JSON på stdin")
+Rel(developer, uninstall, "Kjører avinstallasjon eller forhåndsvisning fra repoet", "sudo scripts/uninstall.sh")
+Rel(uninstall, projects, "Overfører agentbox-eide filer og rydder ACL-er", "Avgrenset filsystemtilgang; ingen symlinkfølging")
+Rel(uninstall, state, "Leser registeret før filrydding og sletting", "Privat tilstand og operasjonslås")
+Rel(uninstall, journal, "Avstemmer og rydder foreldrenes ACL-er", "Privat journal og lås")
 Rel(control, projects, "Reparerer ACL på filer eid av agentbox", "POSIX ACL")
 Rel(control, state, "Lagrer tilstand, policy og agentutdata", "Filsystem")
 Rel(watch, state, "Leser miljøer og oppdaterer status", "Filsystem og felles lås")

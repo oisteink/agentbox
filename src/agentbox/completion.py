@@ -13,6 +13,18 @@ def bash_script():
 
 
 def names(kind):
+    if kind == "configs":
+        try:
+            return sorted(
+                {
+                    path.stem
+                    for suffix in ("*.yaml", "*.yml")
+                    for path in config.environment_directory().glob(suffix)
+                    if path.is_file() and config.NAME.fullmatch(path.stem)
+                }
+            )
+        except OSError:
+            return []
     request = (
         {"action": "status"}
         if kind == "environments"

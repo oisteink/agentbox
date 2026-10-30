@@ -371,7 +371,7 @@ http_access deny all
         cfg_path = app_root / "environment.yaml"
         cfg_path.write_text(yaml.safe_dump(config))
         os.chown(cfg_path, developer.pw_uid, developer.pw_gid)
-        started = json.loads(app("start", app_environment, "--config", str(cfg_path)).stdout)
+        started = json.loads(app("start", str(cfg_path)).stdout)
         production_request = (
             "exec",
             app_environment,
@@ -447,7 +447,7 @@ http_access deny all
         assert app(*production_request, check=False).returncode != 0
         result["installed_cli_proxy_failure_blocks"] = True
         app("stop", app_environment)
-        app("start", app_environment, "--config", str(cfg_path))
+        app("start", str(cfg_path))
 
         # Changing host addresses invalidates the stored destination exclusions.
         run("ip", "address", "add", "198.18.244.1/32", "dev", "lo")

@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && mkdir -p /home/agent
 COPY --from=codex /usr/local/bin/node /usr/local/bin/node
 COPY --from=codex /usr/local/lib/node_modules/@openai /usr/local/lib/node_modules/@openai
-RUN ln -s ../lib/node_modules/@openai/codex/bin/codex.js /usr/local/bin/codex \
-    && codex --version \
+COPY --chmod=0755 codex /usr/local/bin/codex
+RUN codex --version \
     && rm -rf /home/agent/.codex
 WORKDIR /home/agent
 CMD ["bash"]

@@ -148,11 +148,13 @@ def parser():
     commands.add_parser("build-images")
     complete = commands.add_parser("completion", help="Print shell completion setup")
     complete.add_argument("shell", choices=["bash"], nargs="?", default="bash")
-    complete.add_argument("--names", choices=["environments", "projects"], help=argparse.SUPPRESS)
+    complete.add_argument(
+        "--names", choices=["environments", "projects", "configs"], help=argparse.SUPPRESS
+    )
     pull = commands.add_parser("pull-image")
     pull.add_argument("image")
     validate = commands.add_parser("validate")
-    validate.add_argument("config")
+    validate.add_argument("config", help="YAML path or name from the user environment directory")
     project = commands.add_parser("project")
     operations = project.add_subparsers(dest="operation", required=True)
     operations.add_parser("list")
@@ -162,9 +164,8 @@ def parser():
     for operation in ("check", "repair", "revoke"):
         sub = operations.add_parser(operation)
         sub.add_argument("name", type=config.name)
-    start = commands.add_parser("start")
-    start.add_argument("name", type=config.name)
-    start.add_argument("--config", required=True)
+    start = commands.add_parser("start", help="Start an environment from a YAML path or saved name")
+    start.add_argument("config", help="YAML path or name from ~/.config/agentbox/environments")
     for action in ("stop", "remove", "shell", "logs", "login-api-key", "exec"):
         sub = commands.add_parser(action)
         sub.add_argument("name", type=config.name)
@@ -182,9 +183,10 @@ def main():
         args = parser().parse_args()
         if args.action == "completion":
             if args.names:
-                settings = load_settings()
-                if os.getuid() != settings["operator_uid"]:
-                    return
+                if args.names != "configs":
+                    settings = load_settings()
+                    if os.getuid() != settings["operator_uid"]:
+                        return
                 print("\n".join(completion.names(args.names)))
             else:
                 print(completion.bash_script(), end="")
@@ -218,8 +220,6 @@ def main():
                         )
         elif args.action == "start":
             environment = config.load(args.config)
-            if args.name != environment.name:
-                raise AgentboxError("Command name and configuration name disagree")
             payload = environment.to_dict()
             payload["network"] = {"allow": payload.pop("allow")}
             result = rpc({"action": "start", "config": payload})

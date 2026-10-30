@@ -16,7 +16,8 @@ Worktree-støtte er utsatt.
 - `images/dev/` og `images/smoke/`: Codex-image og separat testimage.
 - `proxy/`: Squid-image; policy genereres av `src/agentbox/policy.py`.
 - `environments/`: miljøkonfigurasjoner uten hemmeligheter.
-- `scripts/install.sh`: vertsinstallasjon; `scripts/lab/`: disponibel KVM-lab.
+- `scripts/install.sh` og `scripts/uninstall.sh`: administratoroppsett og avinstallasjon.
+- `scripts/lab/`: disponibel KVM-lab.
 - `tests/unit/` og `tests/integration/`: pytest-tester.
 - `security/vendor/`: revisjonslåst Moby-seccomp-grunnlag.
 - `docs/`: produktspesifikasjon, arkitektur, bruk, installasjon og testbevis.
@@ -31,12 +32,13 @@ uv sync --extra dev --locked
 uv run --locked pytest -q
 uv run --locked ruff check src tests scripts
 uv run --locked ruff format --check src tests scripts
-bash -n scripts/install.sh scripts/lab/*.sh
+bash -n scripts/*.sh scripts/lab/*.sh images/dev/codex src/agentbox/completions/agentbox.bash
 ```
 
 `pytest` kjører enhetstestene som standard. Integrasjonstesten krever installert
 kontrollverktøy, `AGENTBOX_LAB=1` og verten `agentbox-lab`; følg
-[laboppskriften](docs/test-results.md). Kjør sikkerhetsprøver i disponibel VM.
+[laboppskriften](docs/test-results.md). Kjør sikkerhetsprøver i disponibel VM. Avinstallasjonsprøven krever separat
+`AGENTBOX_UNINSTALL_LAB=1` og skal kjøres sist; den sletter labinstallasjonen.
 På installert system bygger `agentbox build-images` utviklingsimage og proxy.
 
 ## Kodestil og dokumentasjon

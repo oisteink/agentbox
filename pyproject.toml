@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentbox"
-version = "1.0.0"
+version = "1.0.1"
 description = "Rootless Docker workspaces for coding agents"
 requires-python = ">=3.12"
 dependencies = ["PyYAML==6.0.2"]

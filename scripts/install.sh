@@ -2,11 +2,29 @@
 # Administrator installation. Installs no Docker packages and changes no existing daemon.
 set -euo pipefail
 umask 077
-[[ $(id -u) == 0 ]] || { echo 'Run as root: sudo scripts/install.sh --operator USER' >&2; exit 1; }
-[[ ${1:-} == --operator && $# == 2 && $2 =~ ^[a-z_][a-z0-9_-]*$ ]] || {
-  echo 'Usage: sudo scripts/install.sh --operator USER' >&2; exit 2;
+case $# in
+  0) operator_name=${SUDO_USER:-} ;;
+  1)
+    [[ $1 == --help || $1 == -h ]] && {
+      echo 'Usage: sudo scripts/install.sh [--operator USER]'
+      echo 'Defaults to the user invoking sudo. Direct root use requires --operator USER.'
+      exit 0
+    }
+    echo 'Usage: sudo scripts/install.sh [--operator USER]' >&2; exit 2 ;;
+  2)
+    [[ $1 == --operator ]] || {
+      echo 'Usage: sudo scripts/install.sh [--operator USER]' >&2; exit 2;
+    }
+    operator_name=$2 ;;
+  *) echo 'Usage: sudo scripts/install.sh [--operator USER]' >&2; exit 2 ;;
+esac
+[[ $(id -u) == 0 ]] || { echo 'Run as root: sudo scripts/install.sh' >&2; exit 1; }
+[[ -n "$operator_name" ]] || {
+  echo 'Cannot infer the developer; use sudo or specify --operator USER' >&2; exit 2;
 }
-operator_name=$2
+[[ "$operator_name" =~ ^[a-z_][a-z0-9_-]*$ ]] || {
+  echo 'Invalid operator username' >&2; exit 2;
+}
 operator_uid=$(id -u "$operator_name")
 [[ "$operator_uid" != 0 && "$operator_name" != agentbox ]] || { echo 'Choose a regular developer' >&2; exit 1; }
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
