@@ -32,4 +32,3 @@ scripts/lab/vm.sh stop
 Bootstrap- og nettverksprøver har en eksplisitt `agentbox-lab`-vertskontroll.
 Reproduksjon av testløpet er beskrevet i [teststatus](test-results.md).
 Koden kopieres inn med tar/SSH; vertens mapper deles ikke inn i VM-en.
-
