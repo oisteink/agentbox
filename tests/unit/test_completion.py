@@ -47,12 +47,14 @@ def test_completion_timeout_is_ignored(monkeypatch):
     [
         (["agentbox", "sh"], ["shell"]),
         (["agentbox", "shell", "pub"], ["pubnix-codex"]),
-        (["agentbox", "start", "--config", "env.yaml", "pub"], ["pubnix-codex"]),
         (["agentbox", "logs", "pubnix-codex", "--p"], ["--proxy"]),
         (["agentbox", "project", "re"], ["repair", "revoke"]),
         (["agentbox", "project", "repair", "pub"], ["pubnix"]),
         (["agentbox", "exec", "pubnix-codex", "--", ""], []),
-        (["agentbox", "start", "pubnix-codex", "--config", "with"], ["with space.yaml"]),
+        (["agentbox", "start", "with"], ["with space.yaml"]),
+        (["agentbox", "start", "pub"], ["pubnix-codex"]),
+        (["agentbox", "validate", "pub"], ["pubnix-codex"]),
+        (["agentbox", "start", "--h"], ["--help"]),
         (["agentbox", "project", "add", "pubnix", "--path", "proj"], ["project dir"]),
     ],
 )
@@ -66,6 +68,7 @@ agentbox() {
   case "$*" in
     'completion --names environments') printf '%s\\n' other pubnix-codex ;;
     'completion --names projects') printf '%s\\n' pubnix ;;
+    'completion --names configs') printf '%s\\n' pubnix-codex ;;
     *) return 1 ;;
   esac
 }
@@ -84,3 +87,16 @@ compopt() { :; }
     )
     assert result.stderr == ""
     assert result.stdout.splitlines() == (expected or [""])
+
+
+def test_config_name_completion_does_not_call_control(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    folder = tmp_path / "agentbox/environments"
+    folder.mkdir(parents=True)
+    for filename in ("saved.yaml", "saved.yml", "other.yml", "not yaml.txt", "bad name.yaml"):
+        (folder / filename).write_text("This is deliberately not parsed during completion")
+    (folder / "directory.yaml").mkdir()
+    monkeypatch.setattr(
+        completion.subprocess, "run", lambda *args, **kwargs: pytest.fail("No sudo lookup")
+    )
+    assert completion.names("configs") == ["other", "saved"]

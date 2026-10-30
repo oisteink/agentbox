@@ -8,9 +8,14 @@ _agentbox()
 
   if (( COMP_CWORD == 1 )); then
     choices="doctor status build-images pull-image validate project start stop remove shell logs login-api-key exec completion --help"
-  elif [[ "$prev" == --config || "$prev" == --key-file || "$action" == validate ]]; then
+  elif [[ "$prev" == --key-file ]] || { [[ "$action" == start || "$action" == validate ]] && (( COMP_CWORD == 2 )) && [[ "$cur" != -* ]]; }; then
     compopt -o filenames
     mapfile -t COMPREPLY < <(compgen -f -- "$cur")
+    if [[ "$action" == start || "$action" == validate ]] && [[ "$prev" != --key-file && "$cur" != */* ]]; then
+      while IFS= read -r value; do
+        [[ -n "$value" && "$value" == "$cur"* && ! -e "$value" ]] && COMPREPLY+=("$value")
+      done < <(agentbox completion --names configs 2>/dev/null)
+    fi
     return
   elif [[ "$prev" == --path ]]; then
     compopt -o filenames
@@ -27,7 +32,7 @@ _agentbox()
     fi
   else
     case "$action" in
-      start) kind=environments; choices="--config --help" ;;
+      start|validate) choices="--help" ;;
       stop|remove|shell|exec) kind=environments; choices="--help" ;;
       logs) kind=environments; choices="--proxy --help" ;;
       login-api-key) kind=environments; choices="--key-file --help" ;;
@@ -38,8 +43,8 @@ _agentbox()
   # Skip option values when locating the environment/project positional argument.
   for (( i=start; i<COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
-      --config|--key-file|--path) (( i++ )) ;;
-      --config=*|--key-file=*|--path=*|--proxy|-h|--help) ;;
+      --key-file|--path) (( i++ )) ;;
+      --key-file=*|--path=*|--proxy|-h|--help) ;;
       --) break ;;
       *) positional=1 ;;
     esac

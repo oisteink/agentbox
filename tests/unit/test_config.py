@@ -86,3 +86,58 @@ def test_yaml_object_constructor_rejected(tmp_path):
     path.write_text("!!python/object/apply:os.system ['false']")
     with pytest.raises(AgentboxError):
         load(path)
+
+
+@pytest.mark.parametrize("suffix", [".yaml", ".yml"])
+def test_saved_configuration_name(monkeypatch, tmp_path, config, suffix):
+    import yaml
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "settings"))
+    monkeypatch.chdir(tmp_path)
+    folder = tmp_path / "settings/agentbox/environments"
+    folder.mkdir(parents=True)
+    (folder / f"saved{suffix}").write_text(yaml.safe_dump(config))
+    assert load("saved").name == config["name"]
+    assert load(f"saved{suffix}").name == config["name"]
+
+
+def test_explicit_local_configuration_wins(monkeypatch, tmp_path):
+    from agentbox.config import resolve_file
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "settings"))
+    monkeypatch.chdir(tmp_path)
+    folder = tmp_path / "settings/agentbox/environments"
+    folder.mkdir(parents=True)
+    (folder / "saved.yaml").touch()
+    local = tmp_path / "saved.yaml"
+    local.touch()
+    assert resolve_file("saved.yaml").resolve() == local
+    assert resolve_file("./saved").resolve() == tmp_path / "saved"
+
+
+def test_ambiguous_saved_configuration_requires_path(monkeypatch, tmp_path):
+    from agentbox.config import resolve_file
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    folder = tmp_path / "agentbox/environments"
+    folder.mkdir(parents=True)
+    for suffix in (".yaml", ".yml"):
+        (folder / f"saved{suffix}").touch()
+    with pytest.raises(AgentboxError, match="Multiple configuration files"):
+        resolve_file("saved")
+    assert resolve_file("saved.yml") == folder / "saved.yml"
+
+
+def test_saved_configuration_defaults_to_home(monkeypatch, tmp_path):
+    from agentbox.config import resolve_file
+
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    path = tmp_path / ".config/agentbox/environments/saved.yaml"
+    path.parent.mkdir(parents=True)
+    path.touch()
+    # A project file must not shadow a saved short name from the trusted directory.
+    (tmp_path / "saved").write_text("untrusted local file")
+    assert resolve_file("saved") == path

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run without the shared background server in isolated environments.
+set -euo pipefail
+exec /usr/local/bin/node /usr/local/lib/node_modules/@openai/codex/bin/codex.js \
+  --no-daemon "$@"

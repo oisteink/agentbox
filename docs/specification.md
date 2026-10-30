@@ -1,10 +1,10 @@
-# Spesifikasjon for Agentbox 1.0
+# Spesifikasjon for Agentbox 1.0.1
 
 Agentbox kjører kodeagenter mot eksplisitt valgte prosjektmapper på én
 Linux-vert. Én utvikler administrerer oppsettet og kan bruke flere miljøer
 samtidig, med ulike images, mounts og nettverkspolicyer.
 
-Dette er produktkontrakten for versjon 1.0. [Bruksveiledningen](usage.md)
+Dette er produktkontrakten for versjon 1.0.1. [Bruksveiledningen](usage.md)
 beskriver kommandoene, [arkitekturen](architecture.md) forklarer oppbygningen,
 og [teststatus](test-results.md) avgrenser hva som er verifisert.
 
@@ -39,6 +39,9 @@ sende data ut; domenepolicyen gir ingen innholdsfiltrering.
 - Administrator installerer kontrollkode under `/opt/agentbox` og innstillinger
   i `/etc/agentbox/settings.json`. Den private ACL-journalen ligger separat i
   `/var/lib/agentbox-operator` og eies av utvikleren.
+- Installeren bruker `SUDO_USER` som standard utvikler. `--operator BRUKER`
+  velger en annen bruker og kreves ved direkte root-kjøring. Root og
+  tjenestebrukeren kan ikke være utvikler.
 - Daglige Docker-operasjoner går via en fast sudo-hjelper som `agentbox`, med
   strukturert JSON på stdin og renset prosessmiljø. Fast socket, rootless-modus,
   daemon-ID, datasti, Docker-versjon og rapportert cgroup-støtte kontrolleres.
@@ -82,13 +85,21 @@ tilbakekalling.
 
 ## Miljøkonfigurasjon
 
+Fra 1.0.1 brukes `agentbox start FIL.yaml`. Miljønavnet
+leses fra `name`; et separat navneargument og `--config` er fjernet.
+Kommandoer mot eksisterende miljøer, som `shell` og `stop`, bruker miljønavnet.
+`start` og `validate` støtter også kortnavn uten filending fra
+`~/.config/agentbox/environments/` (eller `$XDG_CONFIG_HOME/agentbox/environments/`).
+`.yaml` og `.yml` støttes. Hvis begge matcher, kreves eksplisitt filvalg.
+Lokale filer uten filending overstyrer ikke kortnavn; bruk eksplisitt sti for slike filer.
+
 YAML-filen avviser ukjente felter og dupliserte nøkler. Verdier for hemmeligheter,
 vilkårlige Docker-flagg og automatisk hjemmedeling inngår ikke i skjemaet.
 Prosjekt- og miljønavn bruker små bokstaver, tall og bindestrek, maksimalt 48 tegn.
 
 | Felt | Kontrakt og standardverdi |
 | --- | --- |
-| `name` | Påkrevd unikt miljønavn; må være likt navnet gitt til `start` |
+| `name` | Påkrevd unikt miljønavn; leses fra YAML-filen ved start |
 | `image` | Påkrevd image; `agentbox-dev:local` inneholder Codex 0.166.0 |
 | `mounts` | 1 til 32 registrerte prosjekter, hvert med `project`, absolutt `target` og `mode` (`rw` som standard eller `ro`) |
 | `workdir` | Sti inne i et prosjektmount; standard er første mountmål. Må finnes ved start |
@@ -153,7 +164,7 @@ velges eksplisitt for trafikk fra miljøet.
 
 | Operasjon | Oppførsel |
 | --- | --- |
-| `start` | Validerer miljø og mounts, oppretter nettverk og proxy før agent; uendret kjørende miljø gjenbrukes |
+| `start FIL.yaml` | Leser miljønavnet fra filen, validerer miljø og mounts, oppretter nettverk og proxy før agent; uendret kjørende miljø gjenbrukes |
 | `shell` | Kjører miljøets konfigurerte kommando i en terminalsesjon |
 | `exec` | Kjører eksplisitt argumentliste i eksisterende miljø |
 | `stop` | Stopper agent og proxy, bevarer containerlaget og registreringene |
@@ -209,7 +220,28 @@ manuell utprøving og utestede kombinasjoner står i [teststatus](test-results.m
 | A12 | CPU-, minne- og prosessgrenser verifiseres; manglende støtte gir feil |
 | A13 | Tilbakekalling av prosjekttilgang bevarer uvedkommende ACL-er og tilgang til andre registrerte prosjekter |
 
-## Utenfor versjon 1.0
+## Avinstallasjon i 1.0.1
+
+`sudo scripts/uninstall.sh` er en administratoroperasjon som stopper alle Agentbox-
+miljøer, overfører tjenestebrukerens prosjektfiler til utviklerens UID/GID og
+fjerner installasjon, tjenester, hjem, images, privat tilstand og tjenestebruker.
+`--dry-run` viser omfanget uten å endre filer eller tjenester. Løpende miljøer
+gir en advarsel og stoppes; brukeren trenger ikke avvikle dem manuelt først.
+
+Tilbakekalte prosjekter i registeret inngår i filryddingen. Røttene valideres mot
+lagret identitet. Symlinker følges ikke, men selve linkens eierskap overføres.
+Nestede mounts hoppes over, og berørte hardlenker avvises for å unngå endring
+av filer utenfor prosjektet. Prosjektinnhold og brukerens miljøfiler beholdes.
+
+Kun tjenestebrukerens ACL-oppføringer fjernes fra innholdet; øvrige oppføringer
+og masker beholdes. Journalførte foreldre gjenopprettes når uendret, ellers
+fjernes bare tjenestebrukerens oppføring. Prosjektrydding må lykkes før
+konto og installasjonsdata slettes. Operasjonen tar journal- og kontrollås i
+samme rekkefølge som prosjektoperasjonene og stenger den vanlige sudo-hjelperen
+før prosesser stoppes. Den gir ikke nye root-rettigheter gjennom den vanlige
+kontrollhjelperen.
+
+## Utenfor versjon 1.0.1
 
 - Linked worktrees og deres delte Git-metadata.
 - Egen vertsbruker eller VM per prosjekt og sterkere runtime som gVisor.

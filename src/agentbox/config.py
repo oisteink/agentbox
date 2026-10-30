@@ -1,6 +1,7 @@
 """Strict environment configuration. No Docker flags or shell evaluation."""
 
 import ipaddress
+import os
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
@@ -204,9 +205,33 @@ def parse(data):
     )
 
 
+def environment_directory():
+    return (
+        Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "agentbox/environments"
+    )
+
+
+def resolve_file(value):
+    text = str(value)
+    path = Path(text).expanduser()
+    if "/" in text or (path.suffix and path.exists()):
+        return path
+    if path.suffix in (".yaml", ".yml"):
+        candidates = [environment_directory() / path.name]
+    else:
+        name(text)
+        candidates = [environment_directory() / f"{text}{suffix}" for suffix in (".yaml", ".yml")]
+    matches = [candidate for candidate in candidates if candidate.is_file()]
+    if len(matches) > 1:
+        raise AgentboxError("Multiple configuration files match; specify an explicit YAML path")
+    if matches:
+        return matches[0]
+    raise AgentboxError(f"Configuration not found: {text}; also searched {environment_directory()}")
+
+
 def load(path):
     try:
-        source = Path(path).read_text()
+        source = resolve_file(path).read_text()
         if len(source) > 65536:
             raise AgentboxError("Configuration is too large")
         return parse(yaml.load(source, Loader=StrictLoader))

@@ -1,6 +1,6 @@
 # Arkitekturvalg for Agentbox
 
-Agentbox 1.0 bruker en felles tjenestebruker, prosjekt-ACL-er og en proxy per
+Agentbox 1.0.1 bruker en felles tjenestebruker, prosjekt-ACL-er og en proxy per
 miljø. Valgene under forklarer hvordan isoleringen håndheves og hvilke
 begrensninger den gir. Prøvegrunnlaget finnes i [teststatus](test-results.md),
 og produktkontrakten i [spesifikasjonen](specification.md).
@@ -23,7 +23,7 @@ bruker-ACL prioriteres foran gruppe- og andre-rettigheter. Prøven bekrefter at
 denne sperren blokkerer filtilgang også når `agentbox` eier filen under roten.
 
 Alle berørte containere må være stoppet først. Overlappende registreringer
-avvises i versjon 1.0, slik at en separat registrert undermappe ikke krever tilgang
+avvises i versjon 1.0.1, slik at en separat registrert undermappe ikke krever tilgang
 gjennom en tilbakekalt rot. Delte foreldrekataloger mellom søskenprosjekter
 håndteres med referanser i journalen.
 
@@ -74,6 +74,15 @@ er betrodd, og stabil vertskonfigurasjon er forutsetningen under normal kjøring
 Den interne Docker-resolveren er testet mot en kontrollert DNS-tjeneste uten
 observert ekstern videresending. Oppgraderinger av Docker/RootlessKit krever
 ny gjennomkjøring av denne prøven.
+
+## Codex-oppstart i 1.0.1
+
+Utviklingsimaget har en launcher som kjører Codex med `--no-daemon`.
+Codex 0.166.0 forsøkte ellers å starte en delt app-server ved gjentatt oppstart,
+og dette feilet med `Operation not permitted` under isoleringsprofilen.
+Det konkrete avslåtte systemkallet er ikke kartlagt. To oppstarter uten
+bakgrunnsserver viste grensesnittet, og innloggingsstatus var fortsatt gyldig.
+Rettelsen beholder seccomp-profilen og endrer ikke felles image- eller nettverkslogikk.
 
 ## Logger og lagring
 

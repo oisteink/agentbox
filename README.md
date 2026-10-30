@@ -1,4 +1,4 @@
-# Agentbox 1.0
+# Agentbox 1.0.1
 
 Agentbox lar deg kjøre kodeagenter mot utvalgte prosjektmapper på Linux.
 Du beholder filene i editoren din, mens agenten arbeider i en container og
@@ -23,7 +23,7 @@ forutsetninger etter [installasjonsveiledningen](docs/installation.md).
 Kjør deretter fra repoet:
 
 ```sh
-sudo scripts/install.sh --operator "$(id -un)"
+sudo scripts/install.sh
 agentbox doctor
 agentbox build-images
 source <(agentbox completion bash)
@@ -59,10 +59,13 @@ network:
 Start og åpne miljøet:
 
 ```sh
-agentbox validate "$HOME/.config/agentbox/environments/pubnix-codex.yaml"
-agentbox start pubnix-codex --config "$HOME/.config/agentbox/environments/pubnix-codex.yaml"
+agentbox validate pubnix-codex
+agentbox start pubnix-codex
 agentbox shell pubnix-codex
 ```
+
+Kortnavnet finner `pubnix-codex.yaml` i `~/.config/agentbox/environments/`.
+Du kan også bruke en eksplisitt YAML-sti, som `agentbox start ./agentbox.yaml`.
 
 Dette åpner Bash i prosjektmappen med nettverket stengt. Endringer i montert
 kode lagres direkte på verten. Miljønavnet beskriver planlagt Codex-bruk;
@@ -81,10 +84,14 @@ inkludert innlogging og verktøyoppsett. Monterte prosjektfiler beholdes.
 | [Bruk](docs/usage.md) | Prosjekter, miljøfiler, nettverk, innlogging og feilsøking |
 | [C4-diagrammer](docs/architecture-c4.md) | Forstå omgivelsene og programmene som utgjør Agentbox |
 | [Arkitektur](docs/architecture.md) | Eierskap, kontroll, filtilgang og sikkerhetsgrenser |
-| [Spesifikasjon](docs/specification.md) | Produktkontrakten for Agentbox 1.0 |
+| [Spesifikasjon](docs/specification.md) | Produktkontrakten for Agentbox 1.0.1 |
 | [Arkitekturvalg](docs/decisions.md) | Begrunnelser og konsekvenser av isoleringsmekanismene |
 | [Utvikling](docs/development.md) | Lokale kontroller og disponibel testlab |
-| [Teststatus](docs/test-results.md) | Observerte resultater og testavgrensninger for 1.0 |
+| [Teststatus](docs/test-results.md) | Observerte resultater og testavgrensninger for 1.0.1 |
+
+Full avinstallasjon gjøres med `sudo scripts/uninstall.sh`.
+Kommandoen stopper miljøene, overfører agentbox-eide prosjektfiler til deg og
+fjerner installasjon og tjenestebruker. Se [avinstallasjon](docs/installation.md#avinstallasjon).
 
 Versjon 1.0 er prøvd i Ubuntu-VM og manuelt på utviklerens Debian-vert.
 Linked worktrees, separat profillagring og sterkere isolering per prosjekt

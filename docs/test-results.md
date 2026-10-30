@@ -1,4 +1,4 @@
-# Teststatus for versjon 1.0
+# Teststatus for Agentbox 1.0.1
 
 Dato: 30. oktober 2026. Implementasjonen er kjørt i en disponibel KVM-VM med
 egne brukere og midlertidige prosjektmapper. Ingen personlige prosjektmapper
@@ -22,7 +22,7 @@ Rootful og rootless Docker kjørte samtidig i VM-en, med ulike daemon-ID-er.
 `agentbox doctor` fortsatte å velge rootless-instansen med både `DOCKER_HOST`
 og `DOCKER_CONTEXT` satt til den andre instansen.
 
-## Gjennomførte kontroller
+## Opprinnelige kontroller for 1.0
 
 - Lokal testpakke ved versjon 1.0: **64 bestått**, inkludert terminal- og completion-tester.
 - Opprinnelig VM-prøve: **49 bestått** (48 enhetstester og installert CLI-integrasjon).
@@ -97,6 +97,33 @@ To problemer fra utprøvingen er rettet:
 Bash-completion er også installert og kontrollert mot vertens faktiske miljø-
 og prosjektnavn. Context7 ble diskutert som ønsket integrasjon; den er ikke
 verifisert som del av denne leveransen. Ingen personlige tokens inngår i testbevisene.
+
+## Verifikasjon av 1.0.1
+
+| Kontroll | Resultat |
+| --- | --- |
+| Lokale enhetstester | 92 bestått |
+| VM: enhetstester og livssyklus gjennom installert CLI | 93 bestått |
+| Ruff og Bash-syntaks | Bestått |
+| Codex uten delt bakgrunnsserver | To terminaloppstarter viste grensesnittet; ChatGPT-innlogging besto |
+| Kortnavn og completion | Kontrollert med installert CLI og midlertidig konfigurasjonskatalog |
+| Installering uten `--operator` | Gjennomført i VM; bruker valgt fra `SUDO_USER` |
+| Frittstående avinstallasjon | Bestått rett etter ren installasjon og med kjørende miljø, aktive og tilbakekalte prosjekter |
+
+Codex-prøven sendte ingen oppgave til modellen. Den omgår feilen ved å kjøre
+med `--no-daemon`; det konkrete systemkallet som blokkerer den delte serveren
+er ikke kartlagt.
+
+Startkommandoen bruker nå én fil eller et lagret kortnavn. Tester dekker
+filnavn som avviker fra miljønavnet, manglende filer, `.yaml`/`.yml`,
+`XDG_CONFIG_HOME`, tvetydige kortnavn og lokale filer som ikke skal overstyre
+en lagret konfigurasjon. Completion leser ikke YAML-innhold og ber ikke om sudo.
+
+Avinstallasjonsprøven besto separat i den disponible VM-en. Den stoppet et
+kjørende miljø, overførte agentbox-eide filer fra aktive og tilbakekalte
+prosjekter, bevarte manuelle ACL-endringer og kontrollerte symlinker og
+nestede mounts. Prøven bekreftet også sletting av bruker, tjenester og data,
+samt at den eksisterende rootful Docker-instansen beholdt daemon-ID-en.
 
 ## Reproduser laben
 

@@ -1,4 +1,4 @@
-# Bruk av Agentbox 1.0
+# Bruk av Agentbox 1.0.1
 
 Kjør kommandoene som utvikleren på verten. Agentbox velger sin egen rootless
 Docker-instans; du trenger ikke bytte Docker-context eller sette `DOCKER_HOST`.
@@ -71,13 +71,26 @@ Bruk `command: ["bash"]` for å åpne et vanlig skall mens du prøver filtilgang
 
 ## Start, åpne og avslutt
 
+Fra 1.0.1 tar `start` bare miljøfilen. Det separate
+navneargumentet og `--config` fra 1.0 er fjernet.
+
 ```sh
-agentbox validate "$HOME/.config/agentbox/environments/pubnix-codex.yaml"
-agentbox start pubnix-codex --config "$HOME/.config/agentbox/environments/pubnix-codex.yaml"
+agentbox validate pubnix-codex
+agentbox start pubnix-codex
 agentbox shell pubnix-codex
 ```
 
-Navnet etter `start` må være likt `name` i miljøfilen. `shell` kjører
+`start` og `validate` finner kortnavn uten filending under
+`~/.config/agentbox/environments/`, eller under
+`$XDG_CONFIG_HOME/agentbox/environments/` hvis denne variabelen er satt.
+Begge filendingene `.yaml` og `.yml` støttes. Finnes begge for samme kortnavn,
+må du velge en eksplisitt fil. Kortnavn leser ikke lokale filer uten filending.
+
+Eksplisitte stier fungerer fortsatt, eksempelvis `agentbox start ./agentbox.yaml`.
+Et filnavn med ending, som `agentbox start pubnix-codex.yaml`, bruker en lokal
+fil hvis den finnes, ellers samme filnavn i standardkatalogen.
+
+Miljønavnet hentes fra `name` i YAML-filen. Filnavnet velger du selv. `shell` kjører
 `command` fra filen, som kan være Codex eller Bash. Du kan alltid åpne Bash
 separat uten å endre konfigurasjonen:
 
@@ -151,7 +164,7 @@ fjerning, med hemmeligheter lagret privat utenfor kodeprosjektet.
 
 ```sh
 agentbox remove pubnix-codex
-agentbox start pubnix-codex --config "$HOME/.config/agentbox/environments/pubnix-codex.yaml"
+agentbox start "$HOME/.config/agentbox/environments/pubnix-codex.yaml"
 ```
 
 ## Hva beholdes?
@@ -209,16 +222,36 @@ source <(agentbox completion bash)
 
 Installeren legger inn completion for nye skall med `bash-completion` aktivert.
 Tab foreslår kommandoer, flagg, eksisterende miljønavn og registrerte prosjekter.
-Filstier fullføres etter `--config` og `--key-file`; kataloger etter `--path`.
+Etter `start` og `validate` foreslås lagrede kortnavn og lokale filstier.
+Filstier fullføres også etter `--key-file`, og kataloger etter `--path`.
 Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.
 
 ## Vanlige feil
 
+### Codex starter ikke på nytt etter avslutning
+
+Codex 0.166.0 kan forsøke å starte en delt app-server i bakgrunnen ved neste
+oppstart. I Agentbox 1.0 er dette observert som `failed to spawn detached
+app-server process` med `Operation not permitted`. Feilen betyr ikke at
+innloggingen er slettet. Kontroller status og start uten bakgrunnsserver:
+
+```sh
+agentbox exec pubnix-codex -- codex login status
+agentbox exec pubnix-codex -- codex --no-daemon
+```
+
+For en tidligere sesjon kan du bruke
+`agentbox exec pubnix-codex -- codex --no-daemon resume`.
+Fra 1.0.1 legger utviklingsimaget `--no-daemon` i Codex-launcheren. Eksisterende miljøer beholder sin gamle launcher til den
+oppdateres eller miljøet opprettes fra det nye imaget. Ikke bruk `remove`
+bare for denne feilen; det sletter hjem og innlogging.
+
+### Andre feil
+
 | Feil | Årsak og neste steg |
 | --- | --- |
-| `Environment is not running` | Prosjektregistrering starter ikke et miljø. Bruk `start NAVN --config FIL` før `shell` |
+| `Environment is not running` | Prosjektregistrering starter ikke et miljø. Bruk `start FIL.yaml` før `shell` |
 | `Working directory must be inside a mounted project` | Sett `workdir` lik `mounts[].target` eller en eksisterende undermappe |
-| `Command name and configuration name disagree` | Bruk samme miljønavn i `start` og YAML-feltet `name` |
 | `No two collision-free /28 subnets` | Velg et ledig adresseområde etter [installasjonsveiledningen](installation.md#velg-adresseområde) |
 | `Host addresses changed` | Adressevakten har stoppet miljøet; fjerning og ny opprettelse kreves |
 | Verktøy trenger Unix-sockets | Profilen blokkerer nye Unix-sockets. Velg kompatible verktøy; ikke svekk isoleringen automatisk |
