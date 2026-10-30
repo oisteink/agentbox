@@ -1,8 +1,10 @@
-# Implementeringsplan for MVP
+# Historisk implementeringsplan for MVP
 
-Status: opprinnelig implementeringsplan. Gjennomføringen dokumenteres i
-[teststatus](test-results.md); avklarte tekniske valg står i
-[implementasjonsvalg](decisions-mvp.md). Vertsendringer og containerprøver
+Status: arkivert plan fra utviklingen frem til Agentbox 1.0. Planen beskriver
+arbeidsrekkefølge og daværende forslag, og vedlikeholdes ikke som produktspesifikasjon.
+Dagens kontrakt står i [Agentbox-spesifikasjonen](../specification.md). Gjennomføringen dokumenteres i
+[teststatus](../test-results.md); avklarte tekniske valg står i
+[implementasjonsvalg](../decisions.md). Vertsendringer og containerprøver
 er utført i en disponibel VM, adskilt fra utviklerens Docker-instans.
 Planen er gjennomgått av en uavhengig sub-agent og revidert etter funnene.
 
@@ -19,16 +21,17 @@ Planen er gjennomgått av en uavhengig sub-agent og revidert etter funnene.
 | 6: agentimage | Codex 0.166.0 og separat image prøvd; manuell Codex-bruk bekreftet av utvikleren |
 | 7: samlet verifikasjon | Labprøver, bruksveiledning og manuell utprøving gjennomført; MVP godkjent som versjon 1.0 |
 
-Åpne prøvepunkter og testavgrensninger finnes i [teststatus](test-results.md).
+Åpne prøvepunkter og testavgrensninger finnes i [teststatus](../test-results.md).
 Installasjon på utviklerens Debian-vert er gjennomført. Utvikleren godkjente
 MVP-en som versjon 1.0 den 30. oktober 2026.
 Worktrees og sammenligning med OpenShell/Docker Sandboxes er fortsatt utsatt.
 
-Resten av dokumentet bevarer den opprinnelige planen, basert på
-[MVP-spesifikasjonen](spec-mvp.md) og [arkitekturen](architecture-v1.md).
+Resten av dokumentet bevarer den opprinnelige planen. Dagens
+[produktspesifikasjon](../specification.md) og [arkitektur](../architecture.md)
+er videreført fra kravgrunnlaget som planen bygget på.
 Formuleringer om åpne beslutninger nedenfor beskriver planleggingstidspunktet.
 Løsningene som erstattet forslagene er dokumentert i
-[implementasjonsvalgene](decisions-mvp.md): sperre på prosjektroten ved
+[implementasjonsvalgene](../decisions.md): sperre på prosjektroten ved
 tilbakekalling, strengere seccomp for Unix-sockets, fastlåst DNS og asynkron
 adressevakt. Policyendring krever `remove` og ny `start`; det finnes ingen egen
 `restart`-kommando. Agentutdata beskyttes og roteres uten generell filtrering.

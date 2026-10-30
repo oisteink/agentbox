@@ -5,7 +5,7 @@
 Agentbox kjører kodeagenter i en egen rootless Docker-instans som Linux-brukeren
 `agentbox`, med hjem `/var/lib/agentbox`. Hvert miljø har en agentcontainer på
 et lukket nettverk og en Squid-proxy med eksplisitt tillatte domene/port-par.
-Første utviklingsimage inneholder Codex; imagevalg er adskilt fra isoleringen.
+Det medfølgende utviklingsimaget inneholder Codex; imagevalg er adskilt fra isoleringen.
 Eksisterende prosjektmapper monteres direkte med ACL-basert tilgang.
 Worktree-støtte er utsatt.
 
@@ -19,7 +19,8 @@ Worktree-støtte er utsatt.
 - `scripts/install.sh`: vertsinstallasjon; `scripts/lab/`: disponibel KVM-lab.
 - `tests/unit/` og `tests/integration/`: pytest-tester.
 - `security/vendor/`: revisjonslåst Moby-seccomp-grunnlag.
-- `docs/`: spesifikasjon, arkitektur, opprinnelig plan og testbevis.
+- `docs/`: produktspesifikasjon, arkitektur, bruk, installasjon og testbevis.
+- `docs/history/`: arkivert implementeringsplan fra MVP-arbeidet.
 
 ## Bygging, testing og utvikling
 
@@ -53,12 +54,24 @@ Behold fast Docker-socket, identitetskontroll og avgrenset sudo-hjelper.
 Ikke innfør privilegerte containere, vertsnettverk eller Docker-socket i agenten.
 Test tillatt proxytrafikk, avvisning, direkte tilgang og ACL-konsekvenser ved
 relevante endringer. Skill observerte labresultater fra utestede garantier.
-MVP-en er godkjent som versjon 1.0 etter labprøver og manuell Codex-bruk på verten.
+Agentbox 1.0 er verifisert gjennom labprøver og manuell Codex-bruk på verten.
 Ikke sjekk inn hemmeligheter, `.lab/` eller private logger.
 
 ## Commits og pull requests
 
+Gjør videre arbeid på egne grener fra `main`; ikke commit direkte til `main`.
+Lever endringer som pull requests og bruk squash merge til `main`.
+Slett arbeidsgrenen både lokalt og på GitHub etter merge.
+
+Oppdater relevant dokumentasjon i samme arbeidsgren før merge. Kode, bruk,
+konfigurasjon, arkitektur og teststatus skal stemme overens ved merge til `main`.
+Ved endrede diagrammer skal både kilde og genererte bilder følge med.
+Dokumentasjonsoppdateringen er en del av leveransen og skal ikke utsettes
+til etter merge; hovedgrenen skal inneholde et komplett produkt.
+
 Bruk korte, handlingsorienterte meldinger, som `Build initial rootless agent
-isolation MVP`. Beskriv formål, endret oppførsel og
+isolation MVP`. Squash-committen skal beskrive de faktiske endringene kort og
+konkret, uten prosa. Vi vedlikeholder foreløpig ingen egen endringslogg.
+Beskriv formål, endret oppførsel og
 utførte tester i pull requests. Forklar konsekvenser for isolering, proxyregler,
 monteringer og lagring når disse berøres.

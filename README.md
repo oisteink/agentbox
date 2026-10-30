@@ -1,233 +1,93 @@
 # Agentbox 1.0
 
-Rootless Docker-miljøer for kodeagenter, med direkte prosjektmontering,
-ACL-er og eksplisitt tillatt nettverkstrafikk gjennom Squid. Første image
-inneholder Codex CLI 0.166.0. Flere prosjekter og images kan brukes samtidig.
+Agentbox lar deg kjøre kodeagenter mot utvalgte prosjektmapper på Linux.
+Du beholder filene i editoren din, mens agenten arbeider i en container og
+bare får utgående nettverkstilgang til destinasjoner du har tillatt.
+Flere prosjekter, miljøer og kompatible images kan brukes samtidig.
 
-MVP-en er godkjent som versjon 1.0 etter automatiserte prøver i en disponibel
-Ubuntu-VM og manuell installasjon og Codex-bruk på utviklerens Debian-vert. Se
-[teststatus](docs/test-results.md) før bruk og
-[implementasjonsvalg](docs/decisions-mvp.md) for sikkerhetsgrenser.
-Se også [C4-diagrammene for systemkontekst og containere](docs/architecture-c4.md).
+En egen vertsbruker, `agentbox`, kjører Docker uten root-rettigheter.
+Prosjektmapper deles med filrettigheter (ACL-er) og eksplisitte monteringer.
+En Squid-proxy håndhever listen over tillatte nettverksdestinasjoner.
+Det medfølgende utviklingsimaget inneholder Codex CLI 0.166.0.
 
-## Dokumentasjon
+![Agentbox, utvikleren og eksterne tjenester](docs/diagrams/agentbox-context.svg)
 
-| Dokument | Innhold |
-| --- | --- |
-| [Arkitektur](docs/architecture-v1.md) | Dagens oppbygning, eierskap og sikkerhetsgrenser |
-| [C4-diagrammer](docs/architecture-c4.md) | Systemkontekst, containere og lokal rendering |
-| [MVP-spesifikasjon](docs/spec-mvp.md) | Krav og akseptansekriterier |
-| [Implementasjonsvalg](docs/decisions-mvp.md) | Løsninger valgt gjennom labprøvene |
-| [Implementeringsplan](docs/implementation-plan.md) | Opprinnelig plan med gjennomføringsstatus |
-| [Teststatus](docs/test-results.md) | Observerte resultater, reproduksjon og gjenstående prøver |
+[C4-arkitekturen](docs/architecture-c4.md) forklarer systemkonteksten og de
+kjørbare delene. Containerne deler vertens kjerne. Et utbrudd med `agentbox`
+sine rettigheter kan nå alle prosjekter brukeren har fått tilgang til.
 
-Worktrees, separat profilvolum og sammenligning med OpenShell og Docker
-Sandboxes er videre arbeid.
+## Kom i gang
 
-## Oppsett
-
-Referanseplattformen er Ubuntu 24.04 med systemd, cgroup v2, POSIX ACL,
-user namespaces og rootless Docker. Python 3.12 eller nyere kreves.
-Koden krever Docker 28 eller nyere; bare 29.9.2 er testet. Installer
-[Docker Engine og rootless extras](https://docs.docker.com/engine/security/rootless/)
-før prosjektets installer kjøres. Andre nødvendige pakker på Ubuntu:
+Installer først Docker Engine med rootless-støtte og prosjektets
+forutsetninger etter [installasjonsveiledningen](docs/installation.md).
+Kjør deretter fra repoet:
 
 ```sh
-sudo apt-get install acl uidmap dbus-user-session slirp4netns python3-venv sudo iproute2
 sudo scripts/install.sh --operator "$(id -un)"
 agentbox doctor
 agentbox build-images
-```
-
-Installeren oppretter `agentbox` med hjem `/var/lib/agentbox`, installerer
-kontrollkode under `/opt/agentbox` og gir den valgte utvikleren tilgang til
-en fast kontrollhjelper gjennom sudo. Den installerer en privat Python-venv
-med PyYAML 6.0.2 og trenger pakketilgang ved første oppsett.
-
-Docker-pakker installeres ikke av prosjektinstalleren. Andre Docker-instansers
-konfigurasjon og context endres ikke. CPU-/minne-/prosesskontroll delegeres til
-den konkrete systemd-brukerinstansen for `agentbox`.
-Stopp miljøene før reinstallasjon eller oppdatering av kontrollverktøyet.
-
-## Tab-completion i Bash
-
-Installeren legger inn Bash-completion. Med `bash-completion` aktivert lastes
-den automatisk i nye skall. Aktiver den i terminalen du allerede bruker med:
-
-```sh
 source <(agentbox completion bash)
 ```
 
-Tab fullfører underkommandoer, flagg, eksisterende miljønavn og registrerte
-prosjekter. Etter `--config` og `--key-file` foreslås filstier; etter `--path`
-foreslås kataloger. Eksempel: `agentbox shell pub<Tab>` eller
-`agentbox project repair pub<Tab>`.
-Oppslag ber aldri om sudo-passord. Hvis kontrollhjelperen er utilgjengelig
-eller opptatt i mer enn to sekunder, utelates navneforslag.
-
-## Registrer eksisterende prosjekter
+Registrer et prosjekt som allerede finnes:
 
 ```sh
-agentbox project add pacman --path "$HOME/src/pacman"
-agentbox project add pub-pc --path "$HOME/project/pub-pc"
-agentbox project list
-agentbox project check pacman
+agentbox project add pubnix --path "$HOME/src/pubnix"
+mkdir -p "$HOME/.config/agentbox/environments"
 ```
 
-Prosjektroten må eies av utvikleren. Registrering gir begge brukerne `rwX`
-på prosjektinnholdet, med standard-ACL for nye filer. Foreldrekataloger får
-bare nødvendig traversering for `agentbox`. Andre brukeres effektive
-rettigheter skal bevares når ACL-masken utvides; maskerte, inaktive biter
-kan derfor trimmes i ACL-en.
+Et prosjekt er en vertsmappe med tildelt tilgang. Et miljø er en navngitt
+container med valgt image, mounts og nettverkspolicy. Registrering av en
+mappe oppretter ikke et miljø.
 
-MVP-en avviser overlappende prosjektregistreringer, hardlenkede filer,
-spesialfiler og ukjente eiere. Symlinker i innholdet følges ikke ved ACL-endring.
-Nestede mounts utelates. Et mislykket oppsett markeres som uferdig; bruk
-`project repair` etter at årsaken er rettet, eller tilbakekall tilgangen.
-
-## Konfigurer og bruk et miljø
-
-Lag en YAML-fil uten hemmeligheter, for eksempel:
+Lagre dette som `~/.config/agentbox/environments/pubnix-codex.yaml`, utenfor
+mappene agenten kan redigere:
 
 ```yaml
-name: pacman-dev
+name: pubnix-codex
 image: agentbox-dev:local
-workdir: /home/agent/src/pacman
-command: ["codex"]
+workdir: /home/agent/src/pubnix
+command: ["bash"]
 mounts:
-  - project: pacman
-    target: /home/agent/src/pacman
+  - project: pubnix
+    target: /home/agent/src/pubnix
     mode: rw
-  - project: pub-pc
-    target: /home/agent/project/pub-pc
-    mode: ro
 network:
-  allow:
-    - host: api.openai.com
-      port: 443
-resources:
-  cpus: 2
-  memory: 4g
-  pids: 512
+  allow: []
 ```
 
-Eksempelet tillater bare `api.openai.com:443`. Velg innloggingsmetode og
-legg til dens konkrete destinasjoner eksplisitt. ChatGPT-innlogging kan kreve
-andre destinasjoner enn API-nøkkelinnlogging; eksempelet er ingen komplett
-liste for alle Codex-funksjoner. Ingen underdomener tillates automatisk.
+Start og åpne miljøet:
 
 ```sh
-agentbox validate pacman-dev.yaml
-agentbox start pacman-dev --config pacman-dev.yaml
-agentbox shell pacman-dev
-agentbox exec pacman-dev -- bash
-agentbox status
-agentbox logs pacman-dev
-agentbox logs pacman-dev --proxy
-agentbox stop pacman-dev
+agentbox validate "$HOME/.config/agentbox/environments/pubnix-codex.yaml"
+agentbox start pubnix-codex --config "$HOME/.config/agentbox/environments/pubnix-codex.yaml"
+agentbox shell pubnix-codex
 ```
 
-`shell` kjører konfigurasjonens kommando, i dette eksempelet Codex. `exec`
-kan kjøre et skall eller en annen kommando. Terminalsesjoner og miljøets
-levetid er separate. Et nytt miljø med annet navn kan kjøres samtidig.
+Dette åpner Bash i prosjektmappen med nettverket stengt. Endringer i montert
+kode lagres direkte på verten. Miljønavnet beskriver planlagt Codex-bruk;
+start med Bash for å kontrollere filtilgang. Følg
+[bruksveiledningen](docs/usage.md) for nettverk, Codex-innlogging og daglig bruk.
 
-Uendret konfigurasjon kan startes igjen etter `stop`; containerens hjem,
-innlogging og installerte filer bevares. Endret konfigurasjon eller vertsadresse
-krever eksplisitt `remove` og ny `start`. Det sletter containerens skrivbare
-lag, inkludert innlogging; montert kode blir liggende.
+`exit` lukker skallet. `agentbox stop pubnix-codex` stopper miljøet og beholder
+hjem og innlogging. `agentbox remove pubnix-codex` sletter containerlaget,
+inkludert innlogging og verktøyoppsett. Monterte prosjektfiler beholdes.
 
-| Operasjon | Monterte prosjektfiler | Hjem og Codex-innlogging |
-| --- | --- | --- |
-| `stop`, deretter `start` med samme konfigurasjon og vertsadresser | Beholdes | Beholdes |
-| Restart av Docker-daemon, deretter manuell `start` | Beholdes | Beholdes |
-| `remove`, deretter ny `start` | Beholdes | Slettes og opprettes på nytt |
+## Dokumentasjon
 
-Det finnes ikke et separat profilvolum. Hvert miljø har egen innlogging.
-Miljøene startes ikke automatisk etter vertsreboot. DNS-adressene beholdes
-ved gjenopptak; ny navneoppløsning krever fjerning og ny opprettelse.
+| Dokument | Bruk det til |
+| --- | --- |
+| [Installasjon](docs/installation.md) | Forutsetninger, oppsett, adresseområde og avinstallasjon |
+| [Bruk](docs/usage.md) | Prosjekter, miljøfiler, nettverk, innlogging og feilsøking |
+| [C4-diagrammer](docs/architecture-c4.md) | Forstå omgivelsene og programmene som utgjør Agentbox |
+| [Arkitektur](docs/architecture.md) | Eierskap, kontroll, filtilgang og sikkerhetsgrenser |
+| [Spesifikasjon](docs/specification.md) | Produktkontrakten for Agentbox 1.0 |
+| [Arkitekturvalg](docs/decisions.md) | Begrunnelser og konsekvenser av isoleringsmekanismene |
+| [Utvikling](docs/development.md) | Lokale kontroller og disponibel testlab |
+| [Teststatus](docs/test-results.md) | Observerte resultater og testavgrensninger for 1.0 |
 
-Andre kompatible 64-bits images kan hentes med `agentbox pull-image IMAGE` og
-velges i YAML. De må ha `/bin/sh` og `sleep infinity` og støtte UID 0.
-Images med implisitte `VOLUME`-mounts avvises. De samme nettverks- og
-syscallbegrensningene gjelder alle images.
-
-## Innlogging og hemmeligheter
-
-Logg inn eksplisitt inne i miljøet. For headless ChatGPT-innlogging beskriver
-[OpenAI Docs](https://learn.chatgpt.com/docs/auth) `codex login --device-auth`.
-Kjør dette med `agentbox exec pacman-dev -- codex login --device-auth` i en
-terminal, med nødvendige destinasjoner tillatt. Innloggingskoder og tokens
-skal ikke deles i chat eller sjekkes inn.
-Bruk `cli_auth_credentials_store = "file"` i Codex-konfigurasjonen dersom
-credential-lagring skal velges eksplisitt; vertens keyring deles ikke inn.
-
-API-nøkkel kan alternativt gis fra en privat fil uten nøkkelverdi på kommandolinjen:
-
-```sh
-chmod 600 /sti/til/privat-nokkelfil
-agentbox login-api-key pacman-dev --key-file /sti/til/privat-nokkelfil
-```
-
-Kontrollhjelperen sender nøkkelen til `codex login --with-api-key` via stdin.
-Vertens miljøvariabler, personlige Codex-oppsett og SSH-agent deles ikke automatisk.
-Prosjektfiler som `.env` er tilgjengelige hvis de ligger i et valgt mount.
-
-Agentens stdout/stderr kan selv inneholde hemmeligheter. Disse loggene er
-private og størrelsesbegrensede, men har ingen generell innholdsfiltrering.
-Proxyloggen inneholder destinasjon og resultat, uten URL-sti eller query.
-
-## Reparasjon og tilbakekalling
-
-Stopp alle miljøer som bruker prosjektet, også miljøer med read-only-mounts:
-
-```sh
-agentbox project repair pacman
-agentbox project revoke pacman
-```
-
-Tilbakekalling legger en eksplisitt sperre for `agentbox` på den utviklereide
-prosjektroten. Det blokkerer også tilgang til agentbox-eide filer under roten.
-Filene slettes ikke og får ikke ny eier. ACL-er på innholdet beholdes; ikke
-flytt innholdet til en ubeskyttet sti og forvent at rotsperren følger med.
-Foreldrekatalogers administrerte ACL-er gjenopprettes når andre registreringer
-ikke trenger dem, så lenge det ikke er oppdaget manuelle konflikter.
-
-`chmod` og restriktivt opprettede filer kan gjøre ACL-reparasjon nødvendig.
-Helt utilgjengelige katalogtrær eller andre eiere kan kreve en manuell
-rettighetsretting fra fileieren før reparasjon kan fullføres.
-
-## Utvikling og verifikasjon
-
-```sh
-uv sync --extra dev --locked
-uv run --locked pytest
-uv run --locked ruff check src tests scripts
-uv run --locked ruff format --check src tests scripts
-bash -n scripts/install.sh scripts/lab/*.sh
-```
-
-Den disponible KVM-laben krever QEMU, `qemu-img`, `xorriso`, curl og SSH.
-Labkommandoene nedenfor skal kjøres utenfor en agentsandkasse som sperrer KVM:
-
-```sh
-scripts/lab/vm.sh prepare
-scripts/lab/vm.sh start
-scripts/lab/vm.sh ssh
-scripts/lab/vm.sh stop
-```
-
-Bootstrap- og nettverksprøver har en eksplisitt `agentbox-lab`-vertskontroll.
-Reproduksjon av testløpet er beskrevet i [teststatus](docs/test-results.md).
-Koden kopieres inn med tar/SSH; vertens mapper deles ikke inn i VM-en.
-
-## Stopp og avinstallasjon
-
-Bruk `agentbox remove NAVN` og tilbakekall prosjekter før avinstallasjon.
-Stopp deretter Docker-brukertjenesten og `agentbox-watch.service` for den
-konkrete tjenestebrukeren. Fjern prosjektets sudo-regel, entrypoints og
-`/opt/agentbox` først når miljøene er avviklet.
-
-Ikke slett `agentbox`-brukeren, hjemmet eller journalen under
-`/var/lib/agentbox-operator` automatisk: brukeren kan fortsatt eie prosjektfiler,
-og journalen kan være nødvendig for å rydde ACL-er. MVP-en har ingen automatisk
-brukersletting eller destruktiv fullavinstallasjon.
+Versjon 1.0 er prøvd i Ubuntu-VM og manuelt på utviklerens Debian-vert.
+Linked worktrees, separat profillagring og sterkere isolering per prosjekt
+inngår ikke i versjonen. Sammenligning med OpenShell og Docker Sandboxes er
+videre arbeid. Den [opprinnelige implementeringsplanen](docs/history/implementation-plan-mvp.md)
+er bevart som historikk.

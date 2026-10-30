@@ -3,7 +3,7 @@
 Dato: 30. oktober 2026. Implementasjonen er kjørt i en disponibel KVM-VM med
 egne brukere og midlertidige prosjektmapper. Ingen personlige prosjektmapper
 er delt inn i VM-en. Installasjon og manuell Codex-bruk er deretter prøvd på
-utviklerens Debian-vert. Utvikleren godkjente MVP-en som versjon 1.0 samme dag.
+utviklerens Debian-vert. Utvikleren godkjente Agentbox 1.0 samme dag.
 
 ## Referansemiljø
 
@@ -83,7 +83,7 @@ oppdaget endring, ikke atomisk sperring i endringsøyeblikket.
 Utvikleren installerte tjenestebruker, rootless Docker og kontrollverktøy,
 bygget images og registrerte et eksisterende prosjekt. `doctor` bekreftet
 rootless Docker 29.9.2 med systemd-cgroups. Utvikleren bekreftet fungerende
-Codex-terminal etter retting av terminalstørrelsen, og godkjente deretter MVP-en.
+Codex-terminal etter retting av terminalstørrelsen, og godkjente deretter versjon 1.0.
 
 To problemer fra utprøvingen er rettet:
 

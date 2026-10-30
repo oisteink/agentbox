@@ -1,7 +1,9 @@
-# Implementasjonsvalg for MVP
+# Arkitekturvalg for Agentbox
 
-Beslutningene bygger på prøver i en disponibel Ubuntu 24.04-VM. De presiserer
-[spesifikasjonen](spec-mvp.md), og skal leses sammen med [teststatus](test-results.md).
+Agentbox 1.0 bruker en felles tjenestebruker, prosjekt-ACL-er og en proxy per
+miljø. Valgene under forklarer hvordan isoleringen håndheves og hvilke
+begrensninger den gir. Prøvegrunnlaget finnes i [teststatus](test-results.md),
+og produktkontrakten i [spesifikasjonen](specification.md).
 
 ## Kontroll og identitet
 
@@ -21,7 +23,7 @@ bruker-ACL prioriteres foran gruppe- og andre-rettigheter. Prøven bekrefter at
 denne sperren blokkerer filtilgang også når `agentbox` eier filen under roten.
 
 Alle berørte containere må være stoppet først. Overlappende registreringer
-avvises i MVP-en, slik at en separat registrert undermappe ikke krever tilgang
+avvises i versjon 1.0, slik at en separat registrert undermappe ikke krever tilgang
 gjennom en tilbakekalt rot. Delte foreldrekataloger mellom søskenprosjekter
 håndteres med referanser i journalen.
 
@@ -83,6 +85,5 @@ Stopp og gjenopptak med uendret konfigurasjon bevarer containerlaget og
 Codex-innlogging. Separat profilvolum er ikke implementert.
 Endret konfigurasjon eller vertsadresse krever eksplisitt fjerning og ny
 opprettelse; gjenopptak beholder eksisterende fastlåste DNS-adresser.
-Fjerning sletter laget og
-miljøets logger. Prosjektfiler, registreringer og ACL-er består til egne
+Fjerning sletter laget og miljøets logger. Prosjektfiler, registreringer og ACL-er består til egne
 operasjoner endrer dem. Kjøremiljøer gjenopptas ikke automatisk etter vertsreboot.

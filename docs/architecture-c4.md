@@ -1,6 +1,7 @@
-# Agentbox på C4 nivå 1 og 2
+# Agentbox 1.0 på C4 nivå 1 og 2
 
-Diagrammene viser dagens MVP. C1 viser systemet og omgivelsene; C2 viser
+Agentbox kjører kodeagenter med valgte prosjektmapper og kontrollert utgående
+nettverkstilgang. C1 viser systemet og omgivelsene; C2 viser
 kjørbare deler, datalagre og forbindelsene mellom dem.
 
 En C4-container betyr et program eller et datalager. Begrepet er bredere enn
@@ -140,4 +141,4 @@ python3 scripts/render-diagrams.py --jar /sti/til/plantuml-1.2026.9.jar
 Nivåene følger C4-modellens beskrivelser av
 [systemkontekst](https://c4model.com/diagrams/system-context) og
 [containere](https://c4model.com/diagrams/container). Konkret oppførsel og
-begrensninger beskrives i [implementasjonsvalgene](decisions-mvp.md).
+begrensninger beskrives i [implementasjonsvalgene](decisions.md).

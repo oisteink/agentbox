@@ -1,9 +1,9 @@
-# Arkitektur for første versjon
+# Arkitektur for Agentbox 1.0
 
 Agentbox kjører agentmiljøer i en egen rootless Docker-instans med eksplisitt
 tilgang til prosjektmapper og utgående trafikk via Squid. Dette dokumentet
 beskriver implementasjonen. Se [C1 og C2](architecture-c4.md) for diagrammer,
-[implementasjonsvalg](decisions-mvp.md) for begrunnelser og
+[implementasjonsvalg](decisions.md) for begrunnelser og
 [teststatus](test-results.md) for verifikasjon og gjenstående arbeid.
 
 ## Eierskap og kontroll
@@ -79,10 +79,10 @@ kjerne. Ved utbrudd med tjenestebrukerens rettigheter gjelder all tilgang
 `agentbox` har, inkludert andre registrerte prosjekter og allment lesbare filer.
 Felles daemonbruker gir ikke separat vertsisolering mellom prosjektene.
 
-## Videre arbeid etter MVP
+## Avgrensninger og videre arbeid
 
-MVP-en er godkjent som versjon 1.0; se [teststatus](test-results.md) for
-labprøver, manuell bruk og testavgrensninger. Linked worktrees er utsatt, inkludert tilgang
+Se [teststatus](test-results.md) for labprøver, manuell bruk og testavgrensninger.
+Linked worktrees støttes ikke i versjon 1.0, inkludert tilgang
 til delte Git-metadata utenfor arbeidsmappen. Separat profillagring er et
 mulig senere valg.
 
