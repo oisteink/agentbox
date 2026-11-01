@@ -1,6 +1,8 @@
-# Register project "example" and adapt its mount before starting.
-# On the host: export CONTEXT7_TOKEN with the raw API key (without Bearer).
-# In the agent: CONTEXT7_TOKEN is generated and contains only a placeholder.
+# Copy outside agent-writable projects, e.g. ~/.config/agentbox/environments/.
+# Change mounts[].project to a project registered with agentbox project add.
+# Host: export context7_api_key with the raw API key (without Bearer).
+# Agent: CONTEXT7_TOKEN gets a generated placeholder, or is empty if the source is missing/empty.
+# Codex MCP: --bearer-token-env-var CONTEXT7_TOKEN
 name: context7-codex
 image: agentbox-dev:local
 workdir: /workspace
@@ -23,8 +25,9 @@ credentials:
   - host: mcp.context7.com
     port: 443
     header: Authorization
-    # Optional alias: CONTEXT7_TOKEN=my_context7_key (client=host source).
-    env: CONTEXT7_TOKEN
+    # client variable = host source; names are case-sensitive.
+    # Short form "CONTEXT7_TOKEN" reads that same name on the host.
+    env: CONTEXT7_TOKEN=context7_api_key
 resources:
   cpus: 2
   memory: 4g

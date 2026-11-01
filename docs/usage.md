@@ -161,7 +161,7 @@ credentials:
   - host: mcp.context7.com
     port: 443
     header: Authorization
-    env: CONTEXT7_TOKEN
+    env: CONTEXT7_TOKEN=context7_api_key
 ```
 
 Feltet `env` støtter alias med klientnavnet til venstre og kilden på verten
@@ -189,13 +189,14 @@ Behold også øvrige nødvendige destinasjoner i `network.allow`. Context7s
 nøkkelen (uten `Bearer `) i variabelen på verten, uten shellhistorikk:
 
 ```sh
-read -rsp 'Context7 API-nøkkel: ' CONTEXT7_TOKEN
+read -rsp 'Context7 API-nøkkel: ' context7_api_key
 printf '\n'
-export CONTEXT7_TOKEN
+export context7_api_key
 agentbox start pubnix-codex
 ```
 
-Agentbox setter `CONTEXT7_TOKEN` i agenten til en unik plassholder. Den ekte
+Eksemplet leser `context7_api_key` på verten og setter `CONTEXT7_TOKEN` i
+agenten til en unik plassholder når kilden har verdi. Den ekte
 nøkkelen finnes bare i proxyens miljø. Klienten bruker samme variabelnavn:
 
 ```sh
@@ -266,7 +267,7 @@ av innlogging eller tokenverdier utføres.
 
 ```sh
 agentbox proxy stop pubnix-codex
-unset CONTEXT7_TOKEN
+unset context7_api_key
 ```
 
 `proxy stop` fjerner container og Docker-metadata med tokenet, mens agentens
