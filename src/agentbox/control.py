@@ -200,7 +200,7 @@ class Control:
             mounts.extend(["--mount", value])
         return mounts
 
-    def start(self, data, payload):
+    def check_guard(self):
         guard = subprocess.run(
             ["/usr/bin/systemctl", "--user", "is-active", "agentbox-watch.service"],
             env={
@@ -215,51 +215,209 @@ class Control:
         )
         if guard.returncode:
             raise AgentboxError("Host address guard is not running")
+
+    def prepare_pki(self, directory):
+        for part in ("private", "public"):
+            (directory / part).mkdir(mode=0o700, exist_ok=True)
+        self.docker.mutate(
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--user",
+            "0:0",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--read-only",
+            "--mount",
+            f"type=bind,src={directory}/private,dst=/private",
+            "--mount",
+            f"type=bind,src={directory}/public,dst=/public",
+            self.settings["proxy_image"],
+            "pki",
+        )
+        (directory / "public").chmod(0o755)
+
+    def drop_proxy(self, data, name):
+        entry = data["environments"][name]
+        entry["status"] = "proxy-stopped"
+        self.save(data)
+        for identifier in self.owned(data, name, "container"):
+            details = self.docker.inspect("container", identifier)
+            if details["Config"]["Labels"].get("agentbox.role") == "proxy":
+                self.docker.mutate("container", "rm", "--force", identifier)
+        entry["resources"].pop("proxy", None)
+        directory = self.store.root / "environments" / name
+        for filename in ("ca.snapshot.pem", "ca.snapshot.key"):
+            (directory / filename).unlink(missing_ok=True)
+        self.save(data)
+
+    def create_proxy(self, data, environment, entry, tokens):
+        # Values are never arguments or policy contents; docker inherits only internal names.
+        values = policy.token_environment(environment, tokens)
+        directory = self.store.root / "environments" / environment.name
+        args = [
+            "container",
+            "create",
+            "--name",
+            "ab-" + data["installation"][:8] + "-" + environment.name + "-proxy",
+            *self.label_args(data, environment.name, "proxy"),
+            "--user",
+            "10001:10001",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--read-only",
+            "--cpus",
+            "0.5",
+            "--memory",
+            "256m",
+            "--pids-limit",
+            "128",
+            "--log-driver=local",
+            "--log-opt=max-size=10m",
+            "--log-opt=max-file=3",
+            "--network",
+            f"name={entry['resources']['inside']},ip={entry['proxy_ip']}",
+            "--network",
+            f"name={entry['resources']['outside']},gw-priority=1",
+            "--sysctl",
+            "net.ipv4.ip_forward=0",
+            "--mount",
+            f"type=bind,src={directory}/policy.json,dst=/run/agentbox/policy.json,readonly",
+        ]
+        if environment.credentials:
+            for part in ("pem", "key"):
+                snapshot = directory / f"ca.snapshot.{part}"
+                snapshot.write_bytes((directory / "private" / f"ca.{part}").read_bytes())
+                snapshot.chmod(0o444)
+                args += [
+                    "--mount",
+                    f"type=bind,src={snapshot},dst=/run/agentbox/ca.{part},readonly",
+                ]
+        for variable in values:
+            args += ["--env", variable]
+        args += [self.settings["proxy_image"]]
+        proxy = self.docker.mutate(*args, extra_env=values).stdout.strip()
+        entry["resources"]["proxy"] = proxy
+        self.save(data)
+        self.docker.mutate("container", "start", proxy)
+        for _ in range(30):
+            check = self.docker.run("exec", proxy, "agentbox-proxy", "check", check=False)
+            if check.returncode == 0:
+                return
+            if not self.docker.inspect("container", proxy)["State"]["Running"]:
+                break
+            time.sleep(0.2)
+        raise AgentboxError("Proxy failed readiness check")
+
+    def apply_proxy(self, data, environment, tokens):
+        name = environment.name
+        entry = data["environments"].get(name)
+        if not entry or entry.get("proxy_format") != 2:
+            raise AgentboxError(
+                "Placeholder environment required; recreate legacy environments explicitly (remove deletes login)"
+            )
+        self.check_guard()
+        if (
+            entry["host_addresses"] != local_addresses()
+            or entry["status"] == "stopped-host-address-change"
+        ):
+            self.stop(data, name)
+            entry["status"] = "stopped-host-address-change"
+            self.save(data)
+            raise AgentboxError("Host addresses changed; explicit recreation required")
+        normalized = json.loads(json.dumps(environment.to_dict()))
+        try:
+            for key in set(normalized) - {"credentials", "allow"}:
+                if normalized[key] != entry["config"][key]:
+                    raise AgentboxError(
+                        "proxy apply cannot change image, projects or agent profile"
+                    )
+            policy.validate_placeholders(environment, entry.get("placeholders"))
+            self.check_mounts(data, environment)
+            owned = self.owned(data, name, "network")
+            if any(entry["resources"].get(role) not in owned for role in ("inside", "outside")):
+                raise AgentboxError("Environment networks are missing")
+        except AgentboxError as exc:
+            raise AgentboxError(
+                f"{exc}. Proxy configuration not changed; use "
+                f"'agentbox proxy stop {name}' to revoke existing access"
+            ) from exc
+        # Stop before token validation or resolution; later failures must not retain old credentials.
+        self.drop_proxy(data, name)
+        try:
+            policy.token_environment(environment, tokens)
+            policy.validate_token_availability(environment, entry["placeholders"], tokens)
+            addresses = local_addresses()
+            pinned = policy.resolve(environment.allow, addresses)
+            rendered, _, digest = policy.render(
+                environment.allow,
+                pinned,
+                entry["proxy_ip"],
+                addresses,
+                environment.credentials,
+                entry["placeholders"],
+            )
+            directory = self.store.root / "environments" / name
+            self.prepare_pki(directory)
+            path = directory / "policy.json"
+            atomic_json(path, json.loads(rendered))
+            path.chmod(0o444)
+            entry.update(config=normalized, policy=digest, pinned=pinned, status="proxy-updating")
+            self.save(data)
+            self.create_proxy(data, environment, entry, tokens)
+            agent = entry["resources"].get("agent")
+            entry["status"] = (
+                "running"
+                if self.docker.inspect("container", agent)["State"]["Running"]
+                else "proxy-ready"
+            )
+            self.save(data)
+            return entry
+        except Exception:
+            self.drop_proxy(data, name)
+            raise
+
+    def start(self, data, payload, tokens=None):
+        self.check_guard()
         environment = config.parse(payload)
         name = environment.name
         normalized = json.loads(json.dumps(environment.to_dict()))
         previous = data["environments"].get(name)
         if previous:
-            running = any(
-                self.docker.inspect("container", i)["State"]["Running"]
-                for i in self.owned(data, name, "container")
-            )
-            if running:
-                healthy = all(role in previous["resources"] for role in ("agent", "proxy"))
-                if healthy:
-                    healthy = all(
-                        self.docker.inspect("container", previous["resources"][role])["State"][
-                            "Running"
-                        ]
-                        for role in ("agent", "proxy")
-                    )
-                if previous["config"] == normalized and previous["status"] == "running" and healthy:
-                    return previous
+            if previous.get("proxy_format") != 2:
                 raise AgentboxError(
-                    "Environment exists or is degraded; stop it before starting again"
+                    "Legacy environment: stop and explicitly recreate; remove deletes agent login"
                 )
-            if previous["status"] in ("stopped", "running"):
-                if (
-                    previous["config"] != normalized
-                    or previous["host_addresses"] != local_addresses()
-                ):
-                    raise AgentboxError(
-                        "Configuration or host addresses changed; remove and recreate explicitly"
-                    )
-                self.check_mounts(data, environment)
-                for role in ("proxy", "agent"):
-                    identifier = previous["resources"][role]
-                    if identifier not in self.owned(data, name, "container"):
-                        raise AgentboxError(
-                            "Stopped environment is incomplete; remove and recreate it"
-                        )
-                    self.docker.mutate("container", "start", identifier)
-                previous["status"] = "running"
+            if (
+                previous["host_addresses"] != local_addresses()
+                or previous["status"] == "stopped-host-address-change"
+            ):
+                self.stop(data, name)
+                previous["status"] = "stopped-host-address-change"
                 self.save(data)
-                return previous
-            if previous["status"] == "stopped-host-address-change":
                 raise AgentboxError("Host addresses changed; remove and recreate explicitly")
-            self.remove(data, name)
+            if previous["config"] != normalized:
+                raise AgentboxError(
+                    "Configuration changed; use proxy apply for network/token rules, or recreate for other changes"
+                )
+            self.check_mounts(data, environment)
+            agent = previous["resources"].get("agent")
+            if agent not in self.owned(data, name, "container"):
+                raise AgentboxError("Agent container is missing; explicit recreation required")
+            proxy = previous["resources"].get("proxy")
+            if (
+                previous["status"] == "running"
+                and proxy in self.owned(data, name, "container")
+                and self.docker.inspect("container", agent)["State"]["Running"]
+                and self.docker.inspect("container", proxy)["State"]["Running"]
+            ):
+                return previous
+            self.apply_proxy(data, environment, tokens or {})
+            self.docker.mutate("container", "start", agent)
+            previous["status"] = "running"
+            self.save(data)
+            return previous
         mounts = self.check_mounts(data, environment)
         image = self.docker.inspect("image", environment.image)
         if image.get("Architecture") not in ("amd64", "arm64"):
@@ -274,18 +432,24 @@ class Control:
         pinned = policy.resolve(environment.allow, addresses)
         inside_subnet, outside_subnet = self.subnets()
         proxy_ip = str(inside_subnet.network_address + 2)
-        rendered, hosts, digest = policy.render(environment.allow, pinned, proxy_ip, addresses)
+        policy.token_environment(environment, tokens or {})
+        placeholders = policy.placeholders(environment, tokens or {})
+        rendered, _, digest = policy.render(
+            environment.allow, pinned, proxy_ip, addresses, environment.credentials, placeholders
+        )
         directory = self.store.root / "environments" / name
         directory.mkdir(parents=True, mode=0o700)
-        for filename, content in (("squid.conf", rendered), ("hosts", hosts)):
-            path = directory / filename
-            path.write_text(content)
-            path.chmod(0o644)  # Proxy UID can read the file through the explicit bind mount.
+        self.prepare_pki(directory)
+        atomic_json(directory / "policy.json", json.loads(rendered))
+        (directory / "policy.json").chmod(0o444)
         prefix = "ab-" + data["installation"][:8] + "-" + name
         entry = {
             "config": normalized,
             "status": "creating",
             "policy": digest,
+            "proxy_format": 2,
+            "placeholders": placeholders,
+            "proxy_ip": proxy_ip,
             "pinned": pinned,
             "host_addresses": addresses,
             "resources": {},
@@ -317,63 +481,7 @@ class Control:
                 "--log-opt=max-size=10m",
                 "--log-opt=max-file=3",
             ]
-            proxy_args = [
-                "container",
-                "create",
-                "--name",
-                prefix + "-proxy",
-                *common,
-                *self.label_args(data, name, "proxy"),
-                "--user",
-                "proxy",
-                "--read-only",
-                "--cpus",
-                "0.5",
-                "--memory",
-                "256m",
-                "--pids-limit",
-                "128",
-                "--network",
-                f"name={entry['resources']['inside']},ip={proxy_ip}",
-                "--network",
-                f"name={entry['resources']['outside']},gw-priority=1",
-                "--sysctl",
-                "net.ipv4.ip_forward=0",
-                "--tmpfs",
-                "/tmp:mode=1777,nosuid,nodev,noexec",
-                "--mount",
-                f"type=bind,src={directory}/squid.conf,dst=/etc/squid/squid.conf,readonly",
-                "--mount",
-                f"type=bind,src={directory}/hosts,dst=/etc/squid/agentbox-hosts,readonly",
-                self.settings["proxy_image"],
-            ]
-            proxy = self.docker.mutate(*proxy_args).stdout.strip()
-            entry["resources"]["proxy"] = proxy
-            self.save(data)
-            self.docker.mutate("container", "start", proxy)
-            for _ in range(30):
-                check = self.docker.run(
-                    "exec",
-                    proxy,
-                    "curl",
-                    "-s",
-                    "--max-time",
-                    "1",
-                    "-o",
-                    "/dev/null",
-                    "-w",
-                    "%{http_code}",
-                    "--proxy",
-                    f"http://{proxy_ip}:3128",
-                    "http://unlisted.agentbox.invalid/",
-                    check=False,
-                )
-                if check.returncode == 0 and check.stdout == "403":
-                    break
-                time.sleep(0.2)
-            else:
-                raise AgentboxError("Proxy failed readiness check; agent was not started")
-            self.docker.run("exec", proxy, "squid", "-k", "parse")
+            self.create_proxy(data, environment, entry, tokens or {})
             command = [
                 "container",
                 "create",
@@ -408,6 +516,17 @@ class Control:
                 "LANG=C.UTF-8",
                 *mounts,
             ]
+            command.extend(
+                ["--mount", f"type=bind,src={directory}/public,dst=/run/agentbox-ca,readonly"]
+            )
+            for variable in (
+                "SSL_CERT_FILE",
+                "CURL_CA_BUNDLE",
+                "REQUESTS_CA_BUNDLE",
+                "CODEX_CA_CERTIFICATE",
+            ):
+                command.extend(["--env", f"{variable}=/run/agentbox-ca/bundle.pem"])
+            command.extend(["--env", "NODE_EXTRA_CA_CERTS=/run/agentbox-ca/ca.pem"])
             for variable in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
                 command.extend(["--env", f"{variable}=http://{proxy_ip}:3128"])
             command.extend(["--env", f"GIT_CONFIG_COUNT={len(environment.mounts)}"])
@@ -420,6 +539,8 @@ class Control:
                         f"GIT_CONFIG_VALUE_{index}={mount.target}",
                     ]
                 )
+            for variable, placeholder in placeholders.items():
+                command.extend(["--env", f"{variable}={placeholder}"])
             command.extend(["--entrypoint", "/bin/sh", image["Id"], "-c", "exec sleep infinity"])
             agent = self.docker.mutate(*command).stdout.strip()
             entry["resources"]["agent"] = agent
@@ -453,7 +574,31 @@ class Control:
             if action == "project":
                 return self.project(data, request["operation"], request)
             if action == "start":
-                return self.start(data, request["config"])
+                return self.start(data, request["config"], request.get("tokens", {}))
+            if action == "proxy":
+                operation = request.get("operation")
+                if operation == "apply":
+                    return self.apply_proxy(
+                        data, config.parse(request["config"]), request.get("tokens", {})
+                    )
+                name = config.name(request["name"])
+                entry = data["environments"].get(name)
+                if not entry or entry.get("proxy_format") != 2:
+                    raise AgentboxError("Unknown or legacy environment")
+                if operation == "stop":
+                    self.drop_proxy(data, name)
+                elif operation == "rotate-ca":
+                    self.stop(data, name)
+                    self.drop_proxy(data, name)
+                    directory = self.store.root / "environments" / name
+                    for part in ("key", "pem"):
+                        (directory / "private" / f"ca.{part}").unlink(missing_ok=True)
+                    self.prepare_pki(directory)
+                    entry["status"] = "stopped"
+                    self.save(data)
+                else:
+                    raise AgentboxError("Unknown proxy operation")
+                return {"name": name, "status": entry["status"]}
             if action == "status":
                 result = {}
                 for name, entry in data["environments"].items():

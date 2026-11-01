@@ -13,6 +13,36 @@ from .errors import AgentboxError
 NAME = re.compile(r"[a-z][a-z0-9-]{0,47}\Z")
 IMAGE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._/@:-]{0,255}\Z")
 MEMORY = re.compile(r"[1-9][0-9]*[mg]\Z")
+VARIABLE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}\Z")
+RESERVED_VARIABLES = {
+    "HOME",
+    "PATH",
+    "LANG",
+    "LANGUAGE",
+    "SHELL",
+    "USER",
+    "LOGNAME",
+    "IFS",
+    "ENV",
+    "BASH_ENV",
+    "CDPATH",
+    "TMPDIR",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "CURL_CA_BUNDLE",
+    "REQUESTS_CA_BUNDLE",
+    "CODEX_CA_CERTIFICATE",
+    "CODEX_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_RUNTIME_DIR",
+}
+RESERVED_PREFIXES = ("AGENTBOX_", "LD_", "DYLD_", "PYTHON", "NODE_", "GIT_CONFIG_", "LC_")
+AUTH_HEADERS = {"authorization", "x-api-key", "context7_api_key"}
 
 
 class StrictLoader(yaml.SafeLoader):
@@ -116,6 +146,32 @@ class Resources:
     pids: int = 512
 
 
+def credential_variable(raw):
+    parts = [part.strip() for part in text(raw).split("=")]
+    if len(parts) not in (1, 2) or any(not VARIABLE.fullmatch(part) for part in parts):
+        raise AgentboxError("Expected token variable or client_variable=host_variable")
+    client, source = parts[0], parts[-1]
+    if client.upper() in RESERVED_VARIABLES or client.upper().startswith(RESERVED_PREFIXES):
+        raise AgentboxError("Token client variable overlaps a reserved runtime name")
+    return client if client == source else f"{client}={source}"
+
+
+@dataclass(frozen=True)
+class Credential:
+    host: str
+    port: int
+    header: str
+    env: str
+
+    @property
+    def client_env(self):
+        return self.env.partition("=")[0]
+
+    @property
+    def source_env(self):
+        return self.env.partition("=")[2] or self.env
+
+
 @dataclass(frozen=True)
 class Environment:
     name: str
@@ -125,6 +181,7 @@ class Environment:
     mounts: tuple[Mount, ...]
     allow: tuple[Rule, ...]
     resources: Resources
+    credentials: tuple[Credential, ...] = ()
 
     def to_dict(self):
         return asdict(self)
@@ -133,7 +190,7 @@ class Environment:
 def parse(data):
     fields(
         data,
-        {"name", "image", "workdir", "command", "mounts", "network", "resources"},
+        {"name", "image", "workdir", "command", "mounts", "network", "resources", "credentials"},
         {"name", "image", "mounts"},
     )
     image = text(data["image"])
@@ -186,6 +243,31 @@ def parse(data):
         if rule in rules:
             raise AgentboxError("Duplicate destination rule")
         rules.append(rule)
+    credentials = data.get("credentials", [])
+    if not isinstance(credentials, list) or len(credentials) > 32:
+        raise AgentboxError("credentials must be a list with at most 32 rules")
+    parsed_credentials = []
+    bindings = {}
+    seen = set()
+    for entry in credentials:
+        fields(entry, {"host", "port", "header", "env"}, {"host", "port", "header", "env"})
+        host = hostname(entry["host"])
+        header = text(entry["header"]).lower()
+        variable = credential_variable(entry["env"])
+        if (
+            type(entry["port"]) is not int
+            or entry["port"] != 443
+            or Rule(host, 443) not in rules
+            or header not in AUTH_HEADERS
+            or (host, header) in seen
+        ):
+            raise AgentboxError("Invalid, duplicate or unlisted credential rule")
+        seen.add((host, header))
+        credential = Credential(host, 443, header, variable)
+        if bindings.get(credential.client_env, credential.source_env) != credential.source_env:
+            raise AgentboxError("A token client variable must have one host source")
+        bindings[credential.client_env] = credential.source_env
+        parsed_credentials.append(credential)
     raw = fields(data.get("resources", {}), {"cpus", "memory", "pids"})
     cpus, memory, pids = raw.get("cpus", 2.0), raw.get("memory", "4g"), raw.get("pids", 512)
     if type(cpus) not in (int, float) or not 0.1 <= cpus <= 128:
@@ -202,6 +284,7 @@ def parse(data):
         tuple(parsed_mounts),
         tuple(rules),
         Resources(float(cpus), memory, pids),
+        tuple(parsed_credentials),
     )
 
 

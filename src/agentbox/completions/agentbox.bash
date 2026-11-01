@@ -7,7 +7,23 @@ _agentbox()
   COMPREPLY=()
 
   if (( COMP_CWORD == 1 )); then
-    choices="doctor status build-images pull-image validate project start stop remove shell logs login-api-key exec completion --help"
+    choices="doctor status build-images pull-image validate project proxy start stop remove shell logs login-api-key exec completion --help"
+  elif [[ "$action" == proxy ]]; then
+    if (( COMP_CWORD == 2 )); then
+      choices="apply stop rotate-ca --help"
+    elif [[ "${COMP_WORDS[2]}" == apply ]]; then
+      compopt -o filenames
+      mapfile -t COMPREPLY < <(compgen -f -- "$cur")
+      if [[ "$cur" != */* ]]; then
+        while IFS= read -r value; do
+          [[ -n "$value" && "$value" == "$cur"* ]] && COMPREPLY+=("$value")
+        done < <(agentbox completion --names configs 2>/dev/null)
+      fi
+      return
+    else
+      kind=environments
+      start=3
+    fi
   elif [[ "$prev" == --key-file ]] || { [[ "$action" == start || "$action" == validate ]] && (( COMP_CWORD == 2 )) && [[ "$cur" != -* ]]; }; then
     compopt -o filenames
     mapfile -t COMPREPLY < <(compgen -f -- "$cur")

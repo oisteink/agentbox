@@ -1,0 +1,31 @@
+# Register project "example" and adapt its mount before starting.
+# On the host: export CONTEXT7_TOKEN with the raw API key (without Bearer).
+# In the agent: CONTEXT7_TOKEN is generated and contains only a placeholder.
+name: context7-codex
+image: agentbox-dev:local
+workdir: /workspace
+command: ["codex"]
+mounts:
+  - project: example
+    target: /workspace
+    mode: rw
+network:
+  allow:
+    - host: auth.openai.com
+      port: 443
+    - host: chatgpt.com
+      port: 443
+    - host: ab.chatgpt.com
+      port: 443
+    - host: mcp.context7.com
+      port: 443
+credentials:
+  - host: mcp.context7.com
+    port: 443
+    header: Authorization
+    # Optional alias: CONTEXT7_TOKEN=my_context7_key (client=host source).
+    env: CONTEXT7_TOKEN
+resources:
+  cpus: 2
+  memory: 4g
+  pids: 512

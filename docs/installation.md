@@ -1,15 +1,29 @@
-# Installasjon av Agentbox 1.0.1
+# Installasjon av Agentbox
+
+Denne utviklingsgrenen erstatter Squid med Go-proxy. `agentbox build-images`
+kompilerer og tester Go-proxyen i et eget byggetrinn; Go trenger ikke installeres
+på verten. Tokens bygges ikke inn i imaget.
+
+Eksisterende Squid-miljøer og eldre Go-miljøer uten genererte plassholdere
+må stoppes og gjenskapes eksplisitt før de kan bruke den nye proxyen. Oppgradering fjerner dem ikke automatisk. `remove` sletter
+containerens hjem og Codex-innlogging, men beholder prosjektfilene. Ta vare på
+nødvendig klientoppsett privat før gjenskaping. Nye Go-miljøer kan endre
+nettverk/tokenregler for eksisterende variabler med `proxy apply` uten å miste
+hjem eller innlogging. Nye klientvariabelnavn og tom/ikke-tom overgang krever gjenskaping.
+Proxyimaget må bygges på nytt for JSON-policyversjon 3 (alias/tomme referanser). Hostvariabelen
+skal inneholde rå nøkkel uten `Bearer `; klienten legger til prefikset.
 
 Kjør installasjonen fra repoet på Linux-verten som skal kjøre agentmiljøene.
 Daglig bruk skjer deretter som utvikleren, uten `sudo agentbox`.
 
 ## Forutsetninger og installasjon
 
-Referanseplattformen er Ubuntu 24.04 med systemd, cgroup v2, POSIX ACL,
-user namespaces og rootless Docker. Python 3.12 eller nyere kreves.
+Debian er målplattformen. Ubuntu 24.04 brukes som disponibel labplattform;
+utvikleren har også prøvd installasjonen på Debian. Systemd, cgroup v2,
+POSIX ACL, user namespaces og rootless Docker kreves, med Python 3.12 eller nyere.
 Koden krever Docker 28 eller nyere; bare 29.9.2 er testet. Installer
 [Docker Engine og rootless extras](https://docs.docker.com/engine/security/rootless/)
-før prosjektets installer kjøres. Andre nødvendige pakker på Ubuntu:
+før prosjektets installer kjøres. Andre nødvendige pakker på Debian/Ubuntu:
 
 ```sh
 sudo apt-get install acl uidmap dbus-user-session slirp4netns python3-venv sudo iproute2

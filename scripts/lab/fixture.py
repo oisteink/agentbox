@@ -8,6 +8,7 @@ import ssl
 import struct
 import sys
 import threading
+import time
 
 
 def event(kind, **values):
@@ -15,8 +16,42 @@ def event(kind, **values):
 
 
 class HTTP(http.server.BaseHTTPRequestHandler):
+    def do_TRACE(self):
+        event("http", port=self.server.server_port, path=self.path, method=self.command)
+        body = str(self.headers).encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_TRACK = do_TRACE
+
     def do_GET(self):
-        event("http", port=self.server.server_port, path=self.path)
+        event(
+            "http",
+            port=self.server.server_port,
+            path=self.path,
+            host=self.headers.get("Host"),
+            authorization=self.headers.get_all("Authorization", []),
+            api_key=self.headers.get_all("CONTEXT7_API_KEY", []),
+            api_key_alias=self.headers.get_all("Context7-Api-Key", []),
+        )
+        if self.path == "/stream":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.end_headers()
+            for number in range(10):
+                self.wfile.write(f"data: {number} {time.monotonic()}\n\n".encode())
+                self.wfile.flush()
+                if number < 9:
+                    time.sleep(1)
+            return
+        if self.path == "/redirect":
+            self.send_response(302)
+            self.send_header("Location", "https://tunnel.agentbox.test/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         body = b"agentbox-controlled-endpoint\n"
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
@@ -25,6 +60,8 @@ class HTTP(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *_):
         pass
+
+    do_POST = do_GET
 
 
 class DNS(socketserver.BaseRequestHandler):

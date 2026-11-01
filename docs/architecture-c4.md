@@ -1,4 +1,4 @@
-# Agentbox 1.0.1 på C4 nivå 1 og 2
+# Agentbox på C4 nivå 1 og 2
 
 Agentbox kjører kodeagenter med valgte prosjektmapper og kontrollert utgående
 nettverkstilgang. C1 viser systemet og omgivelsene; C2 viser
@@ -70,12 +70,12 @@ System_Boundary(agentbox, "Agentbox") {
     Container(control, "Kontrollhjelper", "Python; agentbox UID", "Administrerer prosjekter, policy, miljøer og terminalsesjoner.")
     Container(uninstall, "Avinstallering", "scripts/uninstall.sh; Bash / Python; root", "Kjøres fra repoet. Rydder ACL-er og overfører prosjektfiler til utvikleren før installasjonen fjernes. ")
     Container(watch, "Adressevakt", "Python / systemd; agentbox UID", "Stopper miljøer ved endrede vertsadresser.")
-    ContainerDb(state, "Kontrolltilstand og policy", "Private filer; agentbox UID", "/var/lib/agentbox/state; miljøregister, proxyregler og logger.")
+    ContainerDb(state, "Kontrolltilstand og policy", "Private filer; agentbox UID", "/var/lib/agentbox/state; miljøregister, proxyregler, miljø-CA og logger.")
     Container(docker, "Rootless Docker-instans", "Docker Engine / RootlessKit", "Egen daemon som agentbox; administrerer containere, nettverk og images.")
 
     Boundary(environment, "Arbeidsmiljø - ett av flere", "Agent og proxy per miljø") {
         Container(agent, "Kodeagent og utviklingsverktøy", "Docker; UID 0 i containeren", "Upålitelig agentkode. Valgbart image; først Codex. Lukket nettverk, valgte mounts og streng seccomp.")
-        Container(proxy, "Utgående proxy", "Docker / Squid; bruker proxy", "Betrodd proxy med ett grensesnitt internt og ett eksternt. Eksakte domene/port-par og fastlåste IP-adresser.")
+        Container(proxy, "Utgående proxy", "Docker / Go; UID 10001", "Betrodd proxy med ett grensesnitt internt og ett eksternt. Eksakte destinasjoner, pinnede IP-er og selektiv TLS-avlytting med tokenutskifting.")
         ContainerDb(home, "Agentens hjem og innlogging", "Containerens skrivbare lag", "/home/agent; Codex-profil. Beholdes ved stopp, slettes ved remove.")
     }
 }
@@ -84,7 +84,7 @@ Rel(developer, cli, "Administrerer og åpner terminaler", "Lokale kommandoer")
 Rel(developer, projects, "Redigerer", "Editor / filsystem")
 Rel(cli, journal, "Registrerer og avstemmer ACL-endringer", "Filsystem")
 Rel(cli, projects, "Tildeler og tilbakekaller tilgang som fileier", "POSIX ACL")
-Rel(cli, control, "Sender kontrolloperasjoner", "Avgrenset sudo; JSON på stdin")
+Rel(cli, control, "Sender operasjoner og eksplisitt refererte tokens", "Avgrenset sudo; JSON på stdin")
 Rel(developer, uninstall, "Kjører avinstallasjon eller forhåndsvisning fra repoet", "sudo scripts/uninstall.sh")
 Rel(uninstall, projects, "Overfører agentbox-eide filer og rydder ACL-er", "Avgrenset filsystemtilgang; ingen symlinkfølging")
 Rel(uninstall, state, "Leser registeret før filrydding og sletting", "Privat tilstand og operasjonslås")
@@ -92,7 +92,7 @@ Rel(uninstall, journal, "Avstemmer og rydder foreldrenes ACL-er", "Privat journa
 Rel(control, projects, "Reparerer ACL på filer eid av agentbox", "POSIX ACL")
 Rel(control, state, "Lagrer tilstand, policy og agentutdata", "Filsystem")
 Rel(watch, state, "Leser miljøer og oppdaterer status", "Filsystem og felles lås")
-Rel(control, docker, "Oppretter, styrer og kjører kommandoer", "Docker CLI; fast Unix-socket")
+Rel(control, docker, "Styrer containere; gir kun proxyen tokenmiljø", "Docker CLI; fast Unix-socket")
 Rel(watch, docker, "Stopper berørte containere", "Docker CLI; samme socket")
 Rel(docker, agent, "Oppretter og styrer livssyklus", "Docker runtime")
 Rel(docker, proxy, "Oppretter og styrer livssyklus", "Docker runtime")
@@ -100,8 +100,9 @@ Rel(docker, registry, "Henter images og bygger", "Betrodd kontrolltrafikk")
 Rel(agent, projects, "Leser og endrer valgte mapper", "Eksplisitte bind mounts; rw eller ro")
 Rel(agent, home, "Lagrer profil og innlogging", "Filsystem i containerlaget")
 Rel(agent, proxy, "Sender utgående forespørsler", "HTTP / CONNECT via lukket nettverk")
-Rel(proxy, state, "Leser kun proxyregler og fastlåste adresser", "Read-only bind mounts av to filer")
-Rel(proxy, services, "Kobler til tillatt destinasjon", "HTTP / TLS-tunnel")
+Rel(proxy, state, "Leser policy og miljøets private CA", "Read-only bind mounts")
+Rel(agent, state, "Leser kun offentlig CA og bundle", "Read-only mount av offentlig underkatalog")
+Rel(proxy, services, "Kobler til tillatt destinasjon", "HTTP / TLS-tunnel eller avlyttet HTTPS")
 SHOW_LEGEND()
 @enduml
 ```
@@ -126,6 +127,58 @@ SHOW_LEGEND()
   sine rettigheter gjelder brukerens samlede vertstilgang, også til andre registrerte prosjekter.
   Agentens UID 0 mappes til tjenestebrukeren på verten; proxyen bruker en egen
   containerbruker og får ikke prosjektmapper montert inn.
+
+## Sekvens: fra miljøvariabel til ekte API-nøkkel
+
+Operatøren har den ekte nøkkelen i `APITOKEN`. Agentbox gir agenten en
+plassholder i samme variabelnavn. Klienten bruker variabelen som vanlig;
+proxyen erstatter plassholderen i riktig header mot godkjent destinasjon.
+
+`at-01a` er en oppdiktet nøkkel. `P` forkorter en generert verdi på formen
+`abx-<64 heksadesimale tegn>`. Diagrammet viser en HTTPS-destinasjon med
+nøkkelregel; vanlige tunneler inspiseres ikke.
+
+![Tokenflyt: verten gir agenten en plassholder, og proxyen erstatter den mot riktig tjeneste](diagrams/agentbox-token-sequence.svg)
+
+<details>
+<summary>PlantUML-kilde</summary>
+
+```plantuml
+@startuml agentbox-token-sequence
+title Agentbox - brukbar plassholder, ekte nøkkel i proxyen
+hide footbox
+autonumber
+skinparam sequenceMessageAlign center
+participant "Vert / Agentbox" as host
+participant "Agentens klient" as agent
+participant "Proxy" as proxy
+participant "Godkjent API" as api
+note over host
+  Verten har APITOKEN=at-01a.
+  Agentbox lager plassholder P.
+end note
+host -> agent: APITOKEN=P
+host -> proxy: P erstattes med at-01a\nKun for godkjent domene og header
+agent -> proxy: Authorization: Bearer P
+note over proxy: Kontroller domene, header og P.
+proxy -> api: Authorization: Bearer at-01a
+@enduml
+```
+
+</details>
+
+Agenten har en verdi den kan bruke, men den ekte nøkkelen ligger på den
+betrodde siden. Uten riktig plassholder, header og destinasjon setter proxyen
+ikke inn nøkkelen.
+
+Plassholderen beholdes ved stopp/start og proxybytte, også når operatøren
+roterer den ekte nøkkelen. Nye variabelnavn krever eksplisitt gjenskaping av
+agentcontaineren. Hvert miljø har sitt eget plassholderkart.
+
+Ekte tokenverdier tilføres via CLI og kontrollhjelperens stdin til proxyens
+miljø. Docker lagrer miljøet i metadata; full kontroll over tjenestebrukeren
+og daemonen kan avsløre nøkkelen. En godkjent tjeneste kan også returnere den
+i et svar. Se [oppsett og avgrensninger](usage.md#api-tokens-i-proxyen).
 
 ## Vedlikehold av diagrammene
 

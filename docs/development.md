@@ -12,10 +12,19 @@ uv run --locked pytest
 uv run --locked ruff check src tests scripts
 uv run --locked ruff format --check src tests scripts
 bash -n scripts/*.sh scripts/lab/*.sh images/dev/codex src/agentbox/completions/agentbox.bash
+(cd proxy && go test -race ./... && go vet ./...)
+(cd proxy && GOTOOLCHAIN=go1.27.3 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...)
+test -z "$(gofmt -l proxy/*.go)"
 ```
 
 `pytest` kjører enhetstester som standard. Integrasjonstesten krever installert
 kontrollverktøy, `AGENTBOX_LAB=1` og vertsnavnet `agentbox-lab`.
+Go-modulen ligger i `proxy/` og krever Go 1.27.3. Docker-bygget kjører også
+Go-testene, vet og govulncheck med den valgte toolchainen. BuildKit kan gjenbruke
+et tidligere resultat fra cache; kjør govulncheck-kommandoen over for en ny
+sjekk mot dagens database. For CLI-/proxyprøver med syntetiske tokens brukes
+`sudo python3 scripts/lab/credential_proxy.py` inne i laben. Kjør labprøver
+sekvensielt: de endrer felles nettverk, vertsadresser og installasjonsinnstillinger.
 
 ## Disponibel integrasjonslab
 

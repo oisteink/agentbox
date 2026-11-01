@@ -1,4 +1,4 @@
-# Agentbox 1.0.1
+# Agentbox
 
 Agentbox lar deg kjøre kodeagenter mot utvalgte prosjektmapper på Linux.
 Du beholder filene i editoren din, mens agenten arbeider i en container og
@@ -7,7 +7,8 @@ Flere prosjekter, miljøer og kompatible images kan brukes samtidig.
 
 En egen vertsbruker, `agentbox`, kjører Docker uten root-rettigheter.
 Prosjektmapper deles med filrettigheter (ACL-er) og eksplisitte monteringer.
-En Squid-proxy håndhever listen over tillatte nettverksdestinasjoner.
+En Go-proxy håndhever tillatte destinasjoner og kan erstatte ufarlige plassholdere med API-tokens
+uten at verdiene legges i agentens konfigurasjon eller miljø.
 Det medfølgende utviklingsimaget inneholder Codex CLI 0.166.0.
 
 ![Agentbox, utvikleren og eksterne tjenester](docs/diagrams/agentbox-context.svg)
@@ -96,5 +97,16 @@ fjerner installasjon og tjenestebruker. Se [avinstallasjon](docs/installation.md
 Versjon 1.0 er prøvd i Ubuntu-VM og manuelt på utviklerens Debian-vert.
 Linked worktrees, separat profillagring og sterkere isolering per prosjekt
 inngår ikke i versjonen. Sammenligning med OpenShell og Docker Sandboxes er
-videre arbeid. Den [opprinnelige implementeringsplanen](docs/history/implementation-plan-mvp.md)
-er bevart som historikk.
+videre arbeid.
+
+## Go-proxy og videre arbeid
+
+[API-nøkler på proxysiden](docs/specification.md#api-tokens-på-proxysiden) beskriver
+TLS-interception og utskifting av genererte plassholdere uten ekte API-nøkler
+i agentcontaineren.
+Go-proxyen er implementert i denne grenen; [bruk av API-tokens](docs/usage.md#api-tokens-i-proxyen)
+beskriver miljøvariabler, CA og aktivering. [Teststatus](docs/test-results.md)
+dekker VM-prøver og reell Codex/Context7-bruk; separat sikkerhetsgjennomgang
+fant ingen blokkerende funn. Ny Debian-vertsprøve gjenstår.
+
+[QA og revisjon av tester](docs/TODO.md) er satt opp for neste versjon på egen gren.

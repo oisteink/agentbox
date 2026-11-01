@@ -4,24 +4,27 @@
 
 Agentbox kjører kodeagenter i en egen rootless Docker-instans som Linux-brukeren
 `agentbox`, med hjem `/var/lib/agentbox`. Hvert miljø har en agentcontainer på
-et lukket nettverk og en Squid-proxy med eksplisitt tillatte domene/port-par.
+et lukket nettverk og en Go-proxy med eksplisitt tillatte domene/port-par.
 Det medfølgende utviklingsimaget inneholder Codex; imagevalg er adskilt fra isoleringen.
 Eksisterende prosjektmapper monteres direkte med ACL-basert tilgang.
 Worktree-støtte er utsatt.
+
+Debian er minste målplattform. Ubuntu kan brukes i laben, med separat
+Debian-utprøving. Konkret minste distroversjon skal dokumenteres; proxyens
+pakkeflavour eller upstream-build kan endres når kravene tilsier det.
 
 ## Prosjektstruktur
 
 - `src/agentbox/`: Python-CLI, kontrollhjelper, konfigurasjon, ACL, nettverk og tilstand.
 - `src/agentbox/completions/`: Bash-completion, installert av vertsinstalleren.
 - `images/dev/` og `images/smoke/`: Codex-image og separat testimage.
-- `proxy/`: Squid-image; policy genereres av `src/agentbox/policy.py`.
+- `proxy/`: Go-proxy, tester og flertrinns imagebygg; JSON-policy genereres av `src/agentbox/policy.py`.
 - `environments/`: miljøkonfigurasjoner uten hemmeligheter.
 - `scripts/install.sh` og `scripts/uninstall.sh`: administratoroppsett og avinstallasjon.
 - `scripts/lab/`: disponibel KVM-lab.
 - `tests/unit/` og `tests/integration/`: pytest-tester.
 - `security/vendor/`: revisjonslåst Moby-seccomp-grunnlag.
 - `docs/`: produktspesifikasjon, arkitektur, bruk, installasjon og testbevis.
-- `docs/history/`: arkivert implementeringsplan fra MVP-arbeidet.
 
 ## Bygging, testing og utvikling
 
@@ -33,6 +36,9 @@ uv run --locked pytest -q
 uv run --locked ruff check src tests scripts
 uv run --locked ruff format --check src tests scripts
 bash -n scripts/*.sh scripts/lab/*.sh images/dev/codex src/agentbox/completions/agentbox.bash
+(cd proxy && go test -race ./... && go vet ./...)
+(cd proxy && GOTOOLCHAIN=go1.27.3 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...)
+test -z "$(gofmt -l proxy/*.go)"
 ```
 
 `pytest` kjører enhetstestene som standard. Integrasjonstesten krever installert
@@ -57,7 +63,50 @@ Ikke innfør privilegerte containere, vertsnettverk eller Docker-socket i agente
 Test tillatt proxytrafikk, avvisning, direkte tilgang og ACL-konsekvenser ved
 relevante endringer. Skill observerte labresultater fra utestede garantier.
 Agentbox 1.0 er verifisert gjennom labprøver og manuell Codex-bruk på verten.
+Ekte tokens leses fra operatørens eksplisitte miljøvariabler og gis bare til proxyens miljø.
+Reglenes `env` støtter `klient=kilde`; kortform bruker samme navn. Ny
+opprettelse med tom/manglende kilde gir tom klientvariabel. Ellers får agenten
+genererte plassholdere; bare eksakt treff i
+autorisert header/destinasjon byttes til ekte token.
+Ingen tokenverdier i konfigurasjon, argumenter, tilstand eller logger. Docker-metadata
+kan inneholde token; fullt utbrudd til tjenestebrukeren er utenfor denne beskyttelsen.
+Kjør labprøver sekvensielt siden de endrer felles vertsnettverk og innstillinger.
 Ikke sjekk inn hemmeligheter, `.lab/` eller private logger.
+
+## Arbeidsprosess
+
+Arbeid i rekkefølgen spec → research → plan → implementasjon og verifikasjon.
+Under arbeid lagres fasene midlertidig under `docs/features/<tema>/`:
+
+1. `spec.md`: brukerens mål, omfang, krav og målbare akseptansekriterier.
+2. `research.md`: kilder, tekniske prøver, alternativer og avklaringer mot kravene.
+3. `plan.md`: gjennomføringssteg som dekker spec-en med støtte i researchen.
+4. Verifikasjonsfiler: kommandoer, testmiljø, forventning og observerte resultater.
+
+Oppdater fasestatus, beslutninger og åpne spørsmål i filene underveis.
+Samtalekonteksten skal ikke være eneste sted viktig informasjon finnes.
+Skill forslag fra vedtatte valg; research skal ikke omtales som gjennomført
+før funn og grunnlag er lagret.
+
+Før levering samles gjeldende krav i produktspesifikasjonen, begrunnelser i
+arkitekturvalg og verifikasjon i teststatus. Behold kjørbare tester og viktige
+sikkerhetsbegrensninger. Slett ferdige arbeidsplaner, forskningsprototyper,
+rålogger, utdaterte rapporter og disponible labdata. Ikke behold arkiver av
+mellomsteg bare som arbeidshistorikk; ferdig dokumentasjon skal beskrive
+programmet og det fremtidige utviklere trenger.
+
+La en ny, uavhengig subagent gjennomgå spec og plan. Lagre funn og hvordan
+de håndteres før neste fase. Velg den enkleste løsningen som oppfyller kravene;
+begrunn nye komponenter og mekanismer med konkrete behov. Unngå generell
+funksjonalitet som ikke trengs for leveransen.
+
+Oversikt er en forutsetning for sikkerhet. Når ansvar, dataflyt eller regler
+blir vanskelige å følge, skal vi forenkle og gjøre dem forståelige før vi
+bygger videre. Flere tester erstatter ikke en forståelig sikkerhetsmodell.
+
+Research kartlegger muligheter og begrensninger; den skal ikke låse utfallet.
+Tekniske prøver skal beskrive hva de faktisk viser, på hvilken build/plattform,
+og hvilke kandidater eller spørsmål som fortsatt er åpne.
 
 ## Commits og pull requests
 
