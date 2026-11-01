@@ -38,3 +38,34 @@ def test_start_missing_file_does_not_contact_control(monkeypatch, tmp_path, caps
         cli.main()
     assert error.value.code == 2
     assert capsys.readouterr().err
+
+
+def test_alias_only_reads_host_source(monkeypatch, tmp_path, capsys):
+    from agentbox.config import parse
+
+    data = {
+        "name": "alias-test",
+        "image": "agentbox-dev:local",
+        "mounts": [{"project": "test", "target": "/workspace"}],
+        "network": {"allow": [{"host": "api.example.com", "port": 443}]},
+        "credentials": [
+            {
+                "host": "api.example.com",
+                "port": 443,
+                "header": "Authorization",
+                "env": "hf_token=hugging_face_token",
+            }
+        ],
+    }
+    monkeypatch.setattr(cli, "load_settings", lambda: {"operator_uid": os.getuid()})
+    monkeypatch.setattr(cli.config, "load", lambda path: parse(data))
+    monkeypatch.setenv("hf_token", "wrong-client-value")
+    monkeypatch.setenv("hugging_face_token", "synthetic-source")
+    requests = []
+    monkeypatch.setattr(
+        cli, "rpc", lambda request: requests.append(request) or {"status": "running"}
+    )
+    monkeypatch.setattr("sys.argv", ["agentbox", "start", str(tmp_path / "alias.yaml")])
+    cli.main()
+    assert requests[0]["tokens"] == {"hugging_face_token": "synthetic-source"}
+    assert "synthetic-source" not in capsys.readouterr().out

@@ -37,7 +37,14 @@ class Docker:
         self.expected_id = None
 
     def run(
-        self, *arguments, check=True, interactive=False, source=None, timeout=120, terminal=None
+        self,
+        *arguments,
+        check=True,
+        interactive=False,
+        source=None,
+        timeout=120,
+        terminal=None,
+        extra_env=None,
     ):
         env = {
             "PATH": "/usr/bin:/bin",
@@ -45,6 +52,8 @@ class Docker:
             "XDG_RUNTIME_DIR": f"/run/user/{self.uid}",
             "LANG": "C.UTF-8",
         }
+        if extra_env:
+            env.update(extra_env)
         result = subprocess.run(
             ["/usr/bin/docker", "--host", f"unix://{self.socket}", *arguments],
             env=env,
@@ -56,6 +65,10 @@ class Docker:
             check=False,
         )
         if check and result.returncode:
+            if extra_env:
+                raise AgentboxError(
+                    "Docker operation with proxy credentials failed; output withheld"
+                )
             # Docker errors must never include command values supplied as credentials.
             raise AgentboxError(
                 f"Docker {' '.join(arguments[:2])} failed: {(result.stderr or '').strip()}"

@@ -1,3 +1,4 @@
+import json
 import socket
 
 import pytest
@@ -45,17 +46,13 @@ def test_rules_do_not_form_cross_product():
         "172.30.240.2",
         [],
     )
-    assert "http_access allow host0 port0 CONNECT" in config
-    assert "http_access allow host1 port1 !CONNECT" in config
-    assert "hosts_file /etc/squid/agentbox-hosts" in config
-    assert "93.184.216.34 api.example.com\n" in hosts
-    assert config.index("http_access deny !known") < config.index("http_access deny prohibited")
-    assert "%ru" not in config
+    pairs = {(d["host"], d["port"]) for d in json.loads(config)["destinations"]}
+    assert pairs == {("api.example.com", 443), ("downloads.example.com", 80)}
+    assert hosts == ""
     assert len(digest) == 64
 
 
 def test_empty_policy_denies_everything():
     config, hosts, _ = render([], {}, "172.30.240.2", [])
-    assert "http_access allow" not in config
-    assert config.endswith("http_access deny all\n")
+    assert json.loads(config)["destinations"] == []
     assert hosts == ""

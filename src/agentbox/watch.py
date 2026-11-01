@@ -21,8 +21,8 @@ def main():
                 addresses = local_addresses()
                 for name, environment in data["environments"].items():
                     if (
-                        environment["status"] == "running"
-                        and environment["host_addresses"] != addresses
+                        environment["host_addresses"] != addresses
+                        and environment["status"] != "stopped-host-address-change"
                     ):
                         control.stop(data, name)
                         environment["status"] = "stopped-host-address-change"

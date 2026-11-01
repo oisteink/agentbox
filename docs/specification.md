@@ -1,10 +1,10 @@
-# Spesifikasjon for Agentbox 1.0.1
+# Spesifikasjon for Agentbox
 
 Agentbox kjører kodeagenter mot eksplisitt valgte prosjektmapper på én
 Linux-vert. Én utvikler administrerer oppsettet og kan bruke flere miljøer
 samtidig, med ulike images, mounts og nettverkspolicyer.
 
-Dette er produktkontrakten for versjon 1.0.1. [Bruksveiledningen](usage.md)
+Dette er produktkontrakten for utviklingsgrenen med Go-proxy. [Bruksveiledningen](usage.md)
 beskriver kommandoene, [arkitekturen](architecture.md) forklarer oppbygningen,
 og [teststatus](test-results.md) avgrenser hva som er verifisert.
 
@@ -32,6 +32,8 @@ sende data ut; domenepolicyen gir ingen innholdsfiltrering.
 ## Vertsplattform og kontroll
 
 - Linux med systemd, cgroup v2, user namespaces, POSIX ACL og Python 3.12 eller nyere.
+- Debian er målplattformen; Ubuntu brukes også til labprøver. Konkret minste
+  Debian-versjon er ikke fastsatt utover forutsetningene over.
 - Docker Engine og CLI 28 eller nyere. Den testede versjonen er 29.9.2;
   øvrige versjoner har ikke samme prøvegrunnlag.
 - Egen Linux-bruker `agentbox`, privat hjem `/var/lib/agentbox` med modus 0700
@@ -129,14 +131,15 @@ sockets faller utenfor kompatibiliteten i 1.0.
 ## Nettverk og proxy
 
 Hvert miljø har et lukket `isolated` bridge-nettverk, et eksternt nettverk og
-en egen Squid-container. Agenten kobles bare til det lukkede nettverket.
+en egen Go-proxycontainer. Agenten kobles bare til det lukkede nettverket.
 Proxyen har ett grensesnitt på hvert nett, lytter bare internt og videresender
 ikke IP-trafikk. Ingen porter publiseres til vert eller LAN.
 
 - Utgående agenttrafikk avvises som standard. Bare eksakte domene/port-par
   tillates, uten implisitte underdomener.
-- HTTP på 80 og HTTPS via CONNECT på 443 støttes. TLS dekrypteres ikke;
-  tillatelsen gjelder hele forbindelsen uten URL-, metode- eller innholdsregler.
+- HTTP på 80 og HTTPS via CONNECT på 443 støttes. Vanlig tillatt HTTPS er
+  en tunnel. Eksplisitte credentials-regler aktiverer TLS-avlytting og
+  headerinnsetting for valgt destinasjon, uten generelle sti-/body-regler.
 - IP-litteraler og navn med ikke-offentlige adresser eller vertens egne adresser
   avvises. Kontrollsiden validerer alle DNS-svar og fastlåser én offentlig
   IPv4-adresse per navn. Proxyen har ingen ekstern DNS-fallback.
@@ -147,7 +150,8 @@ ikke IP-trafikk. Ingen porter publiseres til vert eller LAN.
   deler lås med kontrolloperasjoner og gir ingen atomisk sperring i selve
   endringsøyeblikket. Nettverksadministrasjon på verten er betrodd.
 - Proxyen får bare konfigurasjon og fastlåste adresser montert skrivebeskyttet.
-  Ingen prosjektmapper, agentnøkler eller Docker-socket deles inn i proxyen.
+  Ingen prosjektmapper eller Docker-socket deles inn i proxyen. API-tokens
+  tilføres bare proxyens miljø ved start/apply; konfigurasjon har referanser.
 - Bortfall av proxyen åpner ingen alternativ utgående vei.
 
 Adresseområdet velges i administratorinnstillingen `network_pool`.
@@ -177,10 +181,10 @@ Containerens `/home/agent`, innlogging og installerte filer beholdes, også
 ved manuell gjenopptak etter daemonrestart. Automatisk oppstart av miljøer
 etter vertsreboot finnes ikke.
 
-Endret konfigurasjon, policy eller vertsadresse krever eksplisitt `remove`
-og ny `start`. Da slettes containerlaget, inkludert innlogging og verktøyoppsett.
-Montert kode består. Separat profilvolum finnes ikke. Gjenopptak beholder
-fastlåste DNS-adresser; ny navneoppløsning krever ny opprettelse.
+Endret agentprofil eller vertsadresse krever eksplisitt `remove` og ny
+`start`. Da slettes containerlaget, inkludert innlogging og verktøyoppsett.
+Montert kode består. Nettverk/tokenregler endres med proxy apply uten å slette
+agentlaget. Gjenopptak av stoppet Go-miljø og apply validerer DNS på nytt.
 
 Terminalsesjoner har separat levetid fra miljøet. Størrelse og størrelsesendringer
 videresendes. Kontrolloperasjoner låses, tilstand skrives atomisk, og opprydding
@@ -241,14 +245,65 @@ samme rekkefølge som prosjektoperasjonene og stenger den vanlige sudo-hjelperen
 før prosesser stoppes. Den gir ikke nye root-rettigheter gjennom den vanlige
 kontrollhjelperen.
 
-## Utenfor versjon 1.0.1
+## Utenfor denne leveransen
 
 - Linked worktrees og deres delte Git-metadata.
 - Egen vertsbruker eller VM per prosjekt og sterkere runtime som gVisor.
 - Separat profillagring som overlever fjerning av miljøet.
-- TLS-inspeksjon, URL-regler, vilkårlig TCP-proxy og utgående SSH.
+- Generelle URL-/body-regler, vilkårlig TCP-proxy og utgående SSH.
 - GUI, fjernkjøring, flerbrukerplattform og automatisk håndtering av agentkontoer.
 
 Videre vurdering omfatter sammenligning med OpenShell og Docker Sandboxes.
 Arbeidet skal undersøke faktiske isoleringsgrenser, nettverkspolicy, mounts,
 filrettigheter, samtidige miljøer, imagevalg, plattformkrav og vedlikehold.
+
+## API-tokens på proxysiden
+
+`credentials` kobler en tillatt host/443 og auth-header til en navngitt
+vertsvariabel. `env: klient=kilde` leser høyresiden fra operatørens prosessmiljø;
+`env: klient` bruker samme navn på begge sider. Verdien er en rå nøkkel,
+uten Bearer-prefiks.
+
+Ved opprettelse får agentens klientvariabel en unik plassholder når kilden
+har verdi, ellers en tom streng. Den ekte nøkkelen gis bare til proxyens
+miljø og inngår ikke i config, policy, tilstand eller argumenter. Agenten får
+offentlig CA/bundle; privat CA forblir på den betrodde siden. Docker lagrer
+proxyens miljø som metadata, som kan leses ved fullt utbrudd til tjenestebrukeren.
+Se [praktisk oppsett](usage.md#api-tokens-i-proxyen).
+
+### Krav til headerutskifting
+
+En nøkkelregel må også finnes i `network.allow`. Samme klientnavn må vise
+til samme kilde i alle miljøets regler. Flere klientnavn kan dele kilde og
+får egne plassholdere. Bare klientnavnet valideres mot reserverte runtime-navn;
+konfigurasjonen er betrodd og skal ligge utenfor agentens skrivbare mapper.
+
+Tillatte auth-headere er Authorization, X-API-Key og CONTEXT7_API_KEY.
+Match bare hele plassholderen eller den etter Bearer-prefiks. Prefikset
+beholdes; dupliserte relevante headere og tvetydige aliaser avvises. Navn
+normaliseres til små bokstaver med `_` lik `-`. Bare GET, HEAD, POST, PUT,
+PATCH, DELETE og OPTIONS tillates på avlyttet trafikk; deklarerte trailere
+og Upgrade avvises. URL/body omfattes ikke av utskifting.
+
+CONNECT-destinasjon, SNI og Host/authority må være konsistente for hver
+request, også på gjenbrukte forbindelser. Upstream bruker godkjent pin og
+validert sertifikatnavn; ingen DNS-/proxy-fallback eller automatisk redirect.
+En eksplisitt tom regel beholder TLS-inspeksjon, men kan ikke ha ekte token.
+Vanlige requests uten plassholder kan videresendes uten nøkkelinnsetting.
+
+### Levetid og tilbakekalling
+
+Miljøets plassholderkart lagres uten ekte nøkler. Det er fast gjennom
+agentcontainerens levetid. Tom/ikke-tom overgang krever gjenskaping;
+`remove` sletter hjem/innlogging, men ikke monterte prosjektfiler.
+
+Apply sjekker først profil, klientnavn, mounts og nettverk. Avslag her endrer
+ikke eksisterende proxy; feilen viser `proxy stop` for tilbakekalling.
+Etter denne kontrollen fjernes gammel proxy før tokenvalidering og kontroll
+av tilgjengelighet. Senere feil gjenoppretter ikke gamle nøkler. Gjentatt
+start av et uendret kjørende miljø leser ikke kildene på nytt.
+
+`proxy stop` er eksplisitt lokal tilbakekalling. Unset alene endrer ikke
+kjørende proxyer. Tilbakekalling hos API-leverandøren er en separat operasjon.
+Fjernes nøkkelregelen eksplisitt, kan nettverkspolicyen igjen tillate vanlig
+tunnel. Den ekte nøkkelen settes aldri inn i en slik tunnel.

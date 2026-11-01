@@ -166,6 +166,13 @@ def parser():
         sub.add_argument("name", type=config.name)
     start = commands.add_parser("start", help="Start an environment from a YAML path or saved name")
     start.add_argument("config", help="YAML path or name from ~/.config/agentbox/environments")
+    proxy = commands.add_parser("proxy", help="Apply proxy rules or stop API access")
+    proxy_ops = proxy.add_subparsers(dest="operation", required=True)
+    apply = proxy_ops.add_parser("apply")
+    apply.add_argument("config")
+    for operation in ("stop", "rotate-ca"):
+        operation_parser = proxy_ops.add_parser(operation)
+        operation_parser.add_argument("name", type=config.name)
     for action in ("stop", "remove", "shell", "logs", "login-api-key", "exec"):
         sub = commands.add_parser(action)
         sub.add_argument("name", type=config.name)
@@ -218,11 +225,23 @@ def main():
                         result["operator_access_issues"] = projects.access_issues(
                             entry["path"], {settings["operator_uid"], settings["service_uid"]}
                         )
-        elif args.action == "start":
+        elif args.action == "start" or (args.action == "proxy" and args.operation == "apply"):
             environment = config.load(args.config)
             payload = environment.to_dict()
             payload["network"] = {"allow": payload.pop("allow")}
-            result = rpc({"action": "start", "config": payload})
+            # Missing/invalid values are deliberately validated in the helper after apply stops
+            # the old proxy. Never fail locally and leave old credentials active.
+            tokens = {
+                c.source_env: os.environ[c.source_env]
+                for c in environment.credentials
+                if c.source_env in os.environ
+            }
+            request = {"action": args.action, "config": payload, "tokens": tokens}
+            if args.action == "proxy":
+                request["operation"] = "apply"
+            result = rpc(request)
+        elif args.action == "proxy":
+            result = rpc({"action": "proxy", "operation": args.operation, "name": args.name})
         elif args.action in ("shell", "exec"):
             command = getattr(args, "command", [])
             if command and command[0] == "--":

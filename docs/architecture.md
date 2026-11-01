@@ -1,7 +1,7 @@
-# Arkitektur for Agentbox 1.0.1
+# Arkitektur for Agentbox
 
 Agentbox kjører agentmiljøer i en egen rootless Docker-instans med eksplisitt
-tilgang til prosjektmapper og utgående trafikk via Squid. Dette dokumentet
+tilgang til prosjektmapper og utgående trafikk via Go-proxyen. Dette dokumentet
 beskriver implementasjonen. Se [C1 og C2](architecture-c4.md) for diagrammer,
 [implementasjonsvalg](decisions.md) for begrunnelser og
 [teststatus](test-results.md) for verifikasjon og gjenstående arbeid.
@@ -47,7 +47,7 @@ endre eierskap eller fjerne innholdets ACL-er.
 
 ## Nettverk og images
 
-Hvert miljø har en agent, en Squid-proxy, et lukket `isolated` bridge-nettverk
+Hvert miljø har en agent, en Go-proxy, et lukket `isolated` bridge-nettverk
 og et separat eksternt nettverk. Bare proxyen kobles til begge nettverk.
 Agenten har ingen direkte internettrute eller publiserte porter; IPv6 er deaktivert.
 
@@ -72,8 +72,9 @@ Vanlige kontrolloperasjoner får ikke denne root-tilgangen. Se
 [avinstallasjon](installation.md#avinstallasjon) for omfang og filrydding.
 
 `stop` bevarer containerlaget, inkludert Codex-innlogging. Uendret konfigurasjon
-kan startes igjen. Endret konfigurasjon eller vertsadresse krever `remove` og
-ny `start`; hjem og innlogging slettes da, mens monterte prosjektfiler består.
+kan startes igjen. Nettverk/tokenregler aktiveres med `proxy apply` uten å
+slette hjemmet. Endret agentprofil eller vertsadresse krever `remove` og ny
+`start`; hjem og innlogging slettes da, mens monterte prosjektfiler består.
 Separat profilvolum og automatisk oppstart av miljøer etter vertsreboot er
 ikke implementert.
 
@@ -101,5 +102,48 @@ samtidige miljøer, imagevalg, plattformkrav og vedlikehold.
 
 - [Rootless UID-mapping](https://docs.docker.com/engine/security/rootless/uid-gid-mapping/)
 - [Docker gateway-moduser](https://docs.docker.com/engine/network/port-publishing/#gateway-modes)
-- [Squid CONNECT og HTTPS](https://wiki.squid-cache.org/Features/HTTPS)
+- [goproxy](https://github.com/elazarl/goproxy)
 - [Git worktrees](https://git-scm.com/docs/git-worktree)
+
+## Genererte tokenplassholdere
+
+[Tokenflyt som sekvensdiagram](architecture-c4.md#sekvens-fra-miljøvariabel-til-ekte-api-nøkkel).
+
+Ved opprettelse lager kontrollhjelperen én tilfeldig plassholder per referert
+klientvariabel med en ikke-tom kilde. `env: klient=kilde` skiller navnet i
+agenten fra navnet som leses på verten; kortformen bruker samme navn. Ved
+ny opprettelse med tom/manglende kilde settes klientvariabelen eksplisitt tom. Kartet lagres uten ekte nøkler i miljøtilstanden og inngår
+i proxyens policyformat 3. Tom plassholder betyr deaktivert nøkkelregel;
+regelen beholder TLS-avlytting og gir ingen nøkkelinnsetting. Bare proxyen får de ekte verdiene.
+
+Proxyen erstatter en hel plassholder eller Bearer-formen når destinasjon og
+header er autorisert. Andre verdier utløser ingen innsetting. Proxybytte og
+nøkkelrotasjon beholder kartet. Nye variabelnavn krever eksplisitt gjenskaping,
+fordi agentcontainerens miljø er fast. Tom/ikke-tom overgang krever også
+gjenskaping; gammel proxy fjernes før denne overgangen avvises. Ingen egen shell-/exec-mekanisme
+oppdaterer variablene i bakgrunnen.
+
+Interne `AGENTBOX_TOKEN_<n>` beregnes etter sorterte klientnavn både ved
+policygenerering og tokenoverføring. Tomme klientvariabler opptar fortsatt
+sin indeks, men får ingen ekte verdi i proxyens miljø. Dette holder aliaser
+og delt kilde entydige selv når kildenavnene har en annen sorteringsrekkefølge.
+
+## Tillitsgrenser for API-nøkler
+
+Konfigurasjonen autoriserer lesing av operatørens navngitte miljøvariabler.
+En agent som kan endre YAML-filen, kan forsøke å dele andre vertsvariabler.
+Hold derfor miljøfiler utenfor agentens skrivbare mounts og les credentials
+før start/apply. Proxyen monterer ikke prosjekter eller Docker-socket.
+
+Agenten får bare offentlig CA/bundle. Privat CA og ekte tokens tilhører den
+betrodde kontroll-/proxysiden. Original CA-nøkkel ligger privat; read-only
+snapshots for proxyen er beskyttet av vertskatalogens tilgangsrettigheter.
+Tokenverdier lagres ikke i Agentbox-filer, men finnes i proxyens prosessmiljø
+og Docker-metadata. Et fullstendig utbrudd til tjenestebrukeren kan avsløre dem.
+
+En godkjent upstream kan reflektere en ekte nøkkel i responsen. Responsen
+skannes ikke etter hemmeligheter. Tunnelerte CDN-domener kan tillate domain
+fronting; en tillatt tjeneste er del av tillitsvurderingen. Plassholdere som
+videresendes i URL/body eller vanlige tunneler gir ingen tilgang utenfor
+miljøets proxy. Agentens egne Codex/OAuth-data og hemmeligheter i prosjektfiler
+omfattes ikke av denne nøkkelskjermingen.
