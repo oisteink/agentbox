@@ -26,13 +26,13 @@ Person(developer, "Bruker", "Velger arbeidsmapper, agentverktøy og hvilke tjene
 System(agentbox, "Agentbox", "Kjører isolerte agentmiljøer med avgrenset filtilgang og kontrollert utgående trafikk.")
 System_Ext(workspace, "Vertens filsystem", "Arbeidsmapper som brukeren deler med ett eller flere agentmiljøer.")
 System_Ext(services, "Tjenester brukt av agentene", "Eksempelvis eksterne API-er, MCP-tjenester, modelltjenester, kodeverter og pakkeregistre.")
-System_Ext(supply, "Kilder for kjøremiljøer", "Leverer containerimages og avhengigheter når Agentbox henter eller bygger images.")
+System_Ext(supply, "Kilder for kjøremiljøer", "Leverer containerimages og avhengigheter når Agentbox bygger images.")
 
 Rel(developer, agentbox, "Konfigurerer tilgang og bruker agentmiljøene")
 Rel(developer, workspace, "Leser og redigerer egne arbeidsfiler")
 BiRel(agentbox, workspace, "Leser og endrer eksplisitt delte mapper")
 Rel(agentbox, services, "Agenttrafikk til eksplisitt tillatte destinasjoner")
-Rel(agentbox, supply, "Henter images og byggeavhengigheter ved klargjøring")
+Rel(agentbox, supply, "Henter baseimages og byggeavhengigheter ved klargjøring")
 SHOW_LEGEND()
 @enduml
 ```
@@ -69,6 +69,7 @@ System_Ext(registry, "Kilder for kjøremiljøer", "Images og byggeavhengigheter;
 
 System_Boundary(agentbox, "Agentbox") {
     Container(cli, "agentbox CLI", "Python; utviklerens UID", "Validerer miljøfiler og administrerer utviklerens ACL-endringer.")
+    ContainerDb(recipes, "Miljøfiler og imageoppskrifter", "Utviklerens filer", "~/.config/agentbox; YAML og lokale Dockerfiles med byggkontekst.")
     ContainerDb(journal, "ACL-journal", "Private JSON-filer", "/var/lib/agentbox-operator; eies av utvikleren.")
     Container(control, "Kontrollhjelper", "Python; agentbox UID", "Administrerer prosjekter, policy, miljøer og terminalsesjoner.")
     Container(uninstall, "Avinstallering", "scripts/uninstall.sh; Bash / Python; root", "Kjøres fra repoet. Rydder ACL-er og overfører prosjektfiler til utvikleren før installasjonen fjernes. ")
@@ -85,9 +86,10 @@ System_Boundary(agentbox, "Agentbox") {
 
 Rel(developer, cli, "Administrerer og åpner terminaler", "Lokale kommandoer")
 Rel(developer, projects, "Redigerer", "Editor / filsystem")
+Rel(cli, recipes, "Leser miljøfiler og Dockerfiles; lager imageoppskrifter", "Filsystem")
 Rel(cli, journal, "Registrerer og avstemmer ACL-endringer", "Filsystem")
 Rel(cli, projects, "Tildeler og tilbakekaller tilgang som fileier", "POSIX ACL")
-Rel(cli, control, "Sender operasjoner og eksplisitt refererte tokens", "Avgrenset sudo; JSON på stdin")
+Rel(cli, control, "Sender operasjoner og eksplisitt refererte tokens", "Avgrenset sudo; JSON og byggkontekst på stdin")
 Rel(developer, uninstall, "Kjører avinstallasjon eller forhåndsvisning fra repoet", "sudo scripts/uninstall.sh")
 Rel(uninstall, projects, "Overfører agentbox-eide filer og rydder ACL-er", "Avgrenset filsystemtilgang; ingen symlinkfølging")
 Rel(uninstall, state, "Leser registeret før filrydding og sletting", "Privat tilstand og operasjonslås")
@@ -99,7 +101,7 @@ Rel(control, docker, "Styrer containere; gir kun proxyen tokenmiljø", "Docker C
 Rel(watch, docker, "Stopper berørte containere", "Docker CLI; samme socket")
 Rel(docker, agent, "Oppretter og styrer livssyklus", "Docker runtime")
 Rel(docker, proxy, "Oppretter og styrer livssyklus", "Docker runtime")
-Rel(docker, registry, "Henter images og bygger", "Betrodd kontrolltrafikk")
+Rel(docker, registry, "Henter baseimages og bygger", "Betrodd kontrolltrafikk")
 Rel(agent, projects, "Leser og endrer valgte mapper", "Eksplisitte bind mounts; rw eller ro")
 Rel(agent, home, "Lagrer profil og innlogging", "Filsystem i containerlaget")
 Rel(agent, proxy, "Sender utgående forespørsler", "HTTP / CONNECT via lukket nettverk")

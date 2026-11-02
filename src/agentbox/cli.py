@@ -3,25 +3,30 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
-from . import completion, config, projects
+from . import completion, config, images, projects
 from .control import Control
 from .errors import AgentboxError
 from .settings import load_settings
 from .state import Store, atomic_json
 
 
-def rpc(request, stream=False):
-    completed = subprocess.run(
-        ["/usr/bin/sudo", "-H", "-u", "agentbox", "/usr/local/libexec/agentbox-control"],
-        input=json.dumps(request),
-        text=True,
-        capture_output=not stream,
-        check=False,
-    )
+def rpc(request, stream=False, context=None):
+    command = ["/usr/bin/sudo", "-H", "-u", "agentbox", "/usr/local/libexec/agentbox-control"]
+    options = {"text": True, "capture_output": not stream, "check": False}
+    if context is None:
+        completed = subprocess.run(command, input=json.dumps(request), **options)
+    else:
+        with tempfile.TemporaryFile() as source:
+            source.write((json.dumps(request) + "\n").encode())
+            images.archive(context, source)
+            source.seek(0)
+            completed = subprocess.run(command, stdin=source, **options)
     if stream:
         return completed.returncode
     if completed.returncode:
@@ -145,14 +150,21 @@ def parser():
     commands = cli.add_subparsers(dest="action", required=True)
     commands.add_parser("doctor")
     commands.add_parser("status")
-    commands.add_parser("build-images")
+    image = commands.add_parser("image", help="Manage local Dockerfile recipes and builds")
+    image_ops = image.add_subparsers(dest="operation", required=True)
+    image_ops.add_parser("ls")
+    new = image_ops.add_parser("new")
+    new.add_argument("name", type=config.name)
+    new.add_argument("--template", choices=["base", "codex"], default="base")
+    for operation in ("build", "inspect", "rm"):
+        image_ops.add_parser(operation).add_argument("name", type=config.name)
     complete = commands.add_parser("completion", help="Print shell completion setup")
     complete.add_argument("shell", choices=["bash"], nargs="?", default="bash")
     complete.add_argument(
-        "--names", choices=["environments", "projects", "configs"], help=argparse.SUPPRESS
+        "--names",
+        choices=["environments", "projects", "configs", "images"],
+        help=argparse.SUPPRESS,
     )
-    pull = commands.add_parser("pull-image")
-    pull.add_argument("image")
     validate = commands.add_parser("validate")
     validate.add_argument("config", help="YAML path or name from the user environment directory")
     project = commands.add_parser("project")
@@ -168,6 +180,7 @@ def parser():
     start.add_argument("config", help="YAML path or name from ~/.config/agentbox/environments")
     proxy = commands.add_parser("proxy", help="Apply proxy rules or stop API access")
     proxy_ops = proxy.add_subparsers(dest="operation", required=True)
+    proxy_ops.add_parser("build", help="Build the internal proxy component")
     apply = proxy_ops.add_parser("apply")
     apply.add_argument("config")
     for operation in ("stop", "rotate-ca"):
@@ -190,7 +203,7 @@ def main():
         args = parser().parse_args()
         if args.action == "completion":
             if args.names:
-                if args.names != "configs":
+                if args.names not in ("configs", "images"):
                     settings = load_settings()
                     if os.getuid() != settings["operator_uid"]:
                         return
@@ -204,7 +217,22 @@ def main():
         settings = load_settings()
         if os.getuid() != settings["operator_uid"]:
             raise AgentboxError("Run abx as the configured developer")
-        if args.action == "project":
+        if args.action == "image":
+            if args.operation == "new":
+                result = images.new(args.name, args.template)
+            elif args.operation == "ls":
+                names = images.names()
+                result = rpc({"action": "image", "operation": "ls", "names": names})
+                for name in names:
+                    result[name]["path"] = str(images.recipe(name))
+            else:
+                path = images.recipe(args.name)
+                request = {"action": "image", "operation": args.operation, "name": args.name}
+                result = (
+                    rpc(request, context=args.name) if args.operation == "build" else rpc(request)
+                )
+                result["path"] = str(path)
+        elif args.action == "project":
             if args.operation == "add":
                 result = project_update(settings, args.name, args.path)
             elif args.operation == "revoke":
@@ -227,6 +255,8 @@ def main():
                         )
         elif args.action == "start" or (args.action == "proxy" and args.operation == "apply"):
             environment = config.load(args.config)
+            if args.action == "start":
+                images.recipe(environment.image)
             payload = environment.to_dict()
             payload["network"] = {"allow": payload.pop("allow")}
             # Missing/invalid values are deliberately validated in the helper after apply stops
@@ -241,7 +271,10 @@ def main():
                 request["operation"] = "apply"
             result = rpc(request)
         elif args.action == "proxy":
-            result = rpc({"action": "proxy", "operation": args.operation, "name": args.name})
+            request = {"action": "proxy", "operation": args.operation}
+            if hasattr(args, "name"):
+                request["name"] = args.name
+            result = rpc(request)
         elif args.action in ("shell", "exec"):
             command = getattr(args, "command", [])
             if command and command[0] == "--":
@@ -270,8 +303,6 @@ def main():
                 request["name"] = args.name
             if hasattr(args, "proxy"):
                 request["proxy"] = args.proxy
-            if hasattr(args, "image"):
-                request["image"] = args.image
             result = rpc(request)
         print(result if isinstance(result, str) else json.dumps(result, indent=2))
     except (AgentboxError, OSError, ValueError, subprocess.SubprocessError) as exc:
@@ -288,13 +319,26 @@ def control_main():
             raise AgentboxError(
                 "Control entry point requires the configured sudo caller and service user"
             )
-        raw = sys.stdin.read(1048577)
+        # Read the header and tar through the same buffer to preserve prefetched bytes.
+        source = getattr(sys.stdin, "buffer", sys.stdin)
+        raw = source.readline(1048577)
         if len(raw) > 1048576:
             raise AgentboxError("Control request too large")
         request = json.loads(raw)
         if not isinstance(request, dict) or not isinstance(request.get("action"), str):
             raise AgentboxError("Expected a structured control operation")
-        result = Control(settings).dispatch(request)
+        if request.get("action") == "image" and request.get("operation") == "build":
+            with tempfile.TemporaryFile() as context:
+                shutil.copyfileobj(source, context)
+                context.seek(0)
+                result = Control(settings).dispatch(request, context=context)
+        else:
+            rest = source.read(1048577 - len(raw))
+            if len(raw) + len(rest) > 1048576:
+                raise AgentboxError("Control request too large")
+            if rest.strip():
+                raise AgentboxError("Unexpected trailing control input")
+            result = Control(settings).dispatch(request)
         if request.get("action") == "exec":
             raise SystemExit(result)
         print(json.dumps(result))

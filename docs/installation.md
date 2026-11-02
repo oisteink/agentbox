@@ -1,26 +1,12 @@
 # Installasjon av Agentbox
 
-Denne utviklingsgrenen erstatter Squid med Go-proxy. `abx build-images`
-kompilerer og tester Go-proxyen i et eget byggetrinn; Go trenger ikke installeres
+Installer fra repoet på Linux-verten som skal kjøre agentmiljøene.
+Daglig bruk skjer som utvikleren, uten `sudo abx`.
+
+Agentimages bygges fra egne Dockerfiles under `~/.config/agentbox/images/`.
+Proxyen er en intern komponent og bygges separat med `abx proxy build`.
+Go-proxyen kompileres og testes i et byggetrinn; Go trenger ikke installeres
 på verten. Tokens bygges ikke inn i imaget.
-
-Eksisterende Squid-miljøer og eldre Go-miljøer uten genererte plassholdere
-må stoppes og gjenskapes eksplisitt før de kan bruke den nye proxyen. Oppgradering fjerner dem ikke automatisk. `remove` sletter
-containerens hjem og Codex-innlogging, men beholder prosjektfilene. Ta vare på
-nødvendig klientoppsett privat før gjenskaping. Nye Go-miljøer kan endre
-nettverk/tokenregler for eksisterende variabler med `proxy apply` uten å miste
-hjem eller innlogging. Nye klientvariabelnavn og tom/ikke-tom overgang krever gjenskaping.
-Proxyimaget må bygges på nytt for JSON-policyversjon 3 (alias/tomme referanser). Hostvariabelen
-skal inneholde rå nøkkel uten `Bearer `; klienten legger til prefikset.
-
-Kjør installasjonen fra repoet på Linux-verten som skal kjøre agentmiljøene.
-Daglig bruk skjer deretter som utvikleren, uten `sudo abx`.
-
-Kjør `sudo scripts/install.sh` på nytt for å bytte en eksisterende installasjon
-fra `agentbox` til `abx`. Installeren fjerner gammel kommando og completion.
-Oppdater egne skript til `abx` og åpne et nytt skall, eller kjør `hash -r` og
-`source <(abx completion bash)`. Tjenestebruker og konfigurasjonsstier heter
-fortsatt `agentbox`.
 
 ## Forutsetninger og installasjon
 
@@ -35,7 +21,9 @@ før prosjektets installer kjøres. Andre nødvendige pakker på Debian/Ubuntu:
 sudo apt-get install acl uidmap dbus-user-session slirp4netns python3-venv sudo iproute2
 sudo scripts/install.sh
 abx doctor
-abx build-images
+abx proxy build
+abx image new codex --template codex
+abx image build codex
 ```
 
 Utviklerbrukeren hentes fra `SUDO_USER`, altså brukeren som kjører `sudo`.
@@ -73,8 +61,9 @@ Installeren bevarer adressevalget ved reinstallasjon.
 ## Kontroller installasjonen
 
 `abx doctor` skal rapportere `rootless: true`, riktig daemon-ID og
-`cgroup: systemd`. `abx build-images` skal gi image-navnene
-`agentbox-dev:local` og `agentbox-proxy:local`. `abx status` kan vise `{}`
+`cgroup: systemd`. `abx proxy build` bygger komponenten
+`agentbox-proxy:local`. `abx image ls` viser den lokale Codex-oppskriften
+med status `built` etter `abx image build codex`. `abx status` kan vise `{}`
 før første miljø er opprettet.
 
 Fortsett med [prosjektregistrering og første miljø](usage.md).

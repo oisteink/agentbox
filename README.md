@@ -27,7 +27,9 @@ Kjør deretter fra repoet:
 ```sh
 sudo scripts/install.sh
 abx doctor
-abx build-images
+abx proxy build
+abx image new codex --template codex
+abx image build codex
 source <(abx completion bash)
 ```
 
@@ -47,7 +49,7 @@ mappene agenten kan redigere:
 
 ```yaml
 name: example-codex
-image: agentbox-dev:local
+image: codex
 workdir: /home/agent/src/example
 command: ["bash"]
 mounts:

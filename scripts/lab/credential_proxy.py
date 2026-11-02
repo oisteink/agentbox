@@ -217,7 +217,7 @@ def main():
         for index, name in enumerate(names):
             data = {
                 "name": name,
-                "image": "agentbox-dev:local",
+                "image": "codex",
                 "command": ["bash"],
                 "mounts": [{"project": registered, "target": "/workspace"}],
                 "network": {
@@ -272,7 +272,7 @@ def main():
                     state["resources"]["outside"],
                     "--mount",
                     f"type=bind,src={base}/cert.pem,dst=/fixture.pem,readonly",
-                    "agentbox-dev:lab",
+                    "agentbox-image-smoke:local",
                     "curl",
                     "-v",
                     "--max-time",

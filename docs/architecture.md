@@ -57,10 +57,16 @@ IPv4-adresse per navn. Proxyen har ingen ekstern DNS-fallback.
 En systemd-adressevakt stopper miljøer ved endrede vertsadresser;
 vakten er asynkron, og nettverksadministrasjon på verten er betrodd.
 
-Codex-imaget og det separate testimaget bruker samme isolering. Andre
-kompatible images velges i YAML. Images må støtte UID 0, `/bin/sh` og
+Agentimages bygges fra lokale Dockerfiles under `~/.config/agentbox/images/`
+og velges med oppskriftsnavn i YAML. Codex-malen og det separate testimaget
+bruker samme isolering. Images må støtte UID 0, `/bin/sh` og
 `sleep infinity`; deklarerte `VOLUME`-mounts avvises.
-Imagebygging og imagehenting skjer på den betrodde kontrollsiden.
+Byggkonteksten overføres fra CLI-en som tar etter en JSON-header og pakkes ut
+i en privat midlertidig katalog med datafilter. Docker bygger katalogen og
+behandler .dockerignore. Bygging og henting av baseimages skjer på den
+betrodde kontrollsiden. Proxyen bygges separat med `proxy build`.
+Bygg og fjerning sperres ved containere med samme eksakte image-ID,
+også stoppede. Se [imagevalgene](decisions.md#lokale-imageoppskrifter).
 
 ## Livssyklus og sikkerhetsgrense
 

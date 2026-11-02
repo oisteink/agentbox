@@ -8,7 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import config, policy, projects
+from . import config, images, policy, projects
 from .errors import AgentboxError
 from .runtime import Docker, local_addresses
 from .state import Store, atomic_json
@@ -383,6 +383,8 @@ class Control:
         environment = config.parse(payload)
         name = environment.name
         normalized = json.loads(json.dumps(environment.to_dict()))
+        image = images.managed(self.docker, data["installation"], environment.image)
+        images.profile(image)
         previous = data["environments"].get(name)
         if previous:
             if previous.get("proxy_format") != 2:
@@ -419,13 +421,6 @@ class Control:
             self.save(data)
             return previous
         mounts = self.check_mounts(data, environment)
-        image = self.docker.inspect("image", environment.image)
-        if image.get("Architecture") not in ("amd64", "arm64"):
-            raise AgentboxError("Only 64-bit amd64 and arm64 image profiles are supported")
-        if image["Config"].get("Volumes"):
-            raise AgentboxError(
-                "Image declares implicit VOLUME mounts; use an explicit image profile"
-            )
         # Resolve on the trusted host and pin one verified address per name. No
         # proxy DNS fallback means a later DNS rebind cannot change the destination.
         addresses = local_addresses()
@@ -558,7 +553,7 @@ class Control:
                 self.save(data)
             raise
 
-    def dispatch(self, request):
+    def dispatch(self, request, context=None):
         action = request["action"]
         with self.store.locked() as data:
             info = self.verified(data)
@@ -573,10 +568,43 @@ class Control:
                 }
             if action == "project":
                 return self.project(data, request["operation"], request)
+            if action == "image":
+                operation = request.get("operation")
+                if operation == "ls":
+                    names = request["names"]
+                    if not isinstance(names, list):
+                        raise AgentboxError("Expected local image names")
+                    return {
+                        config.name(name): images.inspect(self.docker, data["installation"], name)
+                        for name in names
+                    }
+                name = config.name(request["name"])
+                if operation == "build":
+                    return images.build(self.docker, data["installation"], name, context)
+                if operation == "inspect":
+                    return images.inspect(self.docker, data["installation"], name)
+                if operation == "rm":
+                    details = images.managed(self.docker, data["installation"], name)
+                    images.require_idle(self.docker, details)
+                    self.docker.mutate("image", "rm", images.tag(name))
+                    return {"name": name, "status": "removed", "recipe_retained": True}
+                raise AgentboxError("Unknown image operation")
             if action == "start":
                 return self.start(data, request["config"], request.get("tokens", {}))
             if action == "proxy":
                 operation = request.get("operation")
+                if operation == "build":
+                    images.require_idle(
+                        self.docker, images.lookup(self.docker, self.settings["proxy_image"])
+                    )
+                    self.docker.mutate(
+                        "build",
+                        "--tag",
+                        self.settings["proxy_image"],
+                        "/opt/agentbox/proxy",
+                        timeout=900,
+                    )
+                    return {"image": self.settings["proxy_image"]}
                 if operation == "apply":
                     return self.apply_proxy(
                         data, config.parse(request["config"]), request.get("tokens", {})
@@ -618,21 +646,6 @@ class Control:
                         snapshot["status"] = "degraded"
                     result[name] = snapshot
                 return result
-            if action == "build-images":
-                for image, directory in (
-                    ("agentbox-dev:local", "images/dev"),
-                    (self.settings["proxy_image"], "proxy"),
-                ):
-                    self.docker.mutate(
-                        "build", "--tag", image, str(Path("/opt/agentbox") / directory), timeout=900
-                    )
-                return {"images": ["agentbox-dev:local", self.settings["proxy_image"]]}
-            if action == "pull-image":
-                image = config.text(request["image"])
-                if not config.IMAGE.fullmatch(image):
-                    raise AgentboxError("Invalid image reference")
-                self.docker.mutate("image", "pull", image, timeout=900)
-                return {"image": image}
             if action in ("stop", "remove"):
                 name = config.name(request["name"])
                 getattr(self, action)(data, name)

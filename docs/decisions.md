@@ -15,6 +15,43 @@ under `/opt/agentbox`; hjelperen bruker isolert Python-oppstart og fast socket.
 Utviklerens ACL-journal ligger separat i `/var/lib/agentbox-operator` med modus
 0700. Agentmiljøene får ingen av disse katalogene montert inn.
 
+## Lokale imageoppskrifter
+
+Agentimages har lokale Dockerfiles under utviklerens `~/.config/agentbox/images/`.
+Katalogen er byggkontekst; vanlige FROM, COPY og hjelpeskript brukes uten et
+eget byggformat eller imageregister. Malene følger Python-pakken og kopieres
+bare ved eksplisitt `image new`. Oppskrifter eies og redigeres av utvikleren.
+Proxyimaget er en intern komponent med separat `proxy build`.
+
+CLI-en pakker konteksten som tar uten å følge lenker og sender den etter en
+JSON-header. Kontrollhjelperen autentiserer først og mellomlagrer i private,
+midlertidige filer. Ingen generell tilgang til utviklerens hjem eller nye
+prosjekt-ACL-er trengs. Utpakking bruker Pythons datafilter; lenker ut av
+konteksten og spesialfiler avvises. Docker bygger den midlertidige katalogen,
+slik at Docker selv behandler .dockerignore. Direkte tar til BuildKit ble
+forkastet fordi upload-context hopper over ignore-behandlingen. Hele
+konteksten overføres til kontrollsiden før builderen filtrerer filer.
+
+En fast tag avledes fra navnet, `agentbox-image-NAVN:local`. Docker-labels
+identifiserer installasjon og oppskrift; et tilfeldig image med samme tag
+aksepteres ikke ved start. Oppskriftskatalogene gir oversikten over lokale
+oppskrifter; Docker gir bygde ID-er og brukere. Ingen ekstra tilstandsfil.
+
+Bygg og fjerning undersøker alle containere og sammenligner eksakt image-ID.
+Dockers ancestor-filter inkluderer også avledede images og ville sperret
+for mye. Stoppede containere regnes som brukere. Kontrollsidens eksisterende
+lås serialiserer sjekken og mutasjonen med start/remove. Dette forutsetter
+at Docker-instansen administreres gjennom kontrollhjelperen.
+
+Containerlaget følger vanlig Docker-livssyklus. Fjern miljøene før ombygging,
+og behold nødvendige arbeidsfiler i mounts. Ingen automatisk konvertering,
+profilflytting eller bakoverkompatibilitet innføres.
+
+Kildegrunnlag: [Docker-byggkontekst](https://docs.docker.com/build/concepts/context/),
+[ancestor-filter](https://docs.docker.com/reference/cli/docker/container/ls/),
+[Buildx-ruting](https://github.com/docker/buildx/blob/master/build/opt.go) og
+[BuildKit-kontekst](https://github.com/moby/buildkit/blob/master/frontend/dockerui/config.go).
+
 ## Prosjektroten som grense for tilbakekalling
 
 Prosjektroten må eies av utvikleren. Registrering gir `agentbox` tilgang til

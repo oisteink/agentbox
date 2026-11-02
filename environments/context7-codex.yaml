@@ -4,7 +4,7 @@
 # Agent: CONTEXT7_TOKEN gets a generated placeholder, or is empty if the source is missing/empty.
 # Codex MCP: --bearer-token-env-var CONTEXT7_TOKEN
 name: context7-codex
-image: agentbox-dev:local
+image: codex
 workdir: /workspace
 command: ["codex"]
 mounts:

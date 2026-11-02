@@ -4,7 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from . import config
+from . import config, images
 from .errors import AgentboxError
 
 
@@ -13,6 +13,11 @@ def bash_script():
 
 
 def names(kind):
+    if kind == "images":
+        try:
+            return images.names()
+        except OSError:
+            return []
     if kind == "configs":
         try:
             return sorted(

@@ -1,7 +1,7 @@
 # Offline Bash environment. Register project "example" or change the mount below.
 # For Codex with API token placeholders and an alias, see context7-codex.yaml.
 name: example-dev
-image: agentbox-dev:local
+image: codex
 workdir: /home/agent/src/example
 command: ["bash"]
 mounts:

@@ -70,7 +70,7 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
             yaml.safe_dump(
                 {
                     "name": env,
-                    "image": "agentbox-dev:lab",
+                    "image": "smoke",
                     "command": ["bash"],
                     "mounts": [{"project": active_name, "target": "/workspace"}],
                     "network": {"allow": []},

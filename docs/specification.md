@@ -107,7 +107,7 @@ Prosjekt- og miljønavn bruker små bokstaver, tall og bindestrek, maksimalt 48 
 | Felt | Kontrakt og standardverdi |
 | --- | --- |
 | `name` | Påkrevd unikt miljønavn; leses fra YAML-filen ved start |
-| `image` | Påkrevd image; `agentbox-dev:local` inneholder Codex 0.166.0 |
+| `image` | Påkrevd lokalt oppskriftsnavn, for eksempel `codex` eller `js` |
 | `mounts` | 1 til 32 registrerte prosjekter, hvert med `project`, absolutt `target` og `mode` (`rw` som standard eller `ro`) |
 | `workdir` | Sti inne i et prosjektmount; standard er første mountmål. Må finnes ved start |
 | `command` | Ikke-tom argumentliste; standard `["bash"]`. Kjøres av `shell` |
@@ -125,6 +125,37 @@ Images må støtte amd64 eller arm64, UID 0, `/bin/sh` og `sleep infinity`.
 Deklarerte `VOLUME`-mounts avvises. Det valgte imagets entrypoint erstattes
 av miljøets oppholdsprosess; valgt arbeidskommando kjøres separat.
 Imagevalg endrer ikke ACL-, nettverks- eller isoleringsmekanismene.
+
+### Lokale imageoppskrifter
+
+Alle agentimages har en lokal Dockerfile under `~/.config/agentbox/images/`
+(eller `$XDG_CONFIG_HOME/agentbox/images/`). `image new NAVN` lager en ny
+katalog med Dockerfile og .dockerignore uten overskriving. Standardmalen er
+et generelt Linux-miljø; `--template codex` inkluderer Codex 0.166.0.
+Malene følger programmet; det finnes ingen separat standardkatalog i /usr/share.
+
+`image ls` lister lokale oppskrifter, også ubygde, med status og image-ID.
+`image inspect NAVN` viser sti, tag, ID og containere. `image build NAVN`
+bygger katalogen i Agentbox sin rootless-instans, med vanlig COPY og
+.dockerignore behandlet av Docker. Konteksten sendes uten generell ACL-tilgang
+til utviklerens hjem; lenker derefereres ikke. Kontrollsiden pakker ut i en
+privat midlertidig katalog med datafilter; lenker ut av konteksten og
+spesialfiler avvises. Katalog og overført arkiv slettes etter byggingen.
+Hele konteksten overføres til kontrollsiden, også filer builderen ignorerer.
+
+Start krever både lokal oppskrift og et image bygget av Agentbox for samme
+installasjon og navn. Dette gjelder også gjenopptak. Ingen automatisk bygg
+eller pull ved start. Registryimages kan brukes i Dockerfilens FROM.
+Direkte imagereferanser og kommandoene build-images/pull-image er fjernet.
+
+Bygg og `image rm NAVN` avvises når en eksisterende container bruker eksakt
+samme image-ID, inkludert stoppede containere. Avledede images sperrer ikke.
+Operasjonene deler kontrollsidens lås med start og remove. `image rm`
+fjerner bygget tag, men beholder lokal oppskrift. Ingen automatisk migrasjon
+eller bevaring av containerdata ved remove/gjenskaping.
+
+`proxy build` bygger bare den interne proxykomponenten fra installert kilde,
+med tilsvarende brukssperre. Proxyen inngår ikke i image ls.
 
 Agentens UID 0 mappes til tjenestebrukeren på verten. Den kjører med droppede
 capabilities, `no-new-privileges`, ressursgrenser og en revisjonslåst Moby-
@@ -164,7 +195,7 @@ Det må ha minst to ledige `/28`-subnett; vertsruter og eksisterende nettverk
 på Agentbox-daemonen utelukkes. Standardområdet er `172.28.0.0/16`.
 Proxyens faste ressursgrenser er 0,5 CPU, 256 MiB og 128 prosesser.
 
-Imagebygging og imagehenting skjer på den betrodde kontrollsiden utenfor
+Imagebygging og henting av baseimages skjer på den betrodde kontrollsiden utenfor
 agentens nettverkspolicy. Agenten har ingen kontrollkanal for å bestille slike
 operasjoner. Innloggingsdomener, API-er, MCP-tjenester og pakkeregistre må
 velges eksplisitt for trafikk fra miljøet.

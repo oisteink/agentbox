@@ -11,6 +11,7 @@ Se [installasjon](installation.md) hvis `doctor` ikke fungerer.
 | Prosjekt | `example` | Registrert vertsmappe, eksempelvis `~/src/example` |
 | Miljø | `example-codex` | Agentcontainer, proxy og nettverk med egen livssyklus |
 | Miljøfil | `~/.config/agentbox/environments/example-codex.yaml` | Valgt image, prosjektmonteringer og nettverkspolicy |
+| Imageoppskrift | `~/.config/agentbox/images/codex/` | Redigerbar Dockerfile og byggkontekst |
 
 Ett miljø kan montere flere registrerte prosjekter. Samme prosjekt kan brukes
 i flere miljøer, men alle med skrivetilgang arbeider på de samme filene.
@@ -45,7 +46,7 @@ Bruk ikke en konfigurasjon agenten kan endre til å styre denne tilgangen.
 
 ```yaml
 name: example-codex
-image: agentbox-dev:local
+image: codex
 workdir: /home/agent/src/example
 command: ["codex"]
 mounts:
@@ -303,7 +304,7 @@ innholdsfiltrering; utdata kan inneholde hemmeligheter.
 
 Legg nødvendige eksakte navn og porter til under `network.allow`. Bare HTTP
 på 80 og HTTPS via CONNECT på 443 støttes. Underdomener tillates ikke
-automatisk. Imagebygging og imagehenting skjer på kontrollsiden og bruker
+automatisk. Imagebygging og henting av baseimages skjer på kontrollsiden og bruker
 ikke denne listen.
 
 Endret nettverkspolicy eller tokenregel aktiveres med `proxy apply`.
@@ -334,10 +335,55 @@ Registrer neste prosjekt, lag en egen miljøfil og start miljøet med et nytt
 navn. Det eksisterende miljøet kan fortsette å kjøre. For et annet verktøy
 mot samme prosjekt bruker du også et nytt miljønavn og velger image i YAML.
 
-Andre kompatible images kan hentes med `abx pull-image IMAGE`. De må
-være amd64 eller arm64, støtte UID 0 og ha `/bin/sh` og `sleep infinity`.
-Images med deklarerte `VOLUME`-mounts avvises. Alle images bruker samme
-nettverks- og syscallbegrensninger; se [arkitekturvalg](decisions.md).
+Alle agentimages bygges fra lokale oppskrifter. Opprett for eksempel et
+JavaScript-miljø:
+
+```sh
+abx image new js
+# Rediger ~/.config/agentbox/images/js/Dockerfile og legg til eventuelle filer.
+abx image build js
+abx image ls
+abx image inspect js
+```
+
+`new` lager Dockerfile og `.dockerignore` uten å overskrive eksisterende
+kataloger. Standardmalen har Bash, CA-sertifikater, curl, Git, Python og
+nettverksverktøy. Bytt eller utvid Dockerfilen med verktøyene du trenger;
+`FROM node:22-bookworm-slim` kan for eksempel brukes som utgangspunkt.
+Codex-malen velges med `abx image new codex --template codex` og inkluderer
+Codex CLI 0.166.0 og launcheren med `--no-daemon`.
+
+Oppskriftene ligger under `~/.config/agentbox/images/`, eller
+`$XDG_CONFIG_HOME/agentbox/images/`. Hele katalogen er byggkontekst, slik at
+vanlig `COPY` og hjelpeskript fungerer. Symbolske lenker pakkes som lenker;
+lenker ut av konteksten og spesialfiler avvises. Hele konteksten overføres
+til en privat midlertidig katalog på kontrollsiden, mens Docker behandler
+`.dockerignore` under byggingen. Hold oppskrifter og kontekst utenfor agentens
+skrivbare mounts. Byggingen bruker kontrollsidens nettverkstilgang.
+
+Velg `image: js` i miljøfilen. `ls` viser oppskrifter med status `unbuilt`
+eller `built`, tag, ID og containere. `inspect` viser også oppskriftsstien.
+Status forteller om et bygget image finnes; den sporer ikke endringer i
+Dockerfilen. Bygging skjer eksplisitt, uten automatisk pull ved miljøstart.
+Baseimages i `FROM` kan hentes fra registry som ved vanlig Docker-bygging.
+
+Bygg og `abx image rm js` avvises så lenge en eksisterende container bruker
+samme image-ID, også når containeren er stoppet. Fjern de berørte miljøene
+med `abx remove MILJØ` før ombygging. `remove` sletter containerlaget,
+inkludert hjem og innlogging; behold nødvendige arbeidsfiler i prosjektmounts.
+`image rm` fjerner det bygde imagets tag og beholder oppskriften for senere bygg.
+
+Images må være amd64 eller arm64, støtte UID 0 og ha `/bin/sh` og
+`sleep infinity`, samt støtte [CA-oppsettet](#api-tokens-i-proxyen).
+Deklarerte `VOLUME`-mounts avvises. Alle images bruker samme nettverks- og
+syscallbegrensninger; se [arkitekturvalg](decisions.md#lokale-imageoppskrifter).
+
+Proxyimaget er en intern komponent. `abx proxy build` bygger det fra installert
+kilde. Det vises ikke i `image ls`, og har ingen brukeroppskrift. Bygging
+avvises hvis proxyimaget har eksisterende containere. `abx proxy stop MILJØ`
+fjerner miljøets proxycontainer, men beholder agenten og hjemmet; neste start
+eller `proxy apply` oppretter proxyen på nytt. Stopp agentmiljøene før en
+komponentoppgradering.
 
 ## Reparer eller tilbakekall prosjekttilgang
 
@@ -368,7 +414,8 @@ source <(abx completion bash)
 ```
 
 Installeren legger inn completion for nye skall med `bash-completion` aktivert.
-Tab foreslår kommandoer, flagg, eksisterende miljønavn og registrerte prosjekter.
+Tab foreslår kommandoer, flagg, eksisterende miljønavn, registrerte prosjekter
+og lokale imageoppskrifter etter `image build`, `inspect` og `rm`.
 Etter `start` og `validate` foreslås lagrede kortnavn og lokale filstier.
 Filstier fullføres også etter `--key-file`, og kataloger etter `--path`.
 Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.

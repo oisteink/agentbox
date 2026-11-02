@@ -8,7 +8,7 @@ from agentbox import cli
 def test_start_reads_environment_name_from_file(monkeypatch, tmp_path, capsys):
     path = tmp_path / "arbitrary filename.yaml"
     path.write_text(
-        "name: example-codex\nimage: agentbox-dev:local\n"
+        "name: example-codex\nimage: codex\n"
         "mounts:\n  - project: example\n    target: /workspace\n"
         "network:\n  allow:\n    - host: api.example.com\n      port: 443\n"
     )
@@ -19,6 +19,7 @@ def test_start_reads_environment_name_from_file(monkeypatch, tmp_path, capsys):
         return {"status": "running"}
 
     monkeypatch.setattr(cli, "load_settings", lambda: {"operator_uid": os.getuid()})
+    monkeypatch.setattr(cli.images, "recipe", lambda name: tmp_path)
     monkeypatch.setattr(cli, "rpc", rpc)
     monkeypatch.setattr("sys.argv", ["abx", "start", str(path)])
     cli.main()
@@ -45,7 +46,7 @@ def test_alias_only_reads_host_source(monkeypatch, tmp_path, capsys):
 
     data = {
         "name": "alias-test",
-        "image": "agentbox-dev:local",
+        "image": "codex",
         "mounts": [{"project": "test", "target": "/workspace"}],
         "network": {"allow": [{"host": "api.example.com", "port": 443}]},
         "credentials": [
@@ -58,6 +59,7 @@ def test_alias_only_reads_host_source(monkeypatch, tmp_path, capsys):
         ],
     }
     monkeypatch.setattr(cli, "load_settings", lambda: {"operator_uid": os.getuid()})
+    monkeypatch.setattr(cli.images, "recipe", lambda name: tmp_path)
     monkeypatch.setattr(cli.config, "load", lambda path: parse(data))
     monkeypatch.setenv("hf_token", "wrong-client-value")
     monkeypatch.setenv("hugging_face_token", "synthetic-source")

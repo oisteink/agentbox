@@ -29,7 +29,13 @@ PY
 "$lab_python" -I -m pip --isolated install --disable-pip-version-check \
   --no-deps --require-hashes -r "$results_dir/requirements.txt"
 sudo bash scripts/install.sh --operator developer
-abx build-images
+abx proxy build
+recipe_dir=${XDG_CONFIG_HOME:-$HOME/.config}/agentbox/images/codex
+if [[ ! -e "$recipe_dir" ]]; then
+  abx image new codex --template codex
+fi
+cp -- src/agentbox/templates/codex/Dockerfile src/agentbox/templates/codex/codex "$recipe_dir/"
+abx image build codex
 bash scripts/lab/build-images.sh
 "$lab_python" - <<'PY' > "$results_dir/platform.json"
 import hashlib
@@ -43,7 +49,6 @@ import pytest
 installed = {}
 for source, destination in (
     (Path('src/agentbox'), Path('/opt/agentbox/lib/agentbox')),
-    (Path('images'), Path('/opt/agentbox/images')),
     (Path('proxy'), Path('/opt/agentbox/proxy')),
 ):
     expected = {p.relative_to(source) for p in source.rglob('*') if p.is_file()
@@ -67,7 +72,7 @@ images = subprocess.check_output([
     'sudo', '-u', 'agentbox', 'env', 'HOME=/var/lib/agentbox',
     f'XDG_RUNTIME_DIR=/run/user/{uid}', 'docker', '--host', f'unix:///run/user/{uid}/docker.sock',
     'image', 'inspect', '--format', '{{.RepoTags}} {{.Id}}',
-    'agentbox-dev:local', 'agentbox-dev:lab', 'agentbox-proxy:local', 'agentbox-proxy:lab',
+    'agentbox-image-codex:local', 'agentbox-image-smoke:local', 'agentbox-proxy:local',
 ], text=True)
 print(json.dumps({
     'platform': platform.platform(), 'os': platform.freedesktop_os_release(),

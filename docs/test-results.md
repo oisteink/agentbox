@@ -5,6 +5,39 @@ Sist verifisert 2. november 2026 på `qa/test-review`, fra `main` ved `0b99e43`.
 Resultatene
 nedenfor gjelder observerte prøver, ikke en garanti for alle feiltilstander.
 
+## Lokale imageoppskrifter, 2. november 2026
+
+På `feature/local-images` bestod 172 Python-enhetstester med Python 3.13 og
+pytest 9.0.3. Ruff lint/format, Bash-syntaks og `git diff --check` bestod.
+`scripts/check.sh` bestod også Go race/vet, govulncheck og gofmt; etter
+rettelsen av byggkonteksten ble Python-, Ruff- og Bash-kontrollene kjørt igjen.
+Go-koden er uendret. Image- og proxyhjelpen viser den nye kommandostrukturen.
+C1/C2 ble rendret til SVG og PNG og bildene kontrollert visuelt.
+Wheel-bygg bestod og inkluderer begge Dockerfile-malene og Codex-launcheren.
+Alle 13 installerte scenarioer ble samlet inn med `pytest --collect-only`;
+dette kjører ikke scenarioene.
+
+Nye lokale prøver dekker oppskrift uten overskriving, malinnhold, binær
+tar-overføring over 1 MiB etter begrenset JSON-header, lenker uten
+dereferering, avslag på spesialfiler og usikker utpakking, eksakt image-ID,
+stoppede containere, labeltilhørighet og profilfeil. Docker-grensen erstattes
+i disse prøvene; de viser ikke faktisk installert Docker-oppførsel.
+
+Uavhengig spec-/plangjennomgang presiserte binær protokoll, eksisterende
+imagekontrakt og eksakt ID-sjekk. Kodegjennomgangen fant at BuildKit hopper
+over .dockerignore ved upload av tar-kontekst. Byggingen bruker derfor en
+privat utpakket katalog med datafilter og Dockers vanlige katalogbygg.
+Laboppsettet kopierer også aktuell Codex-mal før bygg for å unngå gamle
+lokale oppskrifter i gjentatte prøver.
+
+Installert lab er **ikke kjørt for denne endringen**: arbeidsmiljøet mangler
+både `.lab` og `/dev/kvm`. Nytt scenario
+`test_local_image_build_context_and_use_guard` prøver COPY/.dockerignore,
+bygg/fjerning under kjørende og stoppet bruk, proxyens brukssperre og
+ombygging etter remove med bevart prosjektfil. Det må kjøres sammen med
+resten av labpakken før merge. Tidligere labresultater nedenfor gjelder
+før den nye imagearbeidsflyten.
+
 ## Lokalt navnebytte til abx, 2. november 2026
 
 På utviklingsverten bestod `uv run --locked pytest -q` med 147 tester,
