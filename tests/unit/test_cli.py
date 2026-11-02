@@ -8,8 +8,8 @@ from agentbox import cli
 def test_start_reads_environment_name_from_file(monkeypatch, tmp_path, capsys):
     path = tmp_path / "arbitrary filename.yaml"
     path.write_text(
-        "name: pubnix-codex\nimage: agentbox-dev:local\n"
-        "mounts:\n  - project: pubnix\n    target: /workspace\n"
+        "name: example-codex\nimage: agentbox-dev:local\n"
+        "mounts:\n  - project: example\n    target: /workspace\n"
         "network:\n  allow:\n    - host: api.example.com\n      port: 443\n"
     )
     requests = []
@@ -24,8 +24,8 @@ def test_start_reads_environment_name_from_file(monkeypatch, tmp_path, capsys):
     cli.main()
     assert len(requests) == 1
     assert requests[0]["action"] == "start"
-    assert requests[0]["config"]["name"] == "pubnix-codex"
-    assert requests[0]["config"]["mounts"][0]["project"] == "pubnix"
+    assert requests[0]["config"]["name"] == "example-codex"
+    assert requests[0]["config"]["mounts"][0]["project"] == "example"
     assert requests[0]["config"]["network"]["allow"] == ({"host": "api.example.com", "port": 443},)
     assert "running" in capsys.readouterr().out
 

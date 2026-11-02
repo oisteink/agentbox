@@ -34,7 +34,7 @@ source <(agentbox completion bash)
 Registrer et prosjekt som allerede finnes:
 
 ```sh
-agentbox project add pubnix --path "$HOME/src/pubnix"
+agentbox project add example --path "$HOME/src/example"
 mkdir -p "$HOME/.config/agentbox/environments"
 ```
 
@@ -42,17 +42,17 @@ Et prosjekt er en vertsmappe med tildelt tilgang. Et miljø er en navngitt
 container med valgt image, mounts og nettverkspolicy. Registrering av en
 mappe oppretter ikke et miljø.
 
-Lagre dette som `~/.config/agentbox/environments/pubnix-codex.yaml`, utenfor
+Lagre dette som `~/.config/agentbox/environments/example-codex.yaml`, utenfor
 mappene agenten kan redigere:
 
 ```yaml
-name: pubnix-codex
+name: example-codex
 image: agentbox-dev:local
-workdir: /home/agent/src/pubnix
+workdir: /home/agent/src/example
 command: ["bash"]
 mounts:
-  - project: pubnix
-    target: /home/agent/src/pubnix
+  - project: example
+    target: /home/agent/src/example
     mode: rw
 network:
   allow: []
@@ -61,12 +61,12 @@ network:
 Start og åpne miljøet:
 
 ```sh
-agentbox validate pubnix-codex
-agentbox start pubnix-codex
-agentbox shell pubnix-codex
+agentbox validate example-codex
+agentbox start example-codex
+agentbox shell example-codex
 ```
 
-Kortnavnet finner `pubnix-codex.yaml` i `~/.config/agentbox/environments/`.
+Kortnavnet finner `example-codex.yaml` i `~/.config/agentbox/environments/`.
 Du kan også bruke en eksplisitt YAML-sti, som `agentbox start ./agentbox.yaml`.
 
 Dette åpner Bash i prosjektmappen med nettverket stengt. Endringer i montert
@@ -74,8 +74,8 @@ kode lagres direkte på verten. Miljønavnet beskriver planlagt Codex-bruk;
 start med Bash for å kontrollere filtilgang. Følg
 [bruksveiledningen](docs/usage.md) for nettverk, Codex-innlogging og daglig bruk.
 
-`exit` lukker skallet. `agentbox stop pubnix-codex` stopper miljøet og beholder
-hjem og innlogging. `agentbox remove pubnix-codex` sletter containerlaget,
+`exit` lukker skallet. `agentbox stop example-codex` stopper miljøet og beholder
+hjem og innlogging. `agentbox remove example-codex` sletter containerlaget,
 inkludert innlogging og verktøyoppsett. Monterte prosjektfiler beholdes.
 
 ## API-nøkler via proxyen
@@ -97,9 +97,9 @@ den til den ekte verdien i riktig header mot `mcp.context7.com:443`.
 En manglende eller tom kilde gir en tom klientvariabel ved ny opprettelse.
 
 Bruk [context7-codex.yaml](environments/context7-codex.yaml) som komplett
-miljøfil. Kopier den til `~/.config/agentbox/environments/` og endre
-`mounts[].project` fra `example` til ditt registrerte prosjekt, for eksempel
-`pubnix`. Nettverkstillatelsene og aliaset er allerede lagt inn.
+miljøfil. Kopier den til `~/.config/agentbox/environments/`. Filen bruker
+prosjektet `example` som ble registrert over; tilpass `mounts[].project` hvis
+du bruker et annet navn. Nettverkstillatelsene og aliaset er allerede lagt inn.
 
 ```sh
 # På verten: rå nøkkel uten Bearer-prefiks, lest uten shellhistorikk.

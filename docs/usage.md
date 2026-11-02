@@ -8,9 +8,9 @@ Se [installasjon](installation.md) hvis `doctor` ikke fungerer.
 
 | Begrep | Eksempel | Betydning |
 | --- | --- | --- |
-| Prosjekt | `pubnix` | Registrert vertsmappe, eksempelvis `~/src/pubnix` |
-| Miljø | `pubnix-codex` | Agentcontainer, proxy og nettverk med egen livssyklus |
-| Miljøfil | `~/.config/agentbox/environments/pubnix-codex.yaml` | Valgt image, prosjektmonteringer og nettverkspolicy |
+| Prosjekt | `example` | Registrert vertsmappe, eksempelvis `~/src/example` |
+| Miljø | `example-codex` | Agentcontainer, proxy og nettverk med egen livssyklus |
+| Miljøfil | `~/.config/agentbox/environments/example-codex.yaml` | Valgt image, prosjektmonteringer og nettverkspolicy |
 
 Ett miljø kan montere flere registrerte prosjekter. Samme prosjekt kan brukes
 i flere miljøer, men alle med skrivetilgang arbeider på de samme filene.
@@ -19,9 +19,9 @@ Miljønavnet og prosjektets navn trenger ikke være like.
 ## Registrer en prosjektmappe
 
 ```sh
-agentbox project add pubnix --path "$HOME/src/pubnix"
+agentbox project add example --path "$HOME/src/example"
 agentbox project list
-agentbox project check pubnix
+agentbox project check example
 ```
 
 Registrering gir tjenestebrukeren tilgang til mappen. Prosjektroten må eies
@@ -44,13 +44,13 @@ den navngitte vertsvariabelen og bruk mot de oppgitte destinasjonene.
 Bruk ikke en konfigurasjon agenten kan endre til å styre denne tilgangen.
 
 ```yaml
-name: pubnix-codex
+name: example-codex
 image: agentbox-dev:local
-workdir: /home/agent/src/pubnix
+workdir: /home/agent/src/example
 command: ["codex"]
 mounts:
-  - project: pubnix
-    target: /home/agent/src/pubnix
+  - project: example
+    target: /home/agent/src/example
     mode: rw
 network:
   allow:
@@ -78,9 +78,9 @@ Fra 1.0.1 tar `start` bare miljøfilen. Det separate
 navneargumentet og `--config` fra 1.0 er fjernet.
 
 ```sh
-agentbox validate pubnix-codex
-agentbox start pubnix-codex
-agentbox shell pubnix-codex
+agentbox validate example-codex
+agentbox start example-codex
+agentbox shell example-codex
 ```
 
 `start` og `validate` finner kortnavn uten filending under
@@ -90,7 +90,7 @@ Begge filendingene `.yaml` og `.yml` støttes. Finnes begge for samme kortnavn,
 må du velge en eksplisitt fil. Kortnavn leser ikke lokale filer uten filending.
 
 Eksplisitte stier fungerer fortsatt, eksempelvis `agentbox start ./agentbox.yaml`.
-Et filnavn med ending, som `agentbox start pubnix-codex.yaml`, bruker en lokal
+Et filnavn med ending, som `agentbox start example-codex.yaml`, bruker en lokal
 fil hvis den finnes, ellers samme filnavn i standardkatalogen.
 
 Miljønavnet hentes fra `name` i YAML-filen. Filnavnet velger du selv. `shell` kjører
@@ -98,15 +98,15 @@ Miljønavnet hentes fra `name` i YAML-filen. Filnavnet velger du selv. `shell` k
 separat uten å endre konfigurasjonen:
 
 ```sh
-agentbox exec pubnix-codex -- bash
+agentbox exec example-codex -- bash
 ```
 
 Avslutt programmet eller skallet for å lukke terminalsesjonen. Miljøet
-fortsetter å kjøre. Åpne det igjen med `agentbox shell pubnix-codex`.
+fortsetter å kjøre. Åpne det igjen med `agentbox shell example-codex`.
 
 ```sh
 agentbox status
-agentbox stop pubnix-codex
+agentbox stop example-codex
 ```
 
 Et stoppet miljø gjenopptas med samme `start`-kommando og miljøfil.
@@ -118,7 +118,7 @@ Logg inn i Codex inne i miljøet. For headless ChatGPT-innlogging beskriver
 [OpenAI Docs](https://learn.chatgpt.com/docs/auth) `codex login --device-auth`:
 
 ```sh
-agentbox exec pubnix-codex -- codex login --device-auth
+agentbox exec example-codex -- codex login --device-auth
 ```
 
 Tillat innloggingsmetodens nødvendige destinasjoner først. Bruk
@@ -130,7 +130,7 @@ API-nøkkel kan gis fra en privat fil på verten:
 
 ```sh
 chmod 600 /sti/til/privat-nokkelfil
-agentbox login-api-key pubnix-codex --key-file /sti/til/privat-nokkelfil
+agentbox login-api-key example-codex --key-file /sti/til/privat-nokkelfil
 ```
 
 Hjelperen sender nøkkelen til `codex login --with-api-key` via stdin.
@@ -192,7 +192,7 @@ nøkkelen (uten `Bearer `) i variabelen på verten, uten shellhistorikk:
 read -rsp 'Context7 API-nøkkel: ' context7_api_key
 printf '\n'
 export context7_api_key
-agentbox start pubnix-codex
+agentbox start example-codex
 ```
 
 Eksemplet leser `context7_api_key` på verten og setter `CONTEXT7_TOKEN` i
@@ -232,7 +232,7 @@ nøkkelen i et svar; proxyen skanner ikke svar etter hemmeligheter.
 Etter endring av variabel eller regler:
 
 ```sh
-agentbox proxy apply pubnix-codex
+agentbox proxy apply example-codex
 ```
 
 Apply kontrollerer først agentprofil, klientnavn, mounts og nettverk. Avslag
@@ -266,7 +266,7 @@ vertsvariabelen, og la klienten lage dette prefikset. Ingen automatisk migrasjon
 av innlogging eller tokenverdier utføres.
 
 ```sh
-agentbox proxy stop pubnix-codex
+agentbox proxy stop example-codex
 unset context7_api_key
 ```
 
@@ -292,8 +292,8 @@ en tillatt tjeneste kan også returnere hemmeligheter til agenten i et svar.
 Fra en annen terminal på verten:
 
 ```sh
-agentbox logs pubnix-codex
-agentbox logs pubnix-codex --proxy
+agentbox logs example-codex
+agentbox logs example-codex --proxy
 ```
 
 Proxyloggen viser destinasjon og resultat uten URL-sti eller query.
@@ -310,7 +310,7 @@ Endret nettverkspolicy eller tokenregel aktiveres med `proxy apply`.
 Agentcontainerens hjem, innlogging og monterte prosjektfiler beholdes.
 
 ```sh
-agentbox proxy apply pubnix-codex
+agentbox proxy apply example-codex
 ```
 
 ## Hva beholdes?
@@ -345,10 +345,10 @@ Stopp alle miljøer som bruker prosjektet først, også de med read-only-mounts.
 Velg deretter operasjonen du trenger:
 
 ```sh
-agentbox project check pubnix
-agentbox project repair pubnix
+agentbox project check example
+agentbox project repair example
 # Alternativt, for å avslutte delingen:
-agentbox project revoke pubnix
+agentbox project revoke example
 ```
 
 `chmod` eller restriktivt opprettede filer kan kreve reparasjon.
@@ -383,12 +383,12 @@ app-server process` med `Operation not permitted`. Feilen betyr ikke at
 innloggingen er slettet. Kontroller status og start uten bakgrunnsserver:
 
 ```sh
-agentbox exec pubnix-codex -- codex login status
-agentbox exec pubnix-codex -- codex --no-daemon
+agentbox exec example-codex -- codex login status
+agentbox exec example-codex -- codex --no-daemon
 ```
 
 For en tidligere sesjon kan du bruke
-`agentbox exec pubnix-codex -- codex --no-daemon resume`.
+`agentbox exec example-codex -- codex --no-daemon resume`.
 Fra 1.0.1 legger utviklingsimaget `--no-daemon` i Codex-launcheren. Eksisterende miljøer beholder sin gamle launcher til den
 oppdateres eller miljøet opprettes fra det nye imaget. Ikke bruk `remove`
 bare for denne feilen; det sletter hjem og innlogging.

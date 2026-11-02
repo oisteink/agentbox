@@ -36,8 +36,8 @@ fra rekursiv ACL-behandling.
 
 | På verten | I containeren |
 | --- | --- |
-| `/home/ok/src/pacman` | `/home/agent/src/pacman` |
-| `/home/ok/project/pub-pc` | `/home/agent/project/pub-pc` |
+| `/home/developer/projects/project-a` | `/workspace/project-a` |
+| `/home/developer/projects/project-b` | `/workspace/project-b` |
 
 Agentens UID 0 mappes til `agentbox` på verten. ACL-er tillater samarbeid med
 utvikleren; restriktive filmoduser kan kreve eksplisitt reparasjon.

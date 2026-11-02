@@ -9,9 +9,9 @@ from agentbox.errors import AgentboxError
 @pytest.fixture
 def config():
     return {
-        "name": "pacman-dev",
+        "name": "example-dev",
         "image": "agentbox-dev:local",
-        "mounts": [{"project": "pacman", "target": "/home/agent/src/pacman"}],
+        "mounts": [{"project": "example", "target": "/home/agent/src/example"}],
         "network": {"allow": [{"host": "api.example.com", "port": 443}]},
     }
 
