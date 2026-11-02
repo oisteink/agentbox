@@ -48,6 +48,8 @@ def test_completion_timeout_is_ignored(monkeypatch):
         (["abx", "sh"], ["shell"]),
         (["abx", "image", "b"], ["build"]),
         (["abx", "image", "build", "j"], ["js"]),
+        (["abx", "image", "e"], ["edit"]),
+        (["abx", "image", "edit", "j"], ["js"]),
         (["abx", "image", "new", "js", "--template", "c"], ["codex"]),
         (["abx", "proxy", "b"], ["build"]),
         (["abx", "shell", "exa"], ["example-codex"]),

@@ -1,6 +1,9 @@
 """Local Dockerfile recipes and images in the dedicated Docker instance."""
 
+import os
+import shlex
 import shutil
+import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
@@ -43,6 +46,16 @@ def new(name, template="base"):
         (path / file.name).chmod(file.stat().st_mode & 0o777)
     (path / ".dockerignore").write_text(".git\n.env\n.env.*\n")
     return {"name": name, "path": str(path), "template": template}
+
+
+def edit(name):
+    path = recipe(name).resolve()
+    editor = (
+        os.environ.get("VISUAL", "").strip() or os.environ.get("EDITOR", "").strip() or "editor"
+    )
+    return subprocess.run(
+        [*shlex.split(editor), str(path / "Dockerfile")], cwd=path, check=False
+    ).returncode
 
 
 def archive(name, output):

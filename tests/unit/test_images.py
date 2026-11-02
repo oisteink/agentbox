@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import shlex
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,6 +31,58 @@ def test_new_recipe_preserves_user_changes_and_lists_unbuilt(recipes):
     images.new("codex", "codex")
     assert "@openai/codex" in (recipes / "codex/Dockerfile").read_text()
     assert "--no-daemon" in (recipes / "codex/codex").read_text()
+
+
+@pytest.mark.parametrize("choice", ["visual", "editor", "default"])
+def test_edit_runs_user_editor_with_literal_arguments_and_exit_code(
+    monkeypatch, tmp_path, capfd, choice
+):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config with spaces"))
+    images.new("js")
+    bin_path = tmp_path / "editor bin"
+    bin_path.mkdir()
+    editor = bin_path / "editor"
+    editor.write_text(
+        "#!/usr/bin/python3\n"
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "path = Path(sys.argv[-1])\n"
+        "assert path.is_absolute() and path.parent == Path.cwd()\n"
+        "path.write_text(repr(sys.argv[1:-1]))\n"
+        "print('editor-user=' + str(os.getuid()))\n"
+        "sys.exit(17)\n"
+    )
+    editor.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_path))
+    arguments = ["two words", "$(touch unwanted)"]
+    command = shlex.join([str(editor), *arguments])
+    monkeypatch.setenv("VISUAL", command if choice == "visual" else " ")
+    monkeypatch.setenv("EDITOR", command if choice == "editor" else "/missing-editor")
+    if choice == "default":
+        monkeypatch.setenv("EDITOR", "")
+    monkeypatch.setattr(cli, "load_settings", lambda: {"operator_uid": os.getuid()})
+    monkeypatch.setattr(cli, "rpc", lambda *a, **kw: pytest.fail("Edit must not contact control"))
+    monkeypatch.setattr("sys.argv", ["abx", "image", "edit", "js"])
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 17
+    assert (images.recipe("js") / "Dockerfile").read_text() == repr(
+        [] if choice == "default" else arguments
+    )
+    assert not (images.recipe("js") / "unwanted").exists()
+    assert capfd.readouterr().out == f"editor-user={os.getuid()}\n"
+
+
+def test_edit_requires_recipe_before_starting_editor(recipes, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "load_settings", lambda: {"operator_uid": os.getuid()})
+    monkeypatch.setattr(
+        images.subprocess, "run", lambda *a, **kw: pytest.fail("No editor without Dockerfile")
+    )
+    monkeypatch.setattr("sys.argv", ["abx", "image", "edit", "missing"])
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 2
+    assert "Local Dockerfile missing" in capsys.readouterr().err
 
 
 def test_tar_preserves_binary_modes_and_links_without_external_content(recipes, tmp_path):

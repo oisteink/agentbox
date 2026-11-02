@@ -340,7 +340,7 @@ JavaScript-miljø:
 
 ```sh
 abx image new js
-# Rediger ~/.config/agentbox/images/js/Dockerfile og legg til eventuelle filer.
+abx image edit js
 abx image build js
 abx image ls
 abx image inspect js
@@ -352,6 +352,13 @@ nettverksverktøy. Bytt eller utvid Dockerfilen med verktøyene du trenger;
 `FROM node:22-bookworm-slim` kan for eksempel brukes som utgangspunkt.
 Codex-malen velges med `abx image new codex --template codex` og inkluderer
 Codex CLI 0.166.0 og launcheren med `--no-daemon`.
+
+`edit NAVN` åpner Dockerfilen i `$VISUAL`, deretter `$EDITOR`, eller `editor`
+hvis ingen er satt. Editorargumenter støttes, for eksempel `VISUAL="code --wait"`.
+Editoren kjører som deg med oppskriftskatalogen som arbeidskatalog, og arver
+terminalen. Du kan også åpne `.dockerignore` og hjelpeskript derfra. Kommandoen
+returnerer editorens exitkode. Redigering er tillatt mens imaget brukes;
+bygging skjer først når du kjører `image build`.
 
 Oppskriftene ligger under `~/.config/agentbox/images/`, eller
 `$XDG_CONFIG_HOME/agentbox/images/`. Hele katalogen er byggkontekst, slik at
@@ -415,7 +422,7 @@ source <(abx completion bash)
 
 Installeren legger inn completion for nye skall med `bash-completion` aktivert.
 Tab foreslår kommandoer, flagg, eksisterende miljønavn, registrerte prosjekter
-og lokale imageoppskrifter etter `image build`, `inspect` og `rm`.
+og lokale imageoppskrifter etter `image edit`, `build`, `inspect` og `rm`.
 Etter `start` og `validate` foreslås lagrede kortnavn og lokale filstier.
 Filstier fullføres også etter `--key-file`, og kataloger etter `--path`.
 Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.

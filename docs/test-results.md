@@ -1,21 +1,19 @@
 # Teststatus for Agentbox
 
 Teststrategi og navngitte kravbevis står i [testoversikten](testing.md).
-Sist verifisert 2. november 2026 på `qa/test-review`, fra `main` ved `0b99e43`.
+Sist verifisert 2. november 2026 på `feature/local-images`.
 Resultatene
 nedenfor gjelder observerte prøver, ikke en garanti for alle feiltilstander.
 
 ## Lokale imageoppskrifter, 2. november 2026
 
-På `feature/local-images` bestod 172 Python-enhetstester med Python 3.13 og
+På `feature/local-images` bestod 178 Python-enhetstester med Python 3.13 og
 pytest 9.0.3. Ruff lint/format, Bash-syntaks og `git diff --check` bestod.
 `scripts/check.sh` bestod også Go race/vet, govulncheck og gofmt; etter
 rettelsen av byggkonteksten ble Python-, Ruff- og Bash-kontrollene kjørt igjen.
 Go-koden er uendret. Image- og proxyhjelpen viser den nye kommandostrukturen.
 C1/C2 ble rendret til SVG og PNG og bildene kontrollert visuelt.
 Wheel-bygg bestod og inkluderer begge Dockerfile-malene og Codex-launcheren.
-Alle 13 installerte scenarioer ble samlet inn med `pytest --collect-only`;
-dette kjører ikke scenarioene.
 
 Nye lokale prøver dekker oppskrift uten overskriving, malinnhold, binær
 tar-overføring over 1 MiB etter begrenset JSON-header, lenker uten
@@ -32,9 +30,9 @@ lokale oppskrifter i gjentatte prøver.
 
 `scripts/lab/check.sh --uninstall` bestod i en ny disponibel KVM-VM:
 Ubuntu 24.04.5 amd64, kernel 6.8.0-147-generic, Python 3.12.3, pytest 9.0.3
-og rootless Docker 29.9.2. Alle 12 livssyklusscenarioer bestod på 81,96
+og rootless Docker 29.9.2. Alle 13 livssyklusscenarioer bestod på 95,21
 sekunder, de 24 proxykontrollene bestod uten cleanupfeil, og avinstallasjon
-bestod på 5,96 sekunder. Ingen skips eller testfeil i sluttkjøringen.
+bestod på 6,71 sekunder. Ingen skips eller testfeil i sluttkjøringen.
 Installert kilde ble sammenlignet med prosjektkilden før prøvene.
 
 `test_local_image_build_context_and_use_guard` bekreftet COPY/.dockerignore,
@@ -42,6 +40,11 @@ bygg/fjerning under kjørende og stoppet bruk, proxyens brukssperre og
 ombygging etter remove med bevart prosjektfil. Eksisterende prøver bekreftet
 nettverksavslag, tillatt proxytrafikk, ACL-oppførsel og bevart containerlag ved
 stopp/start. Prøvene bruker syntetiske tokens, uten ekte nøkler eller modellkall.
+`test_edit_image_uses_operator_editor_and_returns_status` bekreftet lokal
+editorstart som utvikleren, siterte argumenter, absolutt Dockerfile og riktig
+arbeidskatalog, arvet inn-/utdata, filendring og editorens exitkode. Lokale
+prøver dekker VISUAL/EDITOR/editor og at ingen kontroll-RPC utføres.
+Spec, plan og kode for edit ble gjennomgått uavhengig uten nye feilfunn.
 VM-en ble stoppet, og disponible labdata og rålogger ble fjernet etter prøvene.
 
 ## Lokalt navnebytte til abx, 2. november 2026

@@ -107,7 +107,7 @@ kravet er uttømmende verifisert. Alle livssyklustestene ligger i
 | `test_proxy_credentials.py`, `test_credentials.py` | Tokenreferanser, alias, plassholdere, hemmelighetsfrie argumenter/feil og avslag ved overganger; enkelte eksterne kontrolloperasjoner erstattes |
 | `test_cli.py`, `test_control_entry.py` | Utvalgte CLI-forespørsler, identitet før dispatch og avvisning av feil input uten ekko av hemmeligheter |
 | `test_runtime.py` | Daemonkrav og renset miljø med simulerte Docker-svar; ekte PTY/prosess for utdata og initial størrelse |
-| `test_images.py` | Ekte lokale oppskrifter, tar og utpakking; binær kontrollprotokoll og avslag før Docker-mutasjon |
+| `test_images.py` | Ekte lokale oppskrifter, editorprosesser, tar og utpakking; binær kontrollprotokoll og avslag før Docker-mutasjon |
 | `test_projects.py`, `test_uninstall.py` | ACL-transformasjoner, lenker, identitet og filsystemopprydding; smale mocks for eksterne ACL-operasjoner |
 | `test_state.py` | Reell atomisk lagring og avbrutt transaksjon i midlertidig mappe |
 | `test_install.py`, `test_completion.py` | Operatørvalg før privilegier, ekte Bash-completion og kontrollerte navneoppslag |

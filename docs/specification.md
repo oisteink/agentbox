@@ -135,6 +135,12 @@ et generelt Linux-miljø; `--template codex` inkluderer Codex 0.166.0.
 Malene følger programmet; det finnes ingen separat standardkatalog i /usr/share.
 
 `image ls` lister lokale oppskrifter, også ubygde, med status og image-ID.
+`image edit NAVN` åpner Dockerfilen som utvikleren i VISUAL, deretter EDITOR,
+ellers Debian sin editor-kommando. Whitespace-only variabler er tomme.
+Siterte editorargumenter støttes uten shelltolking; terminal og miljø arves,
+oppskriftskatalogen er arbeidskatalog, og editorens exitkode returneres.
+Edit krever eksisterende oppskrift, men gjør ingen RPC eller bygging og
+kan brukes mens imaget er i bruk.
 `image inspect NAVN` viser sti, tag, ID og containere. `image build NAVN`
 bygger katalogen i Agentbox sin rootless-instans, med vanlig COPY og
 .dockerignore behandlet av Docker. Konteksten sendes uten generell ACL-tilgang

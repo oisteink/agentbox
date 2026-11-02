@@ -1,6 +1,7 @@
 """Independent installed-CLI scenarios, each with its own resources and cleanup."""
 
 import json
+import os
 import pwd
 import shlex
 import subprocess
@@ -40,6 +41,7 @@ def test_local_image_build_context_and_use_guard(lab):
     (recipe / "marker").write_text("first")
     (recipe / "ignored").write_text("must not be copied")
     assert json.loads(cli("image", "ls").stdout)[name]["status"] == "unbuilt"
+
     first = json.loads(cli("image", "build", name, timeout=900).stdout)["id"]
     project, path = lab.project()
     (path / "keep").write_text("project content")
@@ -68,6 +70,33 @@ def test_local_image_build_context_and_use_guard(lab):
     cli("image", "rm", name)
     assert (recipe / "Dockerfile").is_file()
     assert json.loads(cli("image", "ls").stdout)[name]["status"] == "unbuilt"
+
+
+def test_edit_image_uses_operator_editor_and_returns_status(lab):
+    name, recipe = lab.image()
+    editor = lab.root / "test editor.py"
+    editor.write_text(
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        f"assert os.getuid() == {os.getuid()}\n"
+        "path = Path(sys.argv[-1])\n"
+        "assert path.is_absolute() and path.parent == Path.cwd()\n"
+        "assert sys.argv[1:-1] == ['quoted argument']\n"
+        "assert input() == 'terminal input'\n"
+        "path.write_text('FROM ubuntu:24.04\\n# edited\\n')\n"
+        "print('editor output')\n"
+        "sys.exit(19)\n"
+    )
+    environment = dict(
+        os.environ,
+        VISUAL=shlex.join(["python3", str(editor), "quoted argument"]),
+        EDITOR="/missing-editor",
+    )
+    result = cli("image", "edit", name, input="terminal input\n", env=environment, check=False)
+    assert result.returncode == 19
+    assert result.stdout == "editor output\n"
+    assert (recipe / "Dockerfile").read_text() == "FROM ubuntu:24.04\n# edited\n"
+    assert json.loads(cli("image", "inspect", name).stdout)["status"] == "unbuilt"
 
 
 def test_exec_exit_status_and_configured_shell(lab):

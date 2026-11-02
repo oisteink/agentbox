@@ -10,7 +10,7 @@ _abx()
     choices="doctor status image validate project proxy start stop remove shell logs login-api-key exec completion --help"
   elif [[ "$action" == image ]]; then
     if (( COMP_CWORD == 2 )); then
-      choices="ls new build inspect rm --help"
+      choices="ls new edit build inspect rm --help"
     elif [[ "$prev" == --template ]]; then
       choices="base codex"
     elif [[ "${COMP_WORDS[2]}" == new ]]; then

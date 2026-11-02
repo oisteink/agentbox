@@ -156,7 +156,7 @@ def parser():
     new = image_ops.add_parser("new")
     new.add_argument("name", type=config.name)
     new.add_argument("--template", choices=["base", "codex"], default="base")
-    for operation in ("build", "inspect", "rm"):
+    for operation in ("edit", "build", "inspect", "rm"):
         image_ops.add_parser(operation).add_argument("name", type=config.name)
     complete = commands.add_parser("completion", help="Print shell completion setup")
     complete.add_argument("shell", choices=["bash"], nargs="?", default="bash")
@@ -220,6 +220,8 @@ def main():
         if args.action == "image":
             if args.operation == "new":
                 result = images.new(args.name, args.template)
+            elif args.operation == "edit":
+                raise SystemExit(images.edit(args.name))
             elif args.operation == "ls":
                 names = images.names()
                 result = rpc({"action": "image", "operation": "ls", "names": names})
