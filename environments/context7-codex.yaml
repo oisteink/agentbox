@@ -1,5 +1,5 @@
 # Copy outside agent-writable projects, e.g. ~/.config/agentbox/environments/.
-# Change mounts[].project to a project registered with agentbox project add.
+# Change mounts[].project to a project registered with abx project add.
 # Host: export context7_api_key with the raw API key (without Bearer).
 # Agent: CONTEXT7_TOKEN gets a generated placeholder, or is empty if the source is missing/empty.
 # Codex MCP: --bearer-token-env-var CONTEXT7_TOKEN

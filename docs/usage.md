@@ -19,9 +19,9 @@ Miljønavnet og prosjektets navn trenger ikke være like.
 ## Registrer en prosjektmappe
 
 ```sh
-agentbox project add example --path "$HOME/src/example"
-agentbox project list
-agentbox project check example
+abx project add example --path "$HOME/src/example"
+abx project list
+abx project check example
 ```
 
 Registrering gir tjenestebrukeren tilgang til mappen. Prosjektroten må eies
@@ -78,9 +78,9 @@ Fra 1.0.1 tar `start` bare miljøfilen. Det separate
 navneargumentet og `--config` fra 1.0 er fjernet.
 
 ```sh
-agentbox validate example-codex
-agentbox start example-codex
-agentbox shell example-codex
+abx validate example-codex
+abx start example-codex
+abx shell example-codex
 ```
 
 `start` og `validate` finner kortnavn uten filending under
@@ -89,8 +89,8 @@ agentbox shell example-codex
 Begge filendingene `.yaml` og `.yml` støttes. Finnes begge for samme kortnavn,
 må du velge en eksplisitt fil. Kortnavn leser ikke lokale filer uten filending.
 
-Eksplisitte stier fungerer fortsatt, eksempelvis `agentbox start ./agentbox.yaml`.
-Et filnavn med ending, som `agentbox start example-codex.yaml`, bruker en lokal
+Eksplisitte stier fungerer fortsatt, eksempelvis `abx start ./agentbox.yaml`.
+Et filnavn med ending, som `abx start example-codex.yaml`, bruker en lokal
 fil hvis den finnes, ellers samme filnavn i standardkatalogen.
 
 Miljønavnet hentes fra `name` i YAML-filen. Filnavnet velger du selv. `shell` kjører
@@ -98,15 +98,15 @@ Miljønavnet hentes fra `name` i YAML-filen. Filnavnet velger du selv. `shell` k
 separat uten å endre konfigurasjonen:
 
 ```sh
-agentbox exec example-codex -- bash
+abx exec example-codex -- bash
 ```
 
 Avslutt programmet eller skallet for å lukke terminalsesjonen. Miljøet
-fortsetter å kjøre. Åpne det igjen med `agentbox shell example-codex`.
+fortsetter å kjøre. Åpne det igjen med `abx shell example-codex`.
 
 ```sh
-agentbox status
-agentbox stop example-codex
+abx status
+abx stop example-codex
 ```
 
 Et stoppet miljø gjenopptas med samme `start`-kommando og miljøfil.
@@ -118,7 +118,7 @@ Logg inn i Codex inne i miljøet. For headless ChatGPT-innlogging beskriver
 [OpenAI Docs](https://learn.chatgpt.com/docs/auth) `codex login --device-auth`:
 
 ```sh
-agentbox exec example-codex -- codex login --device-auth
+abx exec example-codex -- codex login --device-auth
 ```
 
 Tillat innloggingsmetodens nødvendige destinasjoner først. Bruk
@@ -130,7 +130,7 @@ API-nøkkel kan gis fra en privat fil på verten:
 
 ```sh
 chmod 600 /sti/til/privat-nokkelfil
-agentbox login-api-key example-codex --key-file /sti/til/privat-nokkelfil
+abx login-api-key example-codex --key-file /sti/til/privat-nokkelfil
 ```
 
 Hjelperen sender nøkkelen til `codex login --with-api-key` via stdin.
@@ -192,7 +192,7 @@ nøkkelen (uten `Bearer `) i variabelen på verten, uten shellhistorikk:
 read -rsp 'Context7 API-nøkkel: ' context7_api_key
 printf '\n'
 export context7_api_key
-agentbox start example-codex
+abx start example-codex
 ```
 
 Eksemplet leser `context7_api_key` på verten og setter `CONTEXT7_TOKEN` i
@@ -232,13 +232,13 @@ nøkkelen i et svar; proxyen skanner ikke svar etter hemmeligheter.
 Etter endring av variabel eller regler:
 
 ```sh
-agentbox proxy apply example-codex
+abx proxy apply example-codex
 ```
 
 Apply kontrollerer først agentprofil, klientnavn, mounts og nettverk. Avslag
 her endrer ikke proxyen som kjører; feilmeldingen viser `proxy stop` for
 tilbakekalling. Unset alene og gjentatt start av kjørende miljø trekker ikke
-tilbake en nøkkel. Bruk `agentbox proxy stop MILJØ` for å stenge tilgangen.
+tilbake en nøkkel. Bruk `abx proxy stop MILJØ` for å stenge tilgangen.
 
 Etter denne kontrollen fjernes gammel proxy og forbindelser før tokenvalidering. Ugyldig verdi
 gir stoppet proxy, uten fortsatt tilgang med gammel nøkkel. Kildevariabelen
@@ -266,7 +266,7 @@ vertsvariabelen, og la klienten lage dette prefikset. Ingen automatisk migrasjon
 av innlogging eller tokenverdier utføres.
 
 ```sh
-agentbox proxy stop example-codex
+abx proxy stop example-codex
 unset context7_api_key
 ```
 
@@ -280,7 +280,7 @@ Agenten får bare en offentlig CA-katalog med CA og bundle. Curl, Python,
 Requests, Node og Codex får CA-innstillinger ved opprettelse. Programmer som
 overstyrer dem eller bruker sertifikatpinning må konfigureres særskilt;
 sertifikatvalidering skal ikke slås av. Andre images må støtte denne kontrakten.
-`agentbox proxy rotate-ca MILJØ` stopper miljøet, erstatter CA og offentlig
+`abx proxy rotate-ca MILJØ` stopper miljøet, erstatter CA og offentlig
 bundle og krever en ny start med tokenvariabelen. Hjem/innlogging beholdes.
 
 Miljøvariabler er klartekst i prosessen og lagres i Docker-metadata. Kontroll
@@ -292,8 +292,8 @@ en tillatt tjeneste kan også returnere hemmeligheter til agenten i et svar.
 Fra en annen terminal på verten:
 
 ```sh
-agentbox logs example-codex
-agentbox logs example-codex --proxy
+abx logs example-codex
+abx logs example-codex --proxy
 ```
 
 Proxyloggen viser destinasjon og resultat uten URL-sti eller query.
@@ -310,7 +310,7 @@ Endret nettverkspolicy eller tokenregel aktiveres med `proxy apply`.
 Agentcontainerens hjem, innlogging og monterte prosjektfiler beholdes.
 
 ```sh
-agentbox proxy apply example-codex
+abx proxy apply example-codex
 ```
 
 ## Hva beholdes?
@@ -334,7 +334,7 @@ Registrer neste prosjekt, lag en egen miljøfil og start miljøet med et nytt
 navn. Det eksisterende miljøet kan fortsette å kjøre. For et annet verktøy
 mot samme prosjekt bruker du også et nytt miljønavn og velger image i YAML.
 
-Andre kompatible images kan hentes med `agentbox pull-image IMAGE`. De må
+Andre kompatible images kan hentes med `abx pull-image IMAGE`. De må
 være amd64 eller arm64, støtte UID 0 og ha `/bin/sh` og `sleep infinity`.
 Images med deklarerte `VOLUME`-mounts avvises. Alle images bruker samme
 nettverks- og syscallbegrensninger; se [arkitekturvalg](decisions.md).
@@ -345,10 +345,10 @@ Stopp alle miljøer som bruker prosjektet først, også de med read-only-mounts.
 Velg deretter operasjonen du trenger:
 
 ```sh
-agentbox project check example
-agentbox project repair example
+abx project check example
+abx project repair example
 # Alternativt, for å avslutte delingen:
-agentbox project revoke example
+abx project revoke example
 ```
 
 `chmod` eller restriktivt opprettede filer kan kreve reparasjon.
@@ -364,7 +364,7 @@ andre prosjekter trenger dem og ingen manuelle konflikter er oppdaget.
 ## Tab-completion i Bash
 
 ```sh
-source <(agentbox completion bash)
+source <(abx completion bash)
 ```
 
 Installeren legger inn completion for nye skall med `bash-completion` aktivert.
@@ -383,12 +383,12 @@ app-server process` med `Operation not permitted`. Feilen betyr ikke at
 innloggingen er slettet. Kontroller status og start uten bakgrunnsserver:
 
 ```sh
-agentbox exec example-codex -- codex login status
-agentbox exec example-codex -- codex --no-daemon
+abx exec example-codex -- codex login status
+abx exec example-codex -- codex --no-daemon
 ```
 
 For en tidligere sesjon kan du bruke
-`agentbox exec example-codex -- codex --no-daemon resume`.
+`abx exec example-codex -- codex --no-daemon resume`.
 Fra 1.0.1 legger utviklingsimaget `--no-daemon` i Codex-launcheren. Eksisterende miljøer beholder sin gamle launcher til den
 oppdateres eller miljøet opprettes fra det nye imaget. Ikke bruk `remove`
 bare for denne feilen; det sletter hjem og innlogging.

@@ -12,7 +12,7 @@ Linux-brukeren `agentbox` eier daemon, images og containerdata. Hjemmet
 `/var/lib/agentbox` er privat og monteres ikke inn i agentcontainerne.
 Containerens hjem er `/home/agent` i dens skrivbare lag.
 
-Utvikleren bruker en Python-CLI. En fast administratorinstallert hjelper
+Utvikleren bruker Python-CLI-en `abx`. En fast administratorinstallert hjelper
 kjører som `agentbox` via en avgrenset sudo-regel og mottar JSON på stdin.
 Kontrollkoden ligger under `/opt/agentbox`, innstillinger under `/etc/agentbox`,
 og kontrolltilstand under `/var/lib/agentbox/state`. Utviklerens private

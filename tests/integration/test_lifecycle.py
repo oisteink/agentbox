@@ -61,7 +61,7 @@ def test_terminal_reads_input_and_preserves_size(lab):
         "print('size=%sx%s' % tuple(os.get_terminal_size(1)), flush=True); "
         "print('reply:' + input()[::-1], flush=True)"
     )
-    command = shlex.join(["/usr/local/bin/agentbox", "exec", env, "--", "python3", "-c", program])
+    command = shlex.join(["/usr/local/bin/abx", "exec", env, "--", "python3", "-c", program])
     result = subprocess.run(
         ["script", "-q", "-e", "-c", "stty rows 30 cols 100; exec " + command, "/dev/null"],
         input="operator-input\n",

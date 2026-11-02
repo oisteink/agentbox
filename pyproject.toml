@@ -13,7 +13,7 @@ dependencies = ["PyYAML==6.0.2"]
 dev = ["pytest==9.0.3", "ruff==0.11.13"]
 
 [project.scripts]
-agentbox = "agentbox.cli:main"
+abx = "agentbox.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -26,15 +26,15 @@ Kjør deretter fra repoet:
 
 ```sh
 sudo scripts/install.sh
-agentbox doctor
-agentbox build-images
-source <(agentbox completion bash)
+abx doctor
+abx build-images
+source <(abx completion bash)
 ```
 
 Registrer et prosjekt som allerede finnes:
 
 ```sh
-agentbox project add example --path "$HOME/src/example"
+abx project add example --path "$HOME/src/example"
 mkdir -p "$HOME/.config/agentbox/environments"
 ```
 
@@ -61,21 +61,21 @@ network:
 Start og åpne miljøet:
 
 ```sh
-agentbox validate example-codex
-agentbox start example-codex
-agentbox shell example-codex
+abx validate example-codex
+abx start example-codex
+abx shell example-codex
 ```
 
 Kortnavnet finner `example-codex.yaml` i `~/.config/agentbox/environments/`.
-Du kan også bruke en eksplisitt YAML-sti, som `agentbox start ./agentbox.yaml`.
+Du kan også bruke en eksplisitt YAML-sti, som `abx start ./agentbox.yaml`.
 
 Dette åpner Bash i prosjektmappen med nettverket stengt. Endringer i montert
 kode lagres direkte på verten. Miljønavnet beskriver planlagt Codex-bruk;
 start med Bash for å kontrollere filtilgang. Følg
 [bruksveiledningen](docs/usage.md) for nettverk, Codex-innlogging og daglig bruk.
 
-`exit` lukker skallet. `agentbox stop example-codex` stopper miljøet og beholder
-hjem og innlogging. `agentbox remove example-codex` sletter containerlaget,
+`exit` lukker skallet. `abx stop example-codex` stopper miljøet og beholder
+hjem og innlogging. `abx remove example-codex` sletter containerlaget,
 inkludert innlogging og verktøyoppsett. Monterte prosjektfiler beholdes.
 
 ## API-nøkler via proxyen
@@ -106,15 +106,15 @@ du bruker et annet navn. Nettverkstillatelsene og aliaset er allerede lagt inn.
 read -rsp 'Context7 API-nøkkel: ' context7_api_key
 printf '\n'
 export context7_api_key
-agentbox start context7-codex
-agentbox exec context7-codex -- codex mcp add context7 \
+abx start context7-codex
+abx exec context7-codex -- codex mcp add context7 \
   --url https://mcp.context7.com/mcp --bearer-token-env-var CONTEXT7_TOKEN
-agentbox shell context7-codex
+abx shell context7-codex
 ```
 
 Codex sin egen kontoinnlogging gjøres separat med
 [device-login](docs/usage.md#innlogging-og-verktøyoppsett). Etter endring av en
-ikke-tom nøkkel brukes `agentbox proxy apply context7-codex`. Nye klientnavn
+ikke-tom nøkkel brukes `abx proxy apply context7-codex`. Nye klientnavn
 og tom/ikke-tom overgang krever gjenskaping; `remove` sletter hjem og innlogging.
 Se [brukerveiledningen](docs/usage.md#api-tokens-i-proxyen) for tilbakekalling
 og begrensninger.

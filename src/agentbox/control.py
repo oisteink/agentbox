@@ -341,7 +341,7 @@ class Control:
         except AgentboxError as exc:
             raise AgentboxError(
                 f"{exc}. Proxy configuration not changed; use "
-                f"'agentbox proxy stop {name}' to revoke existing access"
+                f"'abx proxy stop {name}' to revoke existing access"
             ) from exc
         # Stop before token validation or resolution; later failures must not retain old credentials.
         self.drop_proxy(data, name)

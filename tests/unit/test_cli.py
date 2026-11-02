@@ -20,7 +20,7 @@ def test_start_reads_environment_name_from_file(monkeypatch, tmp_path, capsys):
 
     monkeypatch.setattr(cli, "load_settings", lambda: {"operator_uid": os.getuid()})
     monkeypatch.setattr(cli, "rpc", rpc)
-    monkeypatch.setattr("sys.argv", ["agentbox", "start", str(path)])
+    monkeypatch.setattr("sys.argv", ["abx", "start", str(path)])
     cli.main()
     assert len(requests) == 1
     assert requests[0]["action"] == "start"
@@ -32,12 +32,12 @@ def test_start_reads_environment_name_from_file(monkeypatch, tmp_path, capsys):
 
 def test_start_missing_file_does_not_contact_control(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(cli, "load_settings", lambda: {"operator_uid": os.getuid()})
-    monkeypatch.setattr("sys.argv", ["agentbox", "start", str(tmp_path / "missing.yaml")])
+    monkeypatch.setattr("sys.argv", ["abx", "start", str(tmp_path / "missing.yaml")])
     monkeypatch.setattr(cli, "rpc", lambda request: pytest.fail("Control must not be called"))
     with pytest.raises(SystemExit) as error:
         cli.main()
     assert error.value.code == 2
-    assert capsys.readouterr().err
+    assert capsys.readouterr().err.startswith("abx: ")
 
 
 def test_alias_only_reads_host_source(monkeypatch, tmp_path, capsys):
@@ -65,7 +65,7 @@ def test_alias_only_reads_host_source(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
         cli, "rpc", lambda request: requests.append(request) or {"status": "running"}
     )
-    monkeypatch.setattr("sys.argv", ["agentbox", "start", str(tmp_path / "alias.yaml")])
+    monkeypatch.setattr("sys.argv", ["abx", "start", str(tmp_path / "alias.yaml")])
     cli.main()
     assert requests[0]["tokens"] == {"hugging_face_token": "synthetic-source"}
     assert "synthetic-source" not in capsys.readouterr().out

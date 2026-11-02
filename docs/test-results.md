@@ -5,6 +5,17 @@ Sist verifisert 2. november 2026 på `qa/test-review`, fra `main` ved `0b99e43`.
 Resultatene
 nedenfor gjelder observerte prøver, ikke en garanti for alle feiltilstander.
 
+## Lokalt navnebytte til abx, 2. november 2026
+
+På utviklingsverten bestod `uv run --locked pytest -q` med 147 tester,
+`ruff check src tests scripts`, `ruff format --check src tests scripts` og
+Bash-syntakskontroll av hvert skallskript og `completions/abx.bash`.
+`uv run --locked abx --help` viste `usage: abx`; completion-testene kontrollerte
+registrering for `abx` og dynamiske oppslag via samme navn.
+Vertsinstallasjon, oppgradering og avinstallasjon med nytt navn er ikke prøvd i lab.
+Brukeren har meldt om lokal installasjon og en lett manuell prøve; omfanget er ikke spesifisert.
+Go-proxyen er uendret; tidligere labresultater nedenfor gjelder før navnebyttet.
+
 ## Miljø og resultater
 
 VM: Ubuntu 24.04.5, amd64, kernel 6.8.0-147-generic, rootless Docker 29.9.2

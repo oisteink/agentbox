@@ -73,7 +73,9 @@ fi
 chown -R root:root /opt/agentbox
 chmod -R go-w /opt/agentbox
 chmod -R a+rX /opt/agentbox
-cat > /usr/local/bin/agentbox <<'EOF'
+# Remove launchers and completion from installations using the old CLI name.
+rm -f /usr/local/bin/agentbox /usr/local/share/bash-completion/completions/agentbox
+cat > /usr/local/bin/abx <<'EOF'
 #!/opt/agentbox/venv/bin/python3 -I
 import sys
 sys.path.insert(0, '/opt/agentbox/lib')
@@ -94,10 +96,10 @@ sys.path.insert(0, '/opt/agentbox/lib')
 from agentbox.watch import main
 main()
 EOF
-chmod 0755 /usr/local/bin/agentbox /usr/local/libexec/agentbox-control /usr/local/libexec/agentbox-watch
+chmod 0755 /usr/local/bin/abx /usr/local/libexec/agentbox-control /usr/local/libexec/agentbox-watch
 install -d -m 0755 /usr/local/share/bash-completion/completions
-install -m 0644 "$repo_dir/src/agentbox/completions/agentbox.bash" \
-  /usr/local/share/bash-completion/completions/agentbox
+install -m 0644 "$repo_dir/src/agentbox/completions/abx.bash" \
+  /usr/local/share/bash-completion/completions/abx
 install -d -m 0755 /etc/systemd/user
 cat > /etc/systemd/user/agentbox-watch.service <<'EOF'
 [Unit]
@@ -159,4 +161,4 @@ runuser -u agentbox -- env -i PATH=/usr/bin:/bin HOME=/var/lib/agentbox \
   XDG_RUNTIME_DIR="/run/user/$service_uid" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$service_uid/bus" \
   systemctl --user restart agentbox-watch.service
-echo 'Installed. Run as the developer: agentbox doctor; agentbox build-images'
+echo 'Installed. Run as the developer: abx doctor; abx build-images'

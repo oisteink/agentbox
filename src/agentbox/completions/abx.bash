@@ -1,5 +1,5 @@
-# Bash completion for agentbox. Also usable with: source <(agentbox completion bash)
-_agentbox()
+# Bash completion for abx. Also usable with: source <(abx completion bash)
+_abx()
 {
   local cur="${COMP_WORDS[COMP_CWORD]}" prev="${COMP_WORDS[COMP_CWORD-1]}"
   local action="${COMP_WORDS[1]}" operation="" choices="" kind="" value
@@ -17,7 +17,7 @@ _agentbox()
       if [[ "$cur" != */* ]]; then
         while IFS= read -r value; do
           [[ -n "$value" && "$value" == "$cur"* ]] && COMPREPLY+=("$value")
-        done < <(agentbox completion --names configs 2>/dev/null)
+        done < <(abx completion --names configs 2>/dev/null)
       fi
       return
     else
@@ -30,7 +30,7 @@ _agentbox()
     if [[ "$action" == start || "$action" == validate ]] && [[ "$prev" != --key-file && "$cur" != */* ]]; then
       while IFS= read -r value; do
         [[ -n "$value" && "$value" == "$cur"* && ! -e "$value" ]] && COMPREPLY+=("$value")
-      done < <(agentbox completion --names configs 2>/dev/null)
+      done < <(abx completion --names configs 2>/dev/null)
     fi
     return
   elif [[ "$prev" == --path ]]; then
@@ -73,8 +73,8 @@ _agentbox()
   else
     while IFS= read -r value; do
       [[ -n "$value" && "$value" == "$cur"* ]] && COMPREPLY+=("$value")
-    done < <(agentbox completion --names "$kind" 2>/dev/null)
+    done < <(abx completion --names "$kind" 2>/dev/null)
   fi
   return 0
 }
-complete -F _agentbox agentbox
+complete -F _abx abx

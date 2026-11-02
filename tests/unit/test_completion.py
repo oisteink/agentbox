@@ -45,17 +45,17 @@ def test_completion_timeout_is_ignored(monkeypatch):
 @pytest.mark.parametrize(
     "words,expected",
     [
-        (["agentbox", "sh"], ["shell"]),
-        (["agentbox", "shell", "exa"], ["example-codex"]),
-        (["agentbox", "logs", "example-codex", "--p"], ["--proxy"]),
-        (["agentbox", "project", "re"], ["repair", "revoke"]),
-        (["agentbox", "project", "repair", "exa"], ["example"]),
-        (["agentbox", "exec", "example-codex", "--", ""], []),
-        (["agentbox", "start", "with"], ["with space.yaml"]),
-        (["agentbox", "start", "exa"], ["example-codex"]),
-        (["agentbox", "validate", "exa"], ["example-codex"]),
-        (["agentbox", "start", "--h"], ["--help"]),
-        (["agentbox", "project", "add", "example", "--path", "proj"], ["project dir"]),
+        (["abx", "sh"], ["shell"]),
+        (["abx", "shell", "exa"], ["example-codex"]),
+        (["abx", "logs", "example-codex", "--p"], ["--proxy"]),
+        (["abx", "project", "re"], ["repair", "revoke"]),
+        (["abx", "project", "repair", "exa"], ["example"]),
+        (["abx", "exec", "example-codex", "--", ""], []),
+        (["abx", "start", "with"], ["with space.yaml"]),
+        (["abx", "start", "exa"], ["example-codex"]),
+        (["abx", "validate", "exa"], ["example-codex"]),
+        (["abx", "start", "--h"], ["--help"]),
+        (["abx", "project", "add", "example", "--path", "proj"], ["project dir"]),
     ],
 )
 def test_bash_completion(words, expected, tmp_path):
@@ -64,7 +64,7 @@ def test_bash_completion(words, expected, tmp_path):
     script = (
         completion.bash_script()
         + """
-agentbox() {
+abx() {
   case "$*" in
     'completion --names environments') printf '%s\\n' other example-codex ;;
     'completion --names projects') printf '%s\\n' example ;;
@@ -75,8 +75,9 @@ agentbox() {
 compopt() { :; }
 """
     )
+    script += '[[ $(complete -p abx) == "complete -F _abx abx" ]] || exit 1\n'
     script += f"COMP_WORDS=({shlex.join(words)})\nCOMP_CWORD={len(words) - 1}\n"
-    script += '_agentbox\nprintf "%s\\n" "${COMPREPLY[@]}"\n'
+    script += '_abx\nprintf "%s\\n" "${COMPREPLY[@]}"\n'
     result = subprocess.run(
         ["bash", "--noprofile", "--norc"],
         input=script,

@@ -9,7 +9,7 @@ from .errors import AgentboxError
 
 
 def bash_script():
-    return (Path(__file__).parent / "completions" / "agentbox.bash").read_text()
+    return (Path(__file__).parent / "completions" / "abx.bash").read_text()
 
 
 def names(kind):
