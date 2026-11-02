@@ -1,6 +1,8 @@
 # Teststatus for Agentbox
 
-Sist verifisert 1. november 2026 på `feat/credential-proxy`. Resultatene
+Teststrategi og navngitte kravbevis står i [testoversikten](testing.md).
+Sist verifisert 2. november 2026 på `qa/test-review`, fra `main` ved `0b99e43`.
+Resultatene
 nedenfor gjelder observerte prøver, ikke en garanti for alle feiltilstander.
 
 ## Miljø og resultater
@@ -12,18 +14,52 @@ minste Debian-versjon er ikke fastsatt.
 
 | Kontroll | Resultat | Sist kjørt |
 | --- | --- | --- |
-| Python-enhetstester | 137 bestått | 1. november |
-| Ruff lint/format, Bash-syntaks og gofmt | Bestått | 1. november |
-| Go race-deteksjon og vet | Bestått, HTTP/1 og HTTP/2 | 1. november |
-| govulncheck v1.9.0 med Go 1.27.3 | Ingen sårbarheter som kan nås | 1. november |
-| Installer og bygg produksjonsimages i VM | Bestått | 1. november |
-| Installert proxyakseptanse | Bestått med syntetiske nøkler | 1. november |
-| Installert CLI-livssyklus | 1 bestått, 21,99 sekunder | 1. november |
+| Python-enhetstester, pytest 9.0.3 | 147 bestått | 2. november |
+| Ruff lint/format, Bash-syntaks og gofmt | Bestått | 2. november |
+| Go race-deteksjon og vet | Bestått, HTTP/1 og HTTP/2 | 2. november |
+| govulncheck v1.9.0 med Go 1.27.3 | Ingen sårbarheter som kan nås | 2. november |
+| Installer og bygg produksjonsimages i VM | Bestått; installerte filer sammenlignet med kilde | 2. november |
+| Installert proxyakseptanse | 24 kontroller, syntetiske nøkler, ingen cleanupfeil | 2. november |
+| Installert CLI-livssyklus | 11 selvstendige scenarier bestått, 76,44 sekunder, ingen skips | 2. november |
 | Codex med ChatGPT device-login og Context7 | Én read-only modellkjøring fullførte resolve-library-id | 31. oktober |
-| Avinstallasjon i disponibel VM | Bestått; øvrig rootful Docker bevart | 31. oktober |
+| Avinstallasjon i disponibel VM | 1 bestått, 6,50 sekunder; øvrig rootful Docker bevart | 2. november |
 
-Avinstallasjon er ikke kjørt på nytt etter aliasendringen. Installasjon og
-Codex-bruk fra 1.0/1.0.1 er tidligere prøvd manuelt på utviklerens Debian-vert.
+Lokale kontroller ble kjørt med `scripts/check.sh`. Laben ble opprettet på nytt
+og fullført med `scripts/lab/check.sh --uninstall`, Python 3.12.3 og pytest 9.0.3
+fra låsefilen. Ingen ekte nøkler eller modellkall ble brukt i denne runden.
+Installasjon og Codex-bruk fra 1.0/1.0.1 er tidligere prøvd manuelt på
+utviklerens Debian-vert.
+
+## Regresjonsbevis og prøvegrunnlag
+
+Oppstart og avinstallasjon er prøvd med en privat målkatalog bak et nestet
+bind-mount. Begge skannere hopper over mountpunktet før åpning. De lokale
+regresjonsprøvene feilet med PermissionError på den tidligere rekkefølgen og
+består etter rettingen. Den installerte prøven kontrollerer også uendret
+eierskap og identitet på en beskyttet fil utenfor prosjektet.
+
+Midlertidige feilvarianter ble installert i VM-en: tvungen exitkode 0 ble
+oppdaget av exec-testen, og sletting av hjemmemarkøren ved gjenopptak ble
+oppdaget av bevaringstesten. Normal kode besto begge igjen etter gjeninstallasjon.
+Feil etter faktisk start ble ryddet opp med tomt miljøregister etterpå;
+rapportert cleanupfeil ga teardown-feil. Feil vert med labflagg ble avvist før
+oppsett. Vanlig kjøring av integrasjonstestene uten flagg hoppet over 12 tester;
+dette er ingen installert akseptanseprøve.
+
+Installerte kildefiler, testpakke og images ble registrert av labinngangen.
+Hashene følger beregningen i `scripts/lab/check.sh`:
+
+```text
+installert kilde: 0fc50dd3ee759008625fbf3b116efe8a9c414b5e5a85f26cfe0377b55864cbf9
+testpakke:       a059e89528132247bf5e5fddcb58416122ae631635f1a5add0ab32edbf392762
+dev:local:       9ec81e73872b0bc9cbab61e9cc4fcdff657eaf7a99e8e152d1b904e52b8065c7
+dev:lab:         a77871154b8efd4ebf7dfca6616b912a2afbfa283ad85f48dc839e1dfeaa1e56
+proxy:local:     ede7f132e13e084843045748199c31d331c6e8f624265134e70a0e778938f1b7
+proxy:lab:       dba9b9e1c78c2190807f86f48575538133f38fd1ea36190f202f3534a436b472
+```
+
+Images har prefikset `agentbox-`, og image-ID-ene har prefikset `sha256:`.
+Rålogger, feilvarianter og disponibel VM beholdes ikke som arbeidshistorikk.
 
 ## Hva prøvene dekker
 
@@ -52,7 +88,7 @@ avslag godtas. Bare syntetiske nøkler brukes:
   forsinkelse var cirka 41 ms.
 
 `tests/integration/test_lifecycle.py` dekker to images/miljøer, mounts,
-read-only, ACL og tilbakekalling, ressursgrenser, socketvern, private logger
+read-only, ACL og tilbakekalling, ressursgrenser, socketvern, exec-logginnhold
 og gjenopptak etter daemonrestart. `test_uninstall.py` dekker stopp,
 eierskapsoverføring, ACL-rydding og sletting av installasjonen uten å endre
 andre Docker-instansers identitet.
@@ -92,15 +128,15 @@ scripts/lab/vm.sh ssh sudo bash -s < scripts/lab/bootstrap.sh
 tar --exclude=.git --exclude=.lab --exclude=.venv --exclude=__pycache__ \
   --exclude=.aws --exclude=.codex --exclude=.agents -cf - . | \
   scripts/lab/vm.sh ssh 'mkdir -p /home/developer/agentbox-src && tar -xf - -C /home/developer/agentbox-src'
-scripts/lab/vm.sh ssh 'sudo bash /home/developer/agentbox-src/scripts/install.sh --operator developer'
-scripts/lab/vm.sh ssh 'agentbox build-images'
-scripts/lab/vm.sh ssh 'bash /home/developer/agentbox-src/scripts/lab/build-images.sh'
-scripts/lab/vm.sh ssh 'sudo python3 /home/developer/agentbox-src/scripts/lab/credential_proxy.py'
-scripts/lab/vm.sh ssh 'cd /home/developer/agentbox-src && AGENTBOX_LAB=1 python3 -m pytest -q tests/integration/test_lifecycle.py'
+scripts/lab/vm.sh ssh 'cd /home/developer/agentbox-src && bash scripts/lab/check.sh --uninstall'
 scripts/lab/vm.sh stop
 ```
 
 Kjør labprøver sekvensielt; de endrer felles nettverk og vertsinnstillinger.
-Avinstallasjonsprøven skal kjøres sist etter [egen oppskrift](development.md#avinstallasjonsprøve).
+Utelat `--uninstall` for å beholde installasjonen til videre labprøver.
+Inngangen registrerer plattform, installert kildehash, testpakkehash og image-ID-er
+i `.lab/results/platform.json` inne i VM-en. XML-resultater skal ha utførte
+tester uten skips; proxyresultatet skal ha `passed: true` og ingen cleanupfeil.
+Samle relevante observasjoner i teststatus før dataene fjernes.
 `.lab/` er regenererbar VM-disk, SSH-nøkkel og private logger, utelatt fra Git.
 Fjern labdata når prøvene er ferdige og VM-en er stoppet.

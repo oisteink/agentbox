@@ -132,3 +132,27 @@ Tomme referanser bruker samme regeltype med tom plassholder. De beholder
 TLS-inspeksjon for å unngå at manglende nøkkel åpner en tunnel. Nye klientnavn
 og tom/ikke-tom overgang krever gjenskaping fordi Docker sitt prosessmiljø er
 fast; ingen shell-hook eller egen oppdateringstjeneste innføres.
+
+## Teststrategi
+
+Produktkrav og brukerflyter styrer testene. Rene regler prøves lokalt, mens
+installerte CLI-scenarier undersøker prosessgrensene, ACL og Docker. Proxyen
+prøves mot kontrollerte TLS-mottakere. Vi beholder smale erstatninger for
+eksterne kall og bruker ekte lokale prosesser/filer der det gir relevant bevis.
+En generell Docker-simulator vil kreve en ekstra modell av runtime-oppførselen.
+
+Livssyklusprøvene har eget oppsett og opprydding per scenario. Det gir separate
+resultater når én grunnfunksjon feiler. Den sammenhengende tokenlivssyklusen
+beholdes i ett labskript fordi overgangene er selve prøven. Begge løp skal
+rapportere feil ved mislykket opprydding. Bevaring undersøkes med agent-ID og
+en fil i hjemmet; terminalinnlesing med et transformert svar fra prosessen.
+
+Enkle shellinnganger samler lokale kontroller og labkjøring. Laben installerer
+og bygger aktuell kilde, sammenligner installerte filer og registrerer
+image-ID-er. Et labløp med bare hoppede tester er mislykket. Testantall og
+dekningsprosent er ikke leveransemål. Kravdekning og åpne hull vedlikeholdes i
+[teststrategien](testing.md); nye observasjoner føres i [teststatus](test-results.md).
+
+Skannere hopper over kjente nestede mountpunkter før de åpnes. Tjenestebrukeren
+skal ikke trenge lesetilgang til en mappe utenfor prosjektets valgte filsystem
+for å starte miljøet. Samme regel gjelder avinstallasjonens inspeksjon.

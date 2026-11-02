@@ -70,6 +70,8 @@ kreve eksplisitt reparasjon.
 Overlappende registreringer, hardlenkede ordinære filer, spesialfiler og eiere
 utenfor utvikleren og tjenestebrukeren avvises. Symbolske lenker i innholdet
 følges ikke ved ACL-endring, og skanningen krysser ikke nestede mountpunkter.
+Kjente nestede mountpunkter hoppes over før åpning; privat målkatalog krever
+ikke ekstra lesetilgang ved registrering, start eller avinstallasjon.
 Ingen rekursiv `chown` brukes. Andre brukeres effektive rettigheter bevares ved
 utvidet ACL-maske; tidligere maskerte rå biter kan trimmes.
 
@@ -207,6 +209,9 @@ Kriteriene A1 til A13 videreføres fra utviklingen av 1.0. Integrasjonsprøver
 bruker midlertidige mapper og kontrollerte nettverksdestinasjoner. Forventet
 blokkering bekreftes mot en fungerende kontrolltjeneste. Observerte resultater,
 manuell utprøving og utestede kombinasjoner står i [teststatus](test-results.md).
+Testenes ansvar, kravdekning og regler ved endringer står i
+[teststrategien](testing.md). Bevaring skal undersøkes utenfor prosjektmountene;
+negative prøver skal bekrefte riktig avvisning og relevante konsekvenser.
 
 | ID | Verifikasjon |
 | --- | --- |

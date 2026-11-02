@@ -130,7 +130,7 @@ def scan(root, allowed_uids, skip_inaccessible=False):
         )
         if directory:
             for entry in os.scandir(fd):
-                if entry.is_symlink():
+                if str(root / relative / entry.name) in nested or entry.is_symlink():
                     continue
                 flags = os.O_RDONLY if entry.is_dir(follow_symlinks=False) else os.O_PATH
                 flags |= os.O_NOFOLLOW | os.O_NONBLOCK

@@ -2,6 +2,7 @@ import os
 
 import pytest
 
+from agentbox import projects, uninstall
 from agentbox.errors import AgentboxError
 from agentbox.projects import grant_acl, named_acl, scan
 
@@ -55,3 +56,24 @@ def test_project_symlink_is_not_followed(tmp_path):
     (project / "outside").symlink_to(tmp_path)
     nodes = scan(project, {os.getuid()})
     assert len(nodes) == 1
+
+
+@pytest.mark.parametrize("scanner", ["project", "uninstall"])
+def test_nested_mount_is_skipped_without_opening_it(tmp_path, monkeypatch, scanner):
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "file").write_text("selected code")
+    nested = root / "nested"
+    nested.mkdir()
+    monkeypatch.setattr(projects, "_mounts", lambda: {str(nested)})
+    actual_open = os.open
+
+    def inaccessible_mount(path, flags, *args, **kwargs):
+        # Simulate a private mounted directory even when tests run as root.
+        if path == "nested":
+            raise PermissionError("nested mount is not accessible to the service user")
+        return actual_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(projects.os, "open", inaccessible_mount)
+    nodes = scan(root, {os.getuid()}) if scanner == "project" else uninstall.inspect_tree(root)
+    assert {node["relative"] for node in nodes} == {".", "file"}
