@@ -134,13 +134,13 @@ SHOW_LEGEND()
 
 ## Sekvens: fra miljøvariabel til ekte API-nøkkel
 
-Operatøren har den ekte nøkkelen i `APITOKEN`. Agentbox gir agenten en
-plassholder i samme variabelnavn. Klienten bruker variabelen som vanlig;
-proxyen erstatter plassholderen i riktig header mot godkjent destinasjon.
+Agentbox setter en substituttverdi i agentens miljøvariabel `TOKEN`.
+Substituttet er en generert plassholder. Den ekte nøkkelen fra vertens miljø
+gis til proxyen, som kan bytte den inn når agenten bruker riktig header mot
+et godkjent mål.
 
-`at-01a` er en oppdiktet nøkkel. `P` forkorter en generert verdi på formen
-`abx-<64 heksadesimale tegn>`. Diagrammet viser en HTTPS-destinasjon med
-nøkkelregel; vanlige tunneler inspiseres ikke.
+Diagrammet viser hovedflyten for en HTTPS-destinasjon med nøkkelregel.
+Opprettelse av containere og TLS-forbindelser er utelatt.
 
 ![Tokenflyt: verten gir agenten en plassholder, og proxyen erstatter den mot riktig tjeneste](diagrams/agentbox-token-sequence.svg)
 
@@ -149,23 +149,22 @@ nøkkelregel; vanlige tunneler inspiseres ikke.
 
 ```plantuml
 @startuml agentbox-token-sequence
-title Agentbox - brukbar plassholder, ekte nøkkel i proxyen
+title Agentbox - fire steg fra substitutt til ekte nøkkel
 hide footbox
 autonumber
 skinparam sequenceMessageAlign center
-participant "Vert / Agentbox" as host
-participant "Agentens klient" as agent
+participant "Agentbox" as host
+participant "Agent" as agent
 participant "Proxy" as proxy
-participant "Godkjent API" as api
-note over host
-  Verten har APITOKEN=at-01a.
-  Agentbox lager plassholder P.
-end note
-host -> agent: APITOKEN=P
-host -> proxy: P erstattes med at-01a\nKun for godkjent domene og header
-agent -> proxy: Authorization: Bearer P
-note over proxy: Kontroller domene, header og P.
-proxy -> api: Authorization: Bearer at-01a
+participant "Godkjent API-tjeneste" as api
+note over host: Leser ekte nøkkel fra vertens TOKEN.
+== Klargjøring ==
+host -> agent: Setter TOKEN=substitutt
+host -> proxy: Konfigurerer substitutt, ekte nøkkel\nog godkjente domener og headere
+== API-kall ==
+agent -> proxy: Gjør API-kall med substituttet i headeren
+note over proxy: Sjekker domene, header og substitutt.
+proxy -> api: Erstatter substituttet med ekte nøkkel\nog sender API-kallet
 @enduml
 ```
 
@@ -175,7 +174,7 @@ Agenten har en verdi den kan bruke, men den ekte nøkkelen ligger på den
 betrodde siden. Uten riktig plassholder, header og destinasjon setter proxyen
 ikke inn nøkkelen.
 
-Plassholderen beholdes ved stopp/start og proxybytte, også når operatøren
+Substituttet beholdes ved stopp/start og proxybytte, også når operatøren
 roterer den ekte nøkkelen. Nye variabelnavn krever eksplisitt gjenskaping av
 agentcontaineren. Hvert miljø har sitt eget plassholderkart.
 
