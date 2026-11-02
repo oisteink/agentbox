@@ -22,29 +22,32 @@ inngår ikke som et krav i produktarkitekturen.
 LAYOUT_LEFT_RIGHT()
 title Agentbox - C1 systemkontekst
 
-Person(developer, "Utvikler", "Velger prosjekter og agentverktøy; arbeider i ett eller flere miljøer.")
-System(agentbox, "Agentbox", "Kjører kodeagenter med avgrenset filtilgang og kontrollert nettverkstilgang.")
-System_Ext(workspace, "Lokalt utviklingsmiljø", "Utviklerens editor og eksisterende prosjektmapper.")
-System_Ext(models, "Modelltjeneste", "For eksempel OpenAI; brukerens valgte agentkonto.")
-System_Ext(development, "Kode- og pakketjenester", "For eksempel GitHub og pakkeregistre; bare når destinasjonene er tillatt.")
-System_Ext(build, "Image- og byggeregistre", "Docker-images og avhengigheter for betrodd imagebygging.")
+Person(developer, "Bruker", "Velger arbeidsmapper, agentverktøy og hvilke tjenester miljøene får bruke.")
+System(agentbox, "Agentbox", "Kjører isolerte agentmiljøer med avgrenset filtilgang og kontrollert utgående trafikk.")
+System_Ext(workspace, "Vertens filsystem", "Arbeidsmapper som brukeren deler med ett eller flere agentmiljøer.")
+System_Ext(services, "Tjenester brukt av agentene", "Eksempelvis eksterne API-er, MCP-tjenester, modelltjenester, kodeverter og pakkeregistre.")
+System_Ext(supply, "Kilder for kjøremiljøer", "Leverer containerimages og avhengigheter når Agentbox henter eller bygger images.")
 
-Rel(developer, agentbox, "Registrerer mapper, konfigurerer og bruker agentmiljøer")
-Rel(developer, workspace, "Redigerer kode i egen editor")
-BiRel(agentbox, workspace, "Deler eksplisitt valgte prosjektmapper")
-Rel(agentbox, models, "Sender agentforespørsler når destinasjonen er tillatt")
-Rel(agentbox, development, "Henter eller sender data når destinasjonen er tillatt")
-Rel(agentbox, build, "Henter images og byggeavhengigheter fra kontrollsiden")
+Rel(developer, agentbox, "Konfigurerer tilgang og bruker agentmiljøene")
+Rel(developer, workspace, "Leser og redigerer egne arbeidsfiler")
+BiRel(agentbox, workspace, "Leser og endrer eksplisitt delte mapper")
+Rel(agentbox, services, "Agenttrafikk til eksplisitt tillatte destinasjoner")
+Rel(agentbox, supply, "Henter images og byggeavhengigheter ved klargjøring")
 SHOW_LEGEND()
 @enduml
 ```
 
 </details>
 
-Agenttrafikk er avvist som standard. Listen over tillatte destinasjoner
-gjelder agentenes nettverkstrafikk; imagebygging og imagehenting utføres på
-den betrodde kontrollsiden. At dette repoet finnes på GitHub gir ikke
-agentene automatisk GitHub-tilgang.
+De eksterne tjenestene grupperes etter hvordan de inngår i Agentbox:
+agentenes arbeid og klargjøring av kjøremiljøer. Dette er roller, ikke faste
+leverandører eller konfigurerte integrasjoner. Samme eksterne system kan
+brukes i begge roller, eksempelvis et pakkeregister.
+
+API-er og MCP-tjenester kan brukes når miljøets destinasjonsregler tillater
+det. Agentbox tilbyr ikke selv et MCP-grensesnitt. Agenttrafikk avvises som
+standard; imagehenting og imagebygging skjer på kontrollsiden utenfor denne
+nettverkspolicyen. C2 viser hvilke deler som håndterer de to trafikkveiene.
 
 ## C2 containere
 
@@ -59,10 +62,10 @@ agentene automatisk GitHub-tilgang.
 LAYOUT_TOP_DOWN()
 title Agentbox - C2 containere
 
-Person(developer, "Utvikler", "Bruker personlig Linux-konto.")
+Person(developer, "Bruker", "Bruker personlig Linux-konto.")
 ContainerDb_Ext(projects, "Valgte prosjektmapper", "Vertens filsystem", "Eies av utvikleren. ACL gir agentbox tilgang; mounts velges per miljø.")
-System_Ext(services, "Tillatte eksterne tjenester", "Modelltjeneste, kodeverter og pakkeregistre.")
-System_Ext(registry, "Image- og byggeregistre", "Tilgang fra betrodd kontrollside.")
+System_Ext(services, "Tjenester brukt av agentene", "Eksterne API-er, MCP-tjenester, modelltjenester, kodeverter og pakkeregistre; tilgang velges per miljø.")
+System_Ext(registry, "Kilder for kjøremiljøer", "Images og byggeavhengigheter; tilgang fra betrodd kontrollside.")
 
 System_Boundary(agentbox, "Agentbox") {
     Container(cli, "agentbox CLI", "Python; utviklerens UID", "Validerer miljøfiler og administrerer utviklerens ACL-endringer.")
@@ -119,8 +122,9 @@ SHOW_LEGEND()
   nettverk. Docker-instansen og kontrollsiden er felles.
 - Agenten har ingen forbindelse til Docker-socketen og ingen direkte
   internettrute. Pilene fra Docker viser styring, ikke en kontrollkanal agenten kan bruke.
-- Proxyen monterer bare proxykonfigurasjonen skrivebeskyttet. Kontrollhjelperen
-  gjør navneoppløsning og adressevalidering før de fastlåste adressene tas i bruk.
+- Proxyen leser policy og nødvendig privat CA fra skrivebeskyttede mounts;
+  ekte tokens tilføres bare proxyens miljø. Kontrollhjelperen gjør navneoppløsning
+  og adressevalidering før de fastlåste adressene tas i bruk.
 - Prosjektmapper ligger på verten og overlever fjerning av miljøet. Agentens
   hjem ligger i containerlaget; separat profilvolum er fortsatt et mulig videre valg.
 - Rootless-containerne deler vertens kjerne. Ved et utbrudd med `agentbox`
