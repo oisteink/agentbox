@@ -13,10 +13,10 @@ def test_names_use_read_only_request_without_password_prompt(monkeypatch):
 
     def run(command, **kwargs):
         seen.update(command=command, **kwargs)
-        return SimpleNamespace(returncode=0, stdout=json.dumps({"pubnix-codex": {}, "other": {}}))
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"example-codex": {}, "other": {}}))
 
     monkeypatch.setattr(completion.subprocess, "run", run)
-    assert completion.names("environments") == ["other", "pubnix-codex"]
+    assert completion.names("environments") == ["example-codex", "other"]
     assert "-n" in seen["command"]
     assert seen["timeout"] == 2
     assert json.loads(seen["input"]) == {"action": "status"}
@@ -46,16 +46,16 @@ def test_completion_timeout_is_ignored(monkeypatch):
     "words,expected",
     [
         (["agentbox", "sh"], ["shell"]),
-        (["agentbox", "shell", "pub"], ["pubnix-codex"]),
-        (["agentbox", "logs", "pubnix-codex", "--p"], ["--proxy"]),
+        (["agentbox", "shell", "exa"], ["example-codex"]),
+        (["agentbox", "logs", "example-codex", "--p"], ["--proxy"]),
         (["agentbox", "project", "re"], ["repair", "revoke"]),
-        (["agentbox", "project", "repair", "pub"], ["pubnix"]),
-        (["agentbox", "exec", "pubnix-codex", "--", ""], []),
+        (["agentbox", "project", "repair", "exa"], ["example"]),
+        (["agentbox", "exec", "example-codex", "--", ""], []),
         (["agentbox", "start", "with"], ["with space.yaml"]),
-        (["agentbox", "start", "pub"], ["pubnix-codex"]),
-        (["agentbox", "validate", "pub"], ["pubnix-codex"]),
+        (["agentbox", "start", "exa"], ["example-codex"]),
+        (["agentbox", "validate", "exa"], ["example-codex"]),
         (["agentbox", "start", "--h"], ["--help"]),
-        (["agentbox", "project", "add", "pubnix", "--path", "proj"], ["project dir"]),
+        (["agentbox", "project", "add", "example", "--path", "proj"], ["project dir"]),
     ],
 )
 def test_bash_completion(words, expected, tmp_path):
@@ -66,9 +66,9 @@ def test_bash_completion(words, expected, tmp_path):
         + """
 agentbox() {
   case "$*" in
-    'completion --names environments') printf '%s\\n' other pubnix-codex ;;
-    'completion --names projects') printf '%s\\n' pubnix ;;
-    'completion --names configs') printf '%s\\n' pubnix-codex ;;
+    'completion --names environments') printf '%s\\n' other example-codex ;;
+    'completion --names projects') printf '%s\\n' example ;;
+    'completion --names configs') printf '%s\\n' example-codex ;;
     *) return 1 ;;
   esac
 }

@@ -52,6 +52,8 @@ På installert system bygger `agentbox build-images` utviklingsimage og proxy.
 Bruk fire mellomrom i Python, Ruff med 100 tegns linjelengde og to mellomrom
 i YAML. Bashskript skal ha eksplisitt feilhåndtering. Bruk `test_*.py` og
 `test_*` for tester; ingen dekningsprosent er konfigurert.
+Bruk generiske prosjektnavn, brukernavn og filstier i eksempler og testdata;
+ikke hent dem fra operatørens personlige prosjekter.
 Oppdater relevant dokumentasjon ved endret oppførsel. C4-kilden ligger i
 `docs/architecture-c4.md`; regenerer SVG og PNG med
 `python3 scripts/render-diagrams.py` og samme kommando med `--format png`.

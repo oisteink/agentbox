@@ -10,12 +10,12 @@ def test_state_persists_and_exception_does_not_commit(tmp_path):
     store = Store(tmp_path / "private")
     with store.locked() as data:
         installation = data["installation"]
-        data["projects"]["pacman"] = {"path": "/example"}
+        data["projects"]["example"] = {"path": "/example"}
     with pytest.raises(RuntimeError), store.locked() as data:
         data["projects"].clear()
         raise RuntimeError("abort")
     with store.locked() as data:
-        assert "pacman" in data["projects"]
+        assert "example" in data["projects"]
         assert data["installation"] == installation
     assert json.loads((store.root / "state.json").read_text())["schema"] == 1
 
