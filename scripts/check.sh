@@ -7,7 +7,7 @@ uv sync --extra dev --locked
 uv run --locked pytest -q
 uv run --locked ruff check src tests scripts
 uv run --locked ruff format --check src tests scripts
-bash -n scripts/*.sh scripts/lab/*.sh images/dev/codex src/agentbox/completions/agentbox.bash
+bash -n scripts/*.sh scripts/lab/*.sh images/dev/codex src/agentbox/completions/abx.bash
 (
   cd proxy
   GOTOOLCHAIN=go1.27.3 go test -race ./...

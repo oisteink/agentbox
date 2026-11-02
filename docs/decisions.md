@@ -156,3 +156,11 @@ dekningsprosent er ikke leveransemål. Kravdekning og åpne hull vedlikeholdes i
 Skannere hopper over kjente nestede mountpunkter før de åpnes. Tjenestebrukeren
 skal ikke trenge lesetilgang til en mappe utenfor prosjektets valgte filsystem
 for å starte miljøet. Samme regel gjelder avinstallasjonens inspeksjon.
+
+## Kommandonavn
+
+CLI-en heter `abx` for å gjøre daglig bruk kortere å skrive. Pakke-entrypoint
+og vertslauncher bruker samme navn, slik at completion og skript fungerer
+uten skallalias. Agentbox er fortsatt produktnavnet; tjenestebruker, interne
+stier og kontrollhjelper beholder navnene sine. Installeren rydder det gamle
+CLI-navnet ved oppgradering, og avinstalleren kjenner begge installasjonsnavn.

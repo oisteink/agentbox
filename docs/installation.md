@@ -1,6 +1,6 @@
 # Installasjon av Agentbox
 
-Denne utviklingsgrenen erstatter Squid med Go-proxy. `agentbox build-images`
+Denne utviklingsgrenen erstatter Squid med Go-proxy. `abx build-images`
 kompilerer og tester Go-proxyen i et eget byggetrinn; Go trenger ikke installeres
 på verten. Tokens bygges ikke inn i imaget.
 
@@ -14,7 +14,13 @@ Proxyimaget må bygges på nytt for JSON-policyversjon 3 (alias/tomme referanser
 skal inneholde rå nøkkel uten `Bearer `; klienten legger til prefikset.
 
 Kjør installasjonen fra repoet på Linux-verten som skal kjøre agentmiljøene.
-Daglig bruk skjer deretter som utvikleren, uten `sudo agentbox`.
+Daglig bruk skjer deretter som utvikleren, uten `sudo abx`.
+
+Kjør `sudo scripts/install.sh` på nytt for å bytte en eksisterende installasjon
+fra `agentbox` til `abx`. Installeren fjerner gammel kommando og completion.
+Oppdater egne skript til `abx` og åpne et nytt skall, eller kjør `hash -r` og
+`source <(abx completion bash)`. Tjenestebruker og konfigurasjonsstier heter
+fortsatt `agentbox`.
 
 ## Forutsetninger og installasjon
 
@@ -28,8 +34,8 @@ før prosjektets installer kjøres. Andre nødvendige pakker på Debian/Ubuntu:
 ```sh
 sudo apt-get install acl uidmap dbus-user-session slirp4netns python3-venv sudo iproute2
 sudo scripts/install.sh
-agentbox doctor
-agentbox build-images
+abx doctor
+abx build-images
 ```
 
 Utviklerbrukeren hentes fra `SUDO_USER`, altså brukeren som kjører `sudo`.
@@ -66,9 +72,9 @@ Installeren bevarer adressevalget ved reinstallasjon.
 
 ## Kontroller installasjonen
 
-`agentbox doctor` skal rapportere `rootless: true`, riktig daemon-ID og
-`cgroup: systemd`. `agentbox build-images` skal gi image-navnene
-`agentbox-dev:local` og `agentbox-proxy:local`. `agentbox status` kan vise `{}`
+`abx doctor` skal rapportere `rootless: true`, riktig daemon-ID og
+`cgroup: systemd`. `abx build-images` skal gi image-navnene
+`agentbox-dev:local` og `agentbox-proxy:local`. `abx status` kan vise `{}`
 før første miljø er opprettet.
 
 Fortsett med [prosjektregistrering og første miljø](usage.md).

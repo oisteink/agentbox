@@ -29,7 +29,7 @@ PY
 "$lab_python" -I -m pip --isolated install --disable-pip-version-check \
   --no-deps --require-hashes -r "$results_dir/requirements.txt"
 sudo bash scripts/install.sh --operator developer
-agentbox build-images
+abx build-images
 bash scripts/lab/build-images.sh
 "$lab_python" - <<'PY' > "$results_dir/platform.json"
 import hashlib
@@ -75,7 +75,7 @@ print(json.dumps({
     'installed_sha256': hashlib.sha256(json.dumps(installed, sort_keys=True).encode()).hexdigest(),
     'suite_sha256': hashlib.sha256(json.dumps(suite, sort_keys=True).encode()).hexdigest(),
     'installed_files': installed, 'images': images.splitlines(),
-    'doctor': json.loads(subprocess.check_output(['agentbox', 'doctor'], text=True)),
+    'doctor': json.loads(subprocess.check_output(['abx', 'doctor'], text=True)),
 }, indent=2, sort_keys=True))
 PY
 

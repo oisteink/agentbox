@@ -141,7 +141,7 @@ def project_revoke(settings, name):
 
 
 def parser():
-    cli = argparse.ArgumentParser(prog="agentbox")
+    cli = argparse.ArgumentParser(prog="abx")
     commands = cli.add_subparsers(dest="action", required=True)
     commands.add_parser("doctor")
     commands.add_parser("status")
@@ -203,7 +203,7 @@ def main():
             return
         settings = load_settings()
         if os.getuid() != settings["operator_uid"]:
-            raise AgentboxError("Run agentbox as the configured developer")
+            raise AgentboxError("Run abx as the configured developer")
         if args.action == "project":
             if args.operation == "add":
                 result = project_update(settings, args.name, args.path)
@@ -275,7 +275,7 @@ def main():
             result = rpc(request)
         print(result if isinstance(result, str) else json.dumps(result, indent=2))
     except (AgentboxError, OSError, ValueError, subprocess.SubprocessError) as exc:
-        print(f"agentbox: {exc}", file=sys.stderr)
+        print(f"abx: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
 
 

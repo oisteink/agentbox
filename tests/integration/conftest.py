@@ -16,7 +16,7 @@ import yaml
 
 def cli(*arguments, check=True, **kwargs):
     return subprocess.run(
-        ["/usr/local/bin/agentbox", *arguments],
+        ["/usr/local/bin/abx", *arguments],
         check=check,
         text=True,
         capture_output=True,

@@ -47,7 +47,7 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
         (active / "developer-file").write_text("keep developer code")
         for name, path in ((active_name, active), (revoked_name, revoked)):
             registered.append(name)
-            run("agentbox", "project", "add", name, "--path", str(path))
+            run("abx", "project", "add", name, "--path", str(path))
         # Simulate a file from an earlier, now revoked environment.
         run(
             "sudo",
@@ -59,7 +59,7 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
             "sh",
             str(revoked / "retained"),
         )
-        run("agentbox", "project", "revoke", revoked_name)
+        run("abx", "project", "revoke", revoked_name)
         # Manual ancestor ACL edits must survive uninstall.
         run("setfacl", "-m", "u:65534:--x", str(parent))
         before_parent_acl = run("getfacl", "-cpn", str(parent)).stdout
@@ -78,9 +78,9 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
                 }
             )
         )
-        run("agentbox", "start", str(cfg))
+        run("abx", "start", str(cfg))
         run(
-            "agentbox",
+            "abx",
             "exec",
             env,
             "--",
@@ -88,7 +88,7 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
             "-c",
             "printf agent-code > /workspace/agent-file; chmod 600 /workspace/agent-file",
         )
-        run("agentbox", "exec", env, "--", "ln", "-s", str(protected), "/workspace/link")
+        run("abx", "exec", env, "--", "ln", "-s", str(protected), "/workspace/link")
         assert (active / "agent-file").stat().st_uid == service_uid
         assert (active / "link").lstat().st_uid == service_uid
         script = Path(__file__).resolve().parents[2] / "scripts/uninstall.sh"
@@ -96,7 +96,7 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
         assert "dry_run" in preview.stdout
         assert pwd.getpwnam("agentbox").pw_uid == service_uid
         assert (active / "agent-file").stat().st_uid == service_uid
-        assert json.loads(run("agentbox", "status").stdout)[env]["status"] == "running"
+        assert json.loads(run("abx", "status").stdout)[env]["status"] == "running"
         result = run("sudo", "bash", str(script))
         assert "will be stopped" in result.stdout
         assert "Agentbox removed" in result.stdout
@@ -123,9 +123,11 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
             "/var/lib/agentbox-operator",
             "/etc/sudoers.d/agentbox",
             "/etc/systemd/user/agentbox-watch.service",
+            "/usr/local/bin/abx",
             "/usr/local/bin/agentbox",
             "/usr/local/libexec/agentbox-control",
             "/usr/local/libexec/agentbox-watch",
+            "/usr/local/share/bash-completion/completions/abx",
             "/usr/local/share/bash-completion/completions/agentbox",
             f"/etc/systemd/system/user@{service_uid}.service.d/agentbox.conf",
             "/var/lib/systemd/linger/agentbox",
@@ -163,16 +165,16 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
 
         if run("mountpoint", "-q", str(mount), check=False).returncode == 0:
             cleanup("sudo", "umount", str(mount))
-        if Path("/usr/local/bin/agentbox").exists():
-            cleanup("agentbox", "remove", env)
-            listed = run("agentbox", "project", "list", check=False)
+        if Path("/usr/local/bin/abx").exists():
+            cleanup("abx", "remove", env)
+            listed = run("abx", "project", "list", check=False)
             if listed.returncode:
                 errors.append(listed.stderr)
             else:
                 entries = json.loads(listed.stdout)
                 for name in registered:
                     if name in entries and entries[name]["status"] != "revoked":
-                        cleanup("agentbox", "project", "revoke", name)
+                        cleanup("abx", "project", "revoke", name)
         if errors:
             pytest.fail("Uninstall cleanup failed:\n" + "\n".join(errors))
         shutil.rmtree(parent)

@@ -8,6 +8,9 @@ Dette er produktkontrakten for utviklingsgrenen med Go-proxy. [Bruksveiledningen
 beskriver kommandoene, [arkitekturen](architecture.md) forklarer oppbygningen,
 og [teststatus](test-results.md) avgrenser hva som er verifisert.
 
+Kommandonavnet er `abx`, både ved pakkeinstallasjon og vertsinstallasjon.
+Hjelp, feilmeldinger og Bash-completion bruker dette navnet.
+
 ## Begreper og tillit
 
 | Begrep | Betydning |
@@ -89,7 +92,7 @@ tilbakekalling.
 
 ## Miljøkonfigurasjon
 
-Fra 1.0.1 brukes `agentbox start FIL.yaml`. Miljønavnet
+Fra 1.0.1 brukes `abx start FIL.yaml`. Miljønavnet
 leses fra `name`; et separat navneargument og `--config` er fjernet.
 Kommandoer mot eksisterende miljøer, som `shell` og `stop`, bruker miljønavnet.
 `start` og `validate` støtter også kortnavn uten filending fra

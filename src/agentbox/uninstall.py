@@ -24,9 +24,11 @@ FIXED_DIRECTORIES = (Path("/opt/agentbox"), Path("/etc/agentbox"), HOME, JOURNAL
 FIXED_FILES = (
     Path("/etc/sudoers.d/agentbox"),
     Path("/etc/systemd/user/agentbox-watch.service"),
+    Path("/usr/local/bin/abx"),
     Path("/usr/local/bin/agentbox"),
     Path("/usr/local/libexec/agentbox-control"),
     Path("/usr/local/libexec/agentbox-watch"),
+    Path("/usr/local/share/bash-completion/completions/abx"),
     Path("/usr/local/share/bash-completion/completions/agentbox"),
 )
 
