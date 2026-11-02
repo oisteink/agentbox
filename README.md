@@ -130,6 +130,7 @@ og begrensninger.
 | [Spesifikasjon](docs/specification.md) | Produktkontrakten for Agentbox |
 | [Arkitekturvalg](docs/decisions.md) | Begrunnelser og konsekvenser av isoleringsmekanismene |
 | [Utvikling](docs/development.md) | Lokale kontroller og disponibel testlab |
+| [Teststrategi](docs/testing.md) | Kravdekning, testansvar og regler for nye tester |
 | [Teststatus](docs/test-results.md) | Observerte resultater og testavgrensninger |
 
 Full avinstallasjon gjøres med `sudo scripts/uninstall.sh`.
@@ -147,4 +148,4 @@ Go-proxyen er prøvd i Ubuntu-VM og med reell Codex/Context7-bruk.
 Uavhengig sikkerhetsgjennomgang fant ingen blokkerende funn. Ny
 Debian-vertsprøve gjenstår; se [teststatus](docs/test-results.md).
 
-[QA og revisjon av tester](docs/TODO.md) er satt opp for neste versjon på egen gren.
+Gjenværende verifikasjonshull og prioriteringer står i [teststrategien](docs/testing.md#åpne-verifikasjonshull).

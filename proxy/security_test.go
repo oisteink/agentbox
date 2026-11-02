@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"golang.org/x/net/http2"
 )
 
 func TestCredentialReflectionAndAmbiguity(t *testing.T) {
@@ -81,6 +84,20 @@ func TestCredentialReflectionAndAmbiguity(t *testing.T) {
 			{name: "duplicate-alias", method: "POST", headers: http.Header{"Context7-Api-Key": []string{"one", "two"}}, status: 403},
 		} {
 			t.Run(tc.name+map[bool]string{true: "-h2", false: "-h1"}[h2], func(t *testing.T) {
+				// A transport failure must not pass merely because the proxy died.
+				t.Cleanup(func() {
+					r, _ := http.NewRequest("POST", "https://example.com/", strings.NewReader("control"))
+					r.Header.Set("Context7_api_key", testPlaceholder)
+					response, err := client.Do(r)
+					if err != nil {
+						t.Fatalf("positive control after %s: %v", tc.name, err)
+					}
+					body, err := io.ReadAll(response.Body)
+					response.Body.Close()
+					if err != nil || response.StatusCode != 200 || string(body) != "ok" || (h2 && response.ProtoMajor != 2) {
+						t.Fatalf("positive control after %s failed: status=%d body=%q err=%v", tc.name, response.StatusCode, body, err)
+					}
+				})
 				before := calls.Load()
 				r, _ := http.NewRequest(tc.method, "https://example.com/", io.NopCloser(strings.NewReader("payload")))
 				r.Header.Set("Context7_api_key", testPlaceholder)
@@ -94,7 +111,8 @@ func TestCredentialReflectionAndAmbiguity(t *testing.T) {
 				if err != nil {
 					// H2 may reset a stream with unread request trailers instead of
 					// returning the early 403. It must still send no upstream HTTP.
-					if tc.status == 403 && calls.Load() == before {
+					var streamError http2.StreamError
+					if h2 && tc.trailer && errors.As(err, &streamError) && calls.Load() == before {
 						return
 					}
 					t.Fatal(err)
@@ -102,7 +120,7 @@ func TestCredentialReflectionAndAmbiguity(t *testing.T) {
 				body, err := io.ReadAll(response.Body)
 				response.Body.Close()
 				if err != nil {
-					if tc.status == 403 && response.StatusCode == 403 && calls.Load() == before && !strings.Contains(string(body), secret) {
+					if h2 && tc.trailer && response.StatusCode == 403 && calls.Load() == before && !strings.Contains(string(body), secret) {
 						return
 					}
 					t.Fatal(err)

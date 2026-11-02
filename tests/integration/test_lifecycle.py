@@ -1,295 +1,361 @@
-"""Installed-CLI acceptance checks. Run as developer in the disposable lab only."""
+"""Independent installed-CLI scenarios, each with its own resources and cleanup."""
 
 import json
-import os
 import pwd
 import shlex
-import socket
 import subprocess
-import tempfile
 import time
-import uuid
-from pathlib import Path
 
 import pytest
 import yaml
-
-pytestmark = pytest.mark.skipif(
-    os.environ.get("AGENTBOX_LAB") != "1" or socket.gethostname() != "agentbox-lab",
-    reason="requires installed agentbox in the disposable lab",
-)
+from conftest import cli
 
 
-def cli(*arguments, check=True):
-    return subprocess.run(
-        ["/usr/local/bin/agentbox", *arguments],
-        check=check,
+def python(env, source, *arguments):
+    # CLI arguments are single-line strings; repr preserves a multiline Python program.
+    return cli("exec", env, "--", "python3", "-c", f"exec({source!r})", *arguments)
+
+
+def test_two_images_and_independent_environments(lab):
+    first, first_path = lab.project("first")
+    second, second_path = lab.project("second")
+    (second_path / "marker").write_text("second environment")
+    env1 = lab.start(first, image="agentbox-dev:local")
+    env2 = lab.start(second)
+    assert cli("exec", env1, "--", "codex", "--version").stdout.strip() == "codex-cli 0.166.0"
+    # Re-registering an unchanged, in-use project must be harmless.
+    result = json.loads(cli("project", "add", first, "--path", str(first_path)).stdout)
+    assert result["status"] == "active"
+    cli("stop", env1)
+    cli("remove", env1)
+    lab.assert_removed(env1)
+    assert lab.state(env2)["containers"] == {"agent": "running", "proxy": "running"}
+    assert cli("exec", env2, "--", "cat", "/workspace/marker").stdout == "second environment"
+
+
+def test_exec_exit_status_and_configured_shell(lab):
+    project, _ = lab.project()
+    env = lab.start(project, command=["python3", "-c", "print('configured-shell')"])
+    assert cli("shell", env).stdout == "configured-shell\n"
+    result = cli(
+        "exec",
+        env,
+        "--",
+        "python3",
+        "-c",
+        "import sys; print(repr(sys.argv[1])); print('child-stderr', file=sys.stderr); sys.exit(23)",
+        "argument with spaces",
+        check=False,
+    )
+    assert result.returncode == 23, result
+    assert "'argument with spaces'\n" in result.stdout
+    assert "child-stderr\n" in result.stdout
+    assert "child-stderr" in cli("logs", env).stdout
+
+
+def test_terminal_reads_input_and_preserves_size(lab):
+    project, _ = lab.project()
+    env = lab.start(project)
+    program = (
+        "import os; assert os.isatty(0) and os.isatty(1); "
+        "print('size=%sx%s' % tuple(os.get_terminal_size(1)), flush=True); "
+        "print('reply:' + input()[::-1], flush=True)"
+    )
+    command = shlex.join(["/usr/local/bin/agentbox", "exec", env, "--", "python3", "-c", program])
+    result = subprocess.run(
+        ["script", "-q", "-e", "-c", "stty rows 30 cols 100; exec " + command, "/dev/null"],
+        input="operator-input\n",
         text=True,
         capture_output=True,
-        timeout=120,
+        timeout=30,
     )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "size=100x30" in result.stdout
+    assert "reply:tupni-rotarepo" in result.stdout  # Cannot be satisfied by terminal echo.
 
 
-def test_two_environments_and_revocation():
-    token = uuid.uuid4().hex[:8]
-    first, second = "first-" + token, "second-" + token
-    env1, env2 = "env-first-" + token, "env-second-" + token
-    registered = []
-    environments = []
-    with tempfile.TemporaryDirectory(prefix="agentbox-lifecycle-", dir=Path.home()) as temporary:
-        root = Path(temporary)
-        project1, project2, hidden = (root / p for p in ("one", "two", "hidden"))
-        for project in (project1, project2, hidden):
-            project.mkdir()
-        (hidden / "private.txt").write_text("not shared")
-        (project1 / "from-developer").write_text("original")
-        (project2 / "readonly").write_text("unchanged")
+def test_project_file_operations_and_remove_preserve_code(lab):
+    project, path = lab.project()
+    (path / "from-developer").write_text("developer")
+    (path / "executable").write_text("#!/bin/sh\nprintf executable")
+    (path / "executable").chmod(0o750)
+    env = lab.start(project)
+    cli(
+        "exec",
+        env,
+        "--",
+        "python3",
+        "-c",
+        "from pathlib import Path; "
+        "p=Path('/workspace/from-developer'); assert p.read_text() == 'developer'; "
+        "p.write_text('edited-by-agent'); Path('/workspace/from-agent').write_text('agent'); "
+        "Path('/workspace/new-directory').mkdir(); "
+        "Path('/workspace/new-directory/file').write_text('nested')",
+    )
+    assert (path / "from-developer").read_text() == "edited-by-agent"
+    assert not (path / "from-agent").stat().st_mode & 0o111
+    (path / "replacement").write_text("replaced-by-developer")
+    (path / "replacement").replace(path / "from-agent")
+    assert cli("exec", env, "--", "cat", "/workspace/from-agent").stdout == "replaced-by-developer"
+    assert cli("exec", env, "--", "/workspace/executable").stdout == "executable"
+    (path / "new-directory/file").unlink()
+    cli("exec", env, "--", "rm", "/workspace/from-developer")
+    assert not (path / "from-developer").exists()
+    cli("remove", env)
+    lab.assert_removed(env)
+    assert (path / "from-agent").read_text() == "replaced-by-developer"
+    assert (path / "executable").stat().st_mode & 0o111
+    assert json.loads(cli("project", "list").stdout)[project]["status"] == "active"
+
+
+def test_mount_visibility_and_readonly(lab):
+    project, path = lab.project()
+    readonly, readonly_path = lab.project("readonly")
+    (path / "visible").write_text("selected project")
+    (readonly_path / "file").write_text("unchanged")
+    hidden = lab.root / "hidden"
+    hidden.mkdir()
+    (hidden / "private").write_text("not shared")
+    env = lab.start(
+        project,
+        mounts=[
+            {"project": project, "target": "/workspace"},
+            {"project": readonly, "target": "/readonly", "mode": "ro"},
+        ],
+    )
+    result = python(
+        env,
+        "import errno, pathlib, sys; "
+        "assert pathlib.Path('/workspace/visible').read_text() == 'selected project'; "
+        "assert not pathlib.Path(sys.argv[1]).exists(); "
+        "assert pathlib.Path('/readonly/file').read_text() == 'unchanged'; "
+        "\ntry: pathlib.Path('/readonly/file').write_text('bad')"
+        "\nexcept OSError as e: assert e.errno == errno.EROFS; print('readonly-enforced')"
+        "\nelse: raise AssertionError('write succeeded')",
+        str(hidden),
+    )
+    assert result.stdout == "readonly-enforced\n"
+    assert (readonly_path / "file").read_text() == "unchanged"
+
+
+def test_acl_repair_and_revocation_leave_other_project_working(lab):
+    project, path = lab.project()
+    other, other_path = lab.project("other")
+    (other_path / "marker").write_text("other project")
+    env = lab.start(
+        project,
+        mounts=[
+            {"project": project, "target": "/workspace"},
+            {"project": other, "target": "/readonly", "mode": "ro"},
+        ],
+    )
+    blocked = cli("project", "revoke", other, check=False)
+    assert blocked.returncode == 2
+    assert f"Stop every environment using this project first: {env}" in blocked.stderr
+    assert json.loads(cli("project", "list").stdout)[other]["status"] == "active"
+    assert cli("exec", env, "--", "cat", "/readonly/marker").stdout == "other project"
+    cli(
+        "exec",
+        env,
+        "--",
+        "sh",
+        "-c",
+        "printf retained > /workspace/private; chmod 0600 /workspace/private",
+    )
+    with pytest.raises(PermissionError):
+        (path / "private").read_text()
+    assert (
+        "private" in json.loads(cli("project", "check", project).stdout)["operator_access_issues"]
+    )
+    cli("stop", env)
+    cli("project", "repair", project)
+    assert (path / "private").read_text() == "retained"
+    checked = json.loads(cli("project", "check", project).stdout)
+    assert not checked["operator_access_issues"] and not checked["service_access_issues"]
+    other_env = lab.start(other)
+    cli("remove", env)
+    assert json.loads(cli("project", "revoke", project).stdout)["status"] == "revoked"
+    # Observe traversal as the service identity, even though it owns this file.
+    denied = subprocess.run(
+        [
+            "sudo",
+            "-u",
+            "agentbox",
+            "python3",
+            "-c",
+            "import errno, pathlib, sys\ntry: pathlib.Path(sys.argv[1]).read_text()"
+            "\nexcept OSError as e: assert e.errno == errno.EACCES; print('access-revoked')"
+            "\nelse: raise AssertionError('access retained')",
+            str(path / "private"),
+        ],
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert denied.returncode == 0, denied.stderr
+    assert denied.stdout == "access-revoked\n"
+    assert (path / "private").read_text() == "retained"
+    assert cli("exec", other_env, "--", "cat", "/workspace/marker").stdout == "other project"
+
+
+def test_stop_start_preserves_container_and_home(lab):
+    project, path = lab.project()
+    (path / "code").write_text("project survives")
+    env = lab.start(project)
+    before = lab.state(env)["resources"]
+    cli("exec", env, "--", "sh", "-c", "printf home-survives > /home/agent/marker")
+    cli("start", str(lab.environments[env]))
+    assert lab.state(env)["resources"] == before  # Running start is idempotent, too.
+    cli("stop", env)
+    cli("stop", env)
+    assert lab.state(env)["containers"] == {"agent": "exited", "proxy": "exited"}
+    cli("start", str(lab.environments[env]))
+    assert lab.state(env)["resources"]["agent"] == before["agent"]
+    assert cli("exec", env, "--", "cat", "/home/agent/marker").stdout == "home-survives"
+    assert cli("exec", env, "--", "cat", "/workspace/code").stdout == "project survives"
+
+
+def test_changed_profile_is_rejected_without_losing_home(lab):
+    project, _ = lab.project()
+    env = lab.start(project)
+    before = lab.state(env)["resources"]["agent"]
+    cli("exec", env, "--", "sh", "-c", "printf retained > /home/agent/marker")
+    path = lab.environments[env]
+    original = path.read_text()
+    modified = yaml.safe_load(original)
+    modified["resources"]["pids"] = 128
+    path.write_text(yaml.safe_dump(modified))
+    rejected = cli("start", str(path), check=False)
+    assert rejected.returncode == 2
+    assert "Configuration changed" in rejected.stderr
+    assert lab.state(env)["resources"]["agent"] == before
+    assert cli("exec", env, "--", "cat", "/home/agent/marker").stdout == "retained"
+    path.write_text(original)
+    cli("start", str(path))
+
+
+def test_socket_capability_and_cgroup_enforcement(lab):
+    project, _ = lab.project()
+    env = lab.start(project)
+    result = python(
+        env,
+        "import asyncio, errno, pathlib, socket; "
+        "assert not pathlib.Path('/var/run/docker.sock').exists(); "
+        "asyncio.run(asyncio.sleep(0)); "
+        "assert pathlib.Path('/proc/sys/net/ipv6/conf/all/disable_ipv6').read_text().strip() == '1'; "
+        "p=pathlib.Path('/sys/fs/cgroup'); "
+        "assert {n:(p/n).read_text().strip() for n in ['cpu.max','memory.max','pids.max']} "
+        "== {'cpu.max':'50000 100000', 'memory.max':'268435456', 'pids.max':'64'}; "
+        "\ntry: socket.socket(socket.AF_UNIX)"
+        "\nexcept OSError as e: assert e.errno == errno.EPERM; print('socket-denied')"
+        "\nelse: raise AssertionError('Unix socket allowed')",
+    )
+    assert result.stdout == "socket-denied\n"
+    denied = cli("exec", env, "--", "ip", "link", "add", "forbidden", "type", "dummy", check=False)
+    assert denied.returncode != 0 and "Operation not permitted" in denied.stdout
+    limited = python(
+        env,
+        """
+import errno, os, signal, time
+from pathlib import Path
+children = []
+try:
+    for attempt in range(80):
         try:
-            for name, project in ((first, project1), (second, project2)):
-                result = json.loads(cli("project", "add", name, "--path", str(project)).stdout)
-                assert result["status"] == "active"
-                registered.append(name)
-            for environment, project_name, image in (
-                (env1, first, "agentbox-dev:local"),
-                (env2, second, "agentbox-dev:lab"),
-            ):
-                cfg = {
-                    "name": environment,
-                    "image": image,
-                    "command": ["bash"],
-                    "mounts": [{"project": project_name, "target": "/workspace"}],
-                    "network": {"allow": []},
-                    "resources": {"cpus": 0.5, "memory": "256m", "pids": 64},
-                }
-                if environment == env1:
-                    cfg["mounts"].append({"project": second, "target": "/readonly", "mode": "ro"})
-                path = root / (environment + ".yaml")
-                path.write_text(yaml.safe_dump(cfg))
-                result = json.loads(cli("start", str(path)).stdout)
-                assert result["status"] == "running"
-                environments.append(environment)
-            assert (
-                json.loads(cli("project", "add", first, "--path", str(project1)).stdout)["status"]
-                == "active"
-            )
-            assert (
-                cli("exec", env1, "--", "codex", "--version")
-                .stdout.strip()
-                .endswith("codex-cli 0.166.0")
-            )
-            terminal = subprocess.run(
-                [
-                    "script",
-                    "-q",
-                    "-e",
-                    "-c",
-                    shlex.join(
-                        [
-                            "/usr/local/bin/agentbox",
-                            "exec",
-                            env1,
-                            "--",
-                            "bash",
-                            "-c",
-                            "test -t 0 && printf tty-ok",
-                        ]
-                    ),
-                    "/dev/null",
-                ],
-                input="",
-                text=True,
-                capture_output=True,
-                timeout=30,
-            )
-            assert terminal.returncode == 0, terminal.stdout + terminal.stderr
-            assert "tty-ok" in terminal.stdout
-            cli("exec", env1, "--", "bash", "-c", "printf agent > /workspace/from-agent")
-            assert (project1 / "from-agent").read_text() == "agent"
-            with (project1 / "from-agent").open("a") as file:
-                file.write("-developer")
-            assert (
-                cli("exec", env1, "--", "cat", "/workspace/from-agent").stdout == "agent-developer"
-            )
-            assert cli("exec", env1, "--", "test", "-e", str(hidden), check=False).returncode != 0
-            assert cli("exec", env1, "--", "cat", "/readonly/readonly").stdout == "unchanged"
-            assert (
-                cli(
-                    "exec",
-                    env1,
-                    "--",
-                    "python3",
-                    "-c",
-                    "open('/readonly/readonly', 'w').write('bad')",
-                    check=False,
-                ).returncode
-                != 0
-            )
-            assert (
-                cli(
-                    "exec", env1, "--", "test", "-S", "/var/run/docker.sock", check=False
-                ).returncode
-                != 0
-            )
-            assert (
-                cli(
-                    "exec",
-                    env1,
-                    "--",
-                    "ip",
-                    "link",
-                    "add",
-                    "forbidden",
-                    "type",
-                    "dummy",
-                    check=False,
-                ).returncode
-                != 0
-            )
-            assert (
-                cli(
-                    "exec", env1, "--", "cat", "/proc/sys/net/ipv6/conf/all/disable_ipv6"
-                ).stdout.strip()
-                == "1"
-            )
-            # A live service in environment two is reachable from itself, but not environment one.
-            cli(
-                "exec",
-                env2,
-                "--",
-                "bash",
-                "-c",
-                "python3 -m http.server 18482 >/tmp/test-http.log 2>&1 & echo started",
-            )
-            control = cli(
-                "exec",
-                env2,
-                "--",
-                "curl",
-                "--fail",
-                "--silent",
-                "--noproxy",
-                "*",
-                "--retry",
-                "3",
-                "--retry-connrefused",
-                "http://127.0.0.1:18482/",
-            )
-            assert "readonly" in control.stdout
-            address = cli(
-                "exec",
-                env2,
-                "--",
-                "python3",
-                "-c",
-                "import socket; print(socket.gethostbyname(socket.gethostname()))",
-            ).stdout.strip()
-            cross_environment = cli(
-                "exec",
-                env1,
-                "--",
-                "python3",
-                "-c",
-                "import socket; socket.create_connection((" + repr(address) + ",18482),timeout=2)",
-                check=False,
-            )
-            assert cross_environment.returncode != 0
-            cli("stop", env2)
-            assert (
-                cli("project", "revoke", second, check=False).returncode != 0
-            )  # env1 has a read-only mount.
-            cli("start", str(root / (env2 + ".yaml")))
-            # New Unix sockets are blocked at syscall creation, independently of directory scans.
-            denied = cli(
-                "exec",
-                env1,
-                "--",
-                "python3",
-                "-c",
-                "import socket; socket.socket(socket.AF_UNIX)",
-                check=False,
-            )
-            assert denied.returncode != 0
-            cli(
-                "exec", env1, "--", "python3", "-c", "import asyncio; asyncio.run(asyncio.sleep(0))"
-            )
-            # Resource settings observed inside the container must match the requested limits.
-            output = cli(
-                "exec",
-                env1,
-                "--",
-                "python3",
-                "-c",
-                "import pathlib,json; p=pathlib.Path('/sys/fs/cgroup'); "
-                "print(json.dumps({n:(p/n).read_text().strip() "
-                "for n in ['cpu.max','memory.max','pids.max']}))",
-            )
-            limits = json.loads(output.stdout)
-            assert limits == {
-                "cpu.max": "50000 100000",
-                "memory.max": "268435456",
-                "pids.max": "64",
-            }
-            blocked = cli("project", "revoke", first, check=False)
-            assert blocked.returncode != 0  # Running mounts must prevent revocation.
-            cli("exec", env1, "--", "chmod", "0600", "/workspace/from-agent")
-            with pytest.raises(PermissionError):
-                (project1 / "from-agent").read_text()
-            checked = json.loads(cli("project", "check", first).stdout)
-            assert "from-agent" in checked["operator_access_issues"]
-            cli("stop", env1)
-            cli("stop", env1)
-            cli("project", "repair", first)
-            assert (project1 / "from-agent").read_text() == "agent-developer"
-            checked = json.loads(cli("project", "check", first).stdout)
-            assert not checked["operator_access_issues"] and not checked["service_access_issues"]
-            # Resuming an unchanged environment preserves its writable layer.
-            cli("start", str(root / (env1 + ".yaml")))
-            assert (
-                cli("exec", env1, "--", "cat", "/workspace/from-agent").stdout == "agent-developer"
-            )
-            assert "agent-developer" in cli("logs", env1).stdout
-            cli("stop", env1)
-            assert cli("exec", env2, "--", "cat", "/workspace/readonly").stdout == "unchanged"
-            cli("remove", env1)
-            environments.remove(env1)
-            assert (project1 / "from-agent").read_text() == "agent-developer"
-            result = json.loads(cli("project", "revoke", first).stdout)
-            assert result["status"] == "revoked"
-            registered.remove(first)
-            # Another registered project remains active after shared-parent ACL cleanup.
-            assert cli("exec", env2, "--", "cat", "/workspace/readonly").stdout == "unchanged"
-            # An interrupted daemon must not turn start into an implicit remove.
-            cli("exec", env2, "--", "bash", "-c", "printf retained > /home/agent/retained")
-            uid = pwd.getpwnam("agentbox").pw_uid
-            subprocess.run(
-                [
-                    "sudo",
-                    "-u",
-                    "agentbox",
-                    "env",
-                    "HOME=/var/lib/agentbox",
-                    f"XDG_RUNTIME_DIR=/run/user/{uid}",
-                    f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus",
-                    "systemctl",
-                    "--user",
-                    "restart",
-                    "docker.service",
-                ],
-                check=True,
-                text=True,
-                capture_output=True,
-                timeout=45,
-            )
-            for attempt in range(20):
-                resumed = cli("start", str(root / (env2 + ".yaml")), check=False)
-                if resumed.returncode == 0:
-                    break
-                time.sleep(0.2)
-            else:
-                raise AssertionError(resumed.stderr)
-            assert cli("exec", env2, "--", "cat", "/home/agent/retained").stdout == "retained"
-        finally:
-            for environment in reversed(environments):
-                cli("remove", environment, check=False)
-            for project in reversed(registered):
-                cli("project", "revoke", project, check=False)
+            pid = os.fork()
+        except OSError as exc:
+            assert exc.errno == errno.EAGAIN
+            assert int(Path('/sys/fs/cgroup/pids.current').read_text()) == 64
+            print('pids-enforced', flush=True)
+            break
+        if pid == 0:
+            time.sleep(10)
+            os._exit(0)
+        children.append(pid)
+    else:
+        raise AssertionError('process limit not enforced')
+finally:
+    for pid in children:
+        os.kill(pid, signal.SIGTERM)
+    for pid in children:
+        os.waitpid(pid, 0)
+""",
+    )
+    assert limited.stdout == "pids-enforced\n"
+    assert cli("exec", env, "--", "true").returncode == 0
+
+
+def test_environment_network_isolation(lab):
+    first, _ = lab.project("first")
+    second, path = lab.project("second")
+    (path / "marker").write_text("controlled-service")
+    env1, env2 = lab.start(first), lab.start(second)
+    cli("exec", env2, "--", "sh", "-c", "python3 -m http.server 18482 >/tmp/http.log 2>&1 &")
+    address = cli(
+        "exec",
+        env2,
+        "--",
+        "python3",
+        "-c",
+        "import socket; print(socket.gethostbyname(socket.gethostname()))",
+    ).stdout.strip()
+    control_args = [
+        "exec",
+        env2,
+        "--",
+        "curl",
+        "--fail",
+        "--silent",
+        "--noproxy",
+        "*",
+        "--retry",
+        "3",
+        "--retry-connrefused",
+        f"http://{address}:18482/marker",
+    ]
+    assert cli(*control_args).stdout == "controlled-service"
+    result = python(
+        env1,
+        "import errno, socket, sys"
+        "\ntry: socket.create_connection((sys.argv[1],18482),timeout=2)"
+        "\nexcept OSError as e: assert e.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH, errno.ETIMEDOUT) "
+        "or isinstance(e, TimeoutError); print('network-isolated')"
+        "\nelse: raise AssertionError('other environment reached')",
+        address,
+    )
+    assert result.stdout == "network-isolated\n"
+    assert cli(*control_args).stdout == "controlled-service"
+
+
+def test_daemon_restart_preserves_home(lab):
+    project, _ = lab.project()
+    env = lab.start(project)
+    before = lab.state(env)["resources"]["agent"]
+    cli("exec", env, "--", "sh", "-c", "printf retained > /home/agent/marker")
+    uid = pwd.getpwnam("agentbox").pw_uid
+    systemctl = [
+        "sudo",
+        "-u",
+        "agentbox",
+        "env",
+        "HOME=/var/lib/agentbox",
+        f"XDG_RUNTIME_DIR=/run/user/{uid}",
+        f"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{uid}/bus",
+        "systemctl",
+        "--user",
+    ]
+    subprocess.run(
+        [*systemctl, "restart", "docker.service"], check=True, capture_output=True, timeout=45
+    )
+    for _ in range(50):
+        guard = subprocess.run(
+            [*systemctl, "is-active", "agentbox-watch.service"], capture_output=True, timeout=5
+        )
+        if guard.returncode == 0 and cli("doctor", check=False).returncode == 0:
+            break
+        time.sleep(0.2)
+    else:
+        pytest.fail("daemon/address guard did not recover")
+    cli("start", str(lab.environments[env]))
+    assert lab.state(env)["resources"]["agent"] == before
+    assert cli("exec", env, "--", "cat", "/home/agent/marker").stdout == "retained"

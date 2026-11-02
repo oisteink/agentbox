@@ -152,6 +152,8 @@ def inspect_tree(root):
         )
         if directory:
             for entry in os.scandir(fd):
+                if str(root / relative / entry.name) in nested:
+                    continue
                 flags = (
                     os.O_RDONLY | os.O_DIRECTORY
                     if entry.is_dir(follow_symlinks=False)

@@ -689,21 +689,48 @@ req.end();
         app("start", str(empty_path), token="")
         assert app("exec", empty_name, "--", "printenv", "hf_token").stdout.strip() == ""
         checks["empty_source_recreation_and_restart"] = True
-        result["passed"] = True
+        result["checks_passed"] = True
     finally:
+        errors = []
+
+        def cleanup(operation):
+            try:
+                operation()
+            except Exception as exc:
+                errors.append(f"{type(exc).__name__}: {exc}")
+
         for name in names:
-            app("remove", name, check=False)
-        app("project", "revoke", registered, check=False)
-        settings_path.write_text(settings_before)
-        Path("/etc/hosts").write_text(hosts_before)
+            cleanup(lambda name=name: app("remove", name))
+        # Setup can fail before registration; an absent registration is not a leak.
+        try:
+            entries = json.loads(app("project", "list").stdout)
+            if registered in entries and entries[registered]["status"] != "revoked":
+                cleanup(lambda: app("project", "revoke", registered))
+        except Exception as exc:
+            errors.append(f"project list: {exc}")
+        cleanup(lambda: settings_path.write_text(settings_before))
+        cleanup(lambda: Path("/etc/hosts").write_text(hosts_before))
         if fixture:
-            fixture.terminate()
-            fixture.wait(timeout=5)
-        run("ip", "link", "del", veth, check=False)
-        run("ip", "netns", "del", namespace, check=False)
-        shutil.rmtree(base)
-        shutil.rmtree(project)
+            cleanup(fixture.terminate)
+            cleanup(lambda: fixture.wait(timeout=5))
+            events.close()
+        if run("ip", "link", "show", "dev", veth, check=False).returncode == 0:
+            cleanup(lambda: run("ip", "link", "del", veth))
+        try:
+            if namespace in {
+                line.split()[0] for line in run("ip", "netns", "list").stdout.splitlines()
+            }:
+                cleanup(lambda: run("ip", "netns", "del", namespace))
+        except Exception as exc:
+            errors.append(f"netns list: {exc}")
+        if not errors:
+            cleanup(lambda: shutil.rmtree(base))
+            cleanup(lambda: shutil.rmtree(project))
+        result["cleanup_errors"] = errors
+        result["passed"] = bool(result.get("checks_passed")) and not errors
         print(json.dumps(result, indent=2, sort_keys=True))
+        if errors:
+            raise RuntimeError("Proxy lab cleanup failed: " + "; ".join(errors))
 
 
 if __name__ == "__main__":
