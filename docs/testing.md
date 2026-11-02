@@ -44,6 +44,9 @@ med miljøets etikett etter fjerning; en vellykket CLI-respons alene er utilstre
 
 ## Kontroller før merge
 
+En agentsandkasse kan skjule `/dev/kvm` selv om verten har KVM. Kontroller
+tilgangen på verten før laben regnes som utilgjengelig.
+
 Kjør `scripts/check.sh` for låste Python-avhengigheter, pytest, Ruff,
 Bash-syntaks, Go race/vet, govulncheck og gofmt. Dette krever Python 3.12+,
 uv, Go og tilgang til toolchain 1.27.3 og sårbarhetsdatabasen.
@@ -85,7 +88,7 @@ kravet er uttømmende verifisert. Alle livssyklustestene ligger i
 | A9: ingen fallback | Proxyprøvens stopp, avvist apply og tom/ikke-tom overgang; `test_proxy_credentials` | Ikke alle crash-/readinessfeil er injisert |
 | A10: agentens begrensninger | `test_socket_capability_and_cgroup_enforcement`: AF_UNIX gir EPERM, Docker-socket mangler, ip link avvises; asyncio fungerer | Alternative socketsyscalls, mount-forsøk og skriving til alle kontrollfiler trenger egne prøver |
 | A11: to images | `test_two_images_and_independent_environments` med utviklingsimage og uavhengig smoke-image | Ikke andre agentsystemer eller arm64 |
-| Lokale imageoppskrifter | `test_images`: filer, binær protokoll, sikker utpakking, eierskap og eksakt brukssjekk; `test_local_image_build_context_and_use_guard`: COPY/ignore og ombygging | Ny installert prøve er ikke kjørt; se teststatus |
+| Lokale imageoppskrifter | `test_images`: filer, binær protokoll, sikker utpakking, eierskap og eksakt brukssjekk; `test_local_image_build_context_and_use_guard`: COPY/ignore og ombygging | Installert på Ubuntu amd64; andre plattformer er ikke prøvd |
 | A12: ressurser | `test_socket_capability_and_cgroup_enforcement` leser CPU/minne/PID og fyller PID-grensen; lokal daemonprøve av manglende støtte | Ingen ny CPU-belastnings- eller OOM-prøve |
 | A13: tilbakekalling | `test_acl_repair_and_revocation_leave_other_project_working`: avslag under read-only bruk, EACCES som tjenestebruker og annet prosjekt fortsetter; ACL-unitprøver | Konkurrerende manuelle ACL-endringer mangler |
 | Installasjon | `test_install` validerer operatørvalg; labinngangen kjører install og sammenligner filer | Unitprøven stopper før privilegerte steg; minste Debian er ikke fastsatt |

@@ -30,13 +30,19 @@ privat utpakket katalog med datafilter og Dockers vanlige katalogbygg.
 Laboppsettet kopierer også aktuell Codex-mal før bygg for å unngå gamle
 lokale oppskrifter i gjentatte prøver.
 
-Installert lab er **ikke kjørt for denne endringen**: arbeidsmiljøet mangler
-både `.lab` og `/dev/kvm`. Nytt scenario
-`test_local_image_build_context_and_use_guard` prøver COPY/.dockerignore,
+`scripts/lab/check.sh --uninstall` bestod i en ny disponibel KVM-VM:
+Ubuntu 24.04.5 amd64, kernel 6.8.0-147-generic, Python 3.12.3, pytest 9.0.3
+og rootless Docker 29.9.2. Alle 12 livssyklusscenarioer bestod på 81,96
+sekunder, de 24 proxykontrollene bestod uten cleanupfeil, og avinstallasjon
+bestod på 5,96 sekunder. Ingen skips eller testfeil i sluttkjøringen.
+Installert kilde ble sammenlignet med prosjektkilden før prøvene.
+
+`test_local_image_build_context_and_use_guard` bekreftet COPY/.dockerignore,
 bygg/fjerning under kjørende og stoppet bruk, proxyens brukssperre og
-ombygging etter remove med bevart prosjektfil. Det må kjøres sammen med
-resten av labpakken før merge. Tidligere labresultater nedenfor gjelder
-før den nye imagearbeidsflyten.
+ombygging etter remove med bevart prosjektfil. Eksisterende prøver bekreftet
+nettverksavslag, tillatt proxytrafikk, ACL-oppførsel og bevart containerlag ved
+stopp/start. Prøvene bruker syntetiske tokens, uten ekte nøkler eller modellkall.
+VM-en ble stoppet, og disponible labdata og rålogger ble fjernet etter prøvene.
 
 ## Lokalt navnebytte til abx, 2. november 2026
 

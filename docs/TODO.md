@@ -3,9 +3,6 @@
 Gjeldende testansvar og kravdekning står i [teststrategien](testing.md).
 De viktigste gjenstående verifikasjonene er:
 
-- Kjør labpakken for lokale imageoppskrifter før merge: COPY/.dockerignore,
-  brukssperre og ombygging, samt eksisterende proxy- og livssyklusprøver.
-
 - Fastsett minste Debian-versjon gjennom installasjon, akseptanse og
   avinstallasjon på en konkret Debian-vert.
 - Oppdater kontrollert UDP/DNS- og vert/LAN-prøve før nettverksplattformen

@@ -294,6 +294,7 @@ def test_socket_capability_and_cgroup_enforcement(lab):
         env,
         """
 import errno, os, signal, time
+from pathlib import Path
 children = []
 try:
     for attempt in range(80):
