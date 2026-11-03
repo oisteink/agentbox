@@ -71,6 +71,11 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   JSON følger den felles kontrakten for strukturert suksess eller feil.
 - `abx mount list` viser navn, katalogsti og registreringsstatus
   (aktiv/tilbakekalt) i tabell. --json gir tilsvarende strukturerte data.
+- `abx mount check NAVN` kontrollerer katalogidentitet og rettigheter for
+  operatøren og Agentbox uten å endre noe. --fix reparerer påviste problemer
+  gjennom samme reparasjonslogikk som doctor --fix og mount repair.
+  Begge utskriftsmoduser viser OK eller konkrete feil, og ved --fix hva som
+  er reparert og eventuelt gjenstår.
 - Miljøfilens `mounts` bruker `source: NAVN`, `target: /sti/i/container` og
   `mode: ro` eller `rw`. Source refererer til registreringen; target og mode
   velges per miljø. Ett miljø kan bruke flere mounts. Uregistrerte eller
@@ -122,5 +127,7 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
 - Mount remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding
   frem til denne er fullført. Håndtering av miljøer som bruker kilden,
   og konkrete regler for oppryddingen, avklares i research/plan.
+- Vurder om separat mount repair skal beholdes som brukerkommando når
+  mount check --fix finnes. Intern reparasjonslogikk skal uansett være felles.
 - Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
   opprettet eller konkret inndeling avklart.
