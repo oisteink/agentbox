@@ -74,6 +74,14 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   av rettigheter og eventuelt eierskap. Ingen av dem sletter katalogen eller
   filene. Refererende miljøfiler beholdes, men kilden kan ikke brukes før
   den igjen er registrert og aktiv.
+- `abx doctor` beholdes som samlet diagnose av installasjon/runtime,
+  registrerte mounts og deres rettigheter, samt images som mangler bygg.
+  Uten --fix undersøker den og rapporterer funn uten å reparere.
+- `abx doctor --fix` reparerer påviste problemer gjennom de samme operasjonene
+  som blant annet mount repair og image build. Kontroll og reparasjon skal
+  gjenbruke eksisterende felles kode, uten parallelle implementasjoner.
+  Resultatet viser hva som er reparert og hvilke problemer som gjenstår.
+  Gjeldende eierskaps-, bruks- og sikkerhetskontroller gjelder også via --fix.
 
 ## Utskrift for mennesker og agenter
 
