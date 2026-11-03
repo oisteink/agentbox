@@ -44,5 +44,5 @@ plassholder, proxy/CA, modellvalg, nødvendige destinasjoner og AWS-streaming
 må verifiseres senere, etter at brukerflyten er avklart.
 
 login-api-key sender ekte nøkkel til codex login via stdin og går utenom
-proxybeskyttelsen. Den trengs ikke for den beskrevne bearer-flyten. Fjerning
-av kommandoen er foreløpig et forslag, ikke en vedtatt kodeendring.
+proxybeskyttelsen. Brukeren har besluttet at kommandoen og kontrolloperasjonen
+skal fjernes. Beslutningen er tatt inn i spec; kodeendringen er ikke utført.

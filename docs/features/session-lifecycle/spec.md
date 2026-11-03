@@ -58,6 +58,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   reinstallasjon; installeren skal bygge nytt proxyimage når proxykoden
   er endret og gjenbruke eksisterende image når den er uendret. Byggingen
   skal kunne reproduseres fra proxykoden og Dockerfilen i repoet.
+- `abx login-api-key` fjernes, inkludert kontrolloperasjonen som sender ekte
+  nøkkel til Codex. API-nøkler gis gjennom proxyens plassholder-/tokenbytte.
+  Kontoinnlogging via nettleser/device-login håndteres av agentverktøyet.
 
 ## Utskrift for mennesker og agenter
 
