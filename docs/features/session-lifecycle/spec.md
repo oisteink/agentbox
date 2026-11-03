@@ -38,6 +38,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx logs NAVN` viser siste utsnitt av agentloggen; `--proxy` velger
   proxyloggen. `-f` / `--follow` følger nye logghendelser fortløpende for
   begge loggtyper. Ctrl-C avslutter loggvisningen uten å stoppe miljøet.
+- `abx validate CONFIG` kontrollerer miljøfilen uten oppstart. Menneskemodus
+  viser en kort bekreftelse eller konkrete feil; `--json` gir strukturert
+  resultat eller feil etter den felles utskriftskontrakten.
 
 ## Utskrift for mennesker og agenter
 
