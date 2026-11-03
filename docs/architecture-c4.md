@@ -46,7 +46,7 @@ brukes i begge roller, eksempelvis et pakkeregister.
 
 API-er og MCP-tjenester kan brukes når miljøets destinasjonsregler tillater
 det. Agentbox tilbyr ikke selv et MCP-grensesnitt. Agenttrafikk avvises som
-standard; imagehenting og imagebygging skjer på kontrollsiden utenfor denne
+standard; imagebygging og henting av baseimages skjer på kontrollsiden utenfor denne
 nettverkspolicyen. C2 viser hvilke deler som håndterer de to trafikkveiene.
 
 ## C2 containere
@@ -68,19 +68,19 @@ System_Ext(services, "Tjenester brukt av agentene", "Eksterne API-er, MCP-tjenes
 System_Ext(registry, "Kilder for kjøremiljøer", "Images og byggeavhengigheter; tilgang fra betrodd kontrollside.")
 
 System_Boundary(agentbox, "Agentbox") {
-    Container(cli, "agentbox CLI", "Python; utviklerens UID", "Validerer miljøfiler og administrerer utviklerens ACL-endringer.")
+    Container(cli, "abx", "Python; utviklerens UID", "Validerer miljøfiler, håndterer imageoppskrifter og administrerer utviklerens ACL-endringer.")
     ContainerDb(recipes, "Miljøfiler og imageoppskrifter", "Utviklerens filer", "~/.config/agentbox; YAML og lokale Dockerfiles med byggkontekst.")
     ContainerDb(journal, "ACL-journal", "Private JSON-filer", "/var/lib/agentbox-operator; eies av utvikleren.")
-    Container(control, "Kontrollhjelper", "Python; agentbox UID", "Administrerer prosjekter, policy, miljøer og terminalsesjoner.")
+    Container(control, "Kontrollhjelper", "Python; agentbox UID", "Bygger images og administrerer prosjekter, miljøer, proxy og terminaler.")
     Container(uninstall, "Avinstallering", "scripts/uninstall.sh; Bash / Python; root", "Kjøres fra repoet. Rydder ACL-er og overfører prosjektfiler til utvikleren før installasjonen fjernes. ")
     Container(watch, "Adressevakt", "Python / systemd; agentbox UID", "Stopper miljøer ved endrede vertsadresser.")
     ContainerDb(state, "Kontrolltilstand og policy", "Private filer; agentbox UID", "/var/lib/agentbox/state; miljøregister, proxyregler, miljø-CA og logger.")
     Container(docker, "Rootless Docker-instans", "Docker Engine / RootlessKit", "Egen daemon som agentbox; administrerer containere, nettverk og images.")
 
     Boundary(environment, "Arbeidsmiljø - ett av flere", "Agent og proxy per miljø") {
-        Container(agent, "Kodeagent og utviklingsverktøy", "Docker; UID 0 i containeren", "Upålitelig agentkode. Valgbart image; først Codex. Lukket nettverk, valgte mounts og streng seccomp.")
+        Container(agent, "Kodeagent og utviklingsverktøy", "Docker; UID 0 i containeren", "Upålitelig agentkode i valgt lokalt image. Lukket nettverk, valgte mounts og streng seccomp.")
         Container(proxy, "Utgående proxy", "Docker / Go; UID 10001", "Betrodd proxy med ett grensesnitt internt og ett eksternt. Eksakte destinasjoner, pinnede IP-er og selektiv TLS-avlytting med tokenutskifting.")
-        ContainerDb(home, "Agentens hjem og innlogging", "Containerens skrivbare lag", "/home/agent; Codex-profil. Beholdes ved stopp, slettes ved remove.")
+        ContainerDb(home, "Agentens hjem og innlogging", "Containerens skrivbare lag", "/home/agent; verktøyoppsett og innlogging. Beholdes ved stopp, slettes ved remove.")
     }
 }
 
@@ -128,7 +128,7 @@ SHOW_LEGEND()
   ekte tokens tilføres bare proxyens miljø. Kontrollhjelperen gjør navneoppløsning
   og adressevalidering før de fastlåste adressene tas i bruk.
 - Prosjektmapper ligger på verten og overlever fjerning av miljøet. Agentens
-  hjem ligger i containerlaget; separat profilvolum er fortsatt et mulig videre valg.
+  hjem ligger i containerlaget; separat profilvolum støttes ikke.
 - Rootless-containerne deler vertens kjerne. Ved et utbrudd med `agentbox`
   sine rettigheter gjelder brukerens samlede vertstilgang, også til andre registrerte prosjekter.
   Agentens UID 0 mappes til tjenestebrukeren på verten; proxyen bruker en egen

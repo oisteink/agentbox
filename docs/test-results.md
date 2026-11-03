@@ -15,6 +15,7 @@ Debian 13, Go 1.27.3 og goproxy v1.9.2. Laben bruker Codex 0.166.0 og smoke-imag
 | Ruff lint/format, Bash-syntaks og gofmt | Bestått |
 | Go race og vet | Bestått, HTTP/1 og HTTP/2 |
 | govulncheck v1.9.0, Go 1.27.3 | Ingen sårbarheter som kan nås |
+| C4-kilde og bilder | SVG/PNG rendret; etiketter, lesbarhet og lenker kontrollert |
 | Wheel | Dockerfile-maler og Codex-launcher inkludert |
 | Installasjon og imagebygg i VM | Bestått; installerte filer sammenlignet med kilde |
 | Installert CLI og oppsett | 14 scenarier bestått, ingen skips |

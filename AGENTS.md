@@ -5,7 +5,7 @@
 Agentbox kjører kodeagenter i en egen rootless Docker-instans som Linux-brukeren
 `agentbox`, med hjem `/var/lib/agentbox`. Hvert miljø har en agentcontainer på
 et lukket nettverk og en Go-proxy med eksplisitt tillatte domene/port-par.
-Det medfølgende utviklingsimaget inneholder Codex; imagevalg er adskilt fra isoleringen.
+Agentimages bygges fra lokale Dockerfiles; imagevalg er adskilt fra isoleringen.
 Eksisterende prosjektmapper monteres direkte med ACL-basert tilgang.
 Worktree-støtte er utsatt.
 
@@ -17,7 +17,7 @@ pakkeflavour eller upstream-build kan endres når kravene tilsier det.
 
 - `src/agentbox/`: Python-CLI, kontrollhjelper, konfigurasjon, ACL, nettverk og tilstand.
 - `src/agentbox/completions/`: Bash-completion, installert av vertsinstalleren.
-- `src/agentbox/templates/`: maler for lokale agentimages (base og Codex).
+- `src/agentbox/templates/`: maler for lokale agentimages.
 - `images/smoke/`: separat testoppskrift for laben.
 - `proxy/`: Go-proxy, tester og flertrinns imagebygg; JSON-policy genereres av `src/agentbox/policy.py`.
 - `environments/`: miljøkonfigurasjoner uten hemmeligheter.
@@ -76,7 +76,6 @@ Behold fast Docker-socket, identitetskontroll og avgrenset sudo-hjelper.
 Ikke innfør privilegerte containere, vertsnettverk eller Docker-socket i agenten.
 Test tillatt proxytrafikk, avvisning, direkte tilgang og ACL-konsekvenser ved
 relevante endringer. Skill observerte labresultater fra utestede garantier.
-Agentbox 1.0 er verifisert gjennom labprøver og manuell Codex-bruk på verten.
 Ekte tokens leses fra operatørens eksplisitte miljøvariabler og gis bare til proxyens miljø.
 Reglenes `env` støtter `klient=kilde`; kortform bruker samme navn. Ny
 opprettelse med tom/manglende kilde gir tom klientvariabel. Ellers får agenten
