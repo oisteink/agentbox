@@ -41,6 +41,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx validate CONFIG` kontrollerer miljøfilen uten oppstart. Menneskemodus
   viser en kort bekreftelse eller konkrete feil; `--json` gir strukturert
   resultat eller feil etter den felles utskriftskontrakten.
+- `abx proxy apply CONFIG` beholdes for eksplisitt oppdatering av nettverksregler
+  og API-nøkler underveis. Proxyen erstattes; agentcontaineren og innloggingen
+  beholdes.
 
 ## Utskrift for mennesker og agenter
 
