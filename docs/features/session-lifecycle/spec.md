@@ -44,6 +44,11 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx proxy apply CONFIG` beholdes for eksplisitt oppdatering av nettverksregler
   og API-nøkler underveis. Proxyen erstattes; agentcontaineren og innloggingen
   beholdes.
+- `abx proxy stop NAVN` beholdes som nettverksnødbrems. Proxyen og dens
+  tokenmetadata fjernes, slik at utgående tilgang stenges uten å stoppe agenten.
+- Miljøet skal også ha en nødbrems: tvungen stopp av agent og proxy uten å
+  vente på normal avslutning. `abx stop NAVN --force` er foreslått syntaks;
+  konkret flagg og oppryddings-/persistensdetaljer er ikke valgt.
 
 ## Utskrift for mennesker og agenter
 
