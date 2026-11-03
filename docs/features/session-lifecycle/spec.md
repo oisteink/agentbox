@@ -127,8 +127,14 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx image build NAVN` tillates når alle containere som bruker imaget er
   stoppet. Kjørende bruk sperrer bygging; stoppede containere skal ikke måtte
   fjernes først. Byggingen oppdaterer image/tag uten å endre eksisterende
-  containerlag. Håndtering av nytt image ved neste miljøoppstart avklares
-  sammen med reglene for erstatning av bevart containerlag.
+  containerlag.
+- Data som skal overleve et nytt image må ligge i eksplisitte mounts.
+  Det gjelder også verktøyprofil, innlogging eller hjemmekatalog når brukeren
+  ønsker å bevare dette. Ved neste start med nytt image kan abx erstatte den
+  stoppede containeren og beholde mountene. Persistent true bevarer laget
+  mellom vanlige stopp/start, men gir ikke bevaring gjennom imagebytte.
+  Profiler kan monteres på den stien verktøyet bruker; containerens faktiske
+  HOME og profilplassering må beskrives tydelig i oppsettet.
 
 ## Utskrift for mennesker og agenter
 
@@ -153,7 +159,8 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   mens en annen bruker den? Ingen teller eller sesjonsmekanisme er valgt.
   Avklar også --keep-running fra en annen kjøring mens oppstarteren er aktiv.
 - Når kreves imagebygg utover manglende image, og hvordan håndteres endret
-  konfigurasjon som krever erstatning av et bevart containerlag?
+  konfigurasjon som krever erstatning av et bevart containerlag? Imagebytte
+  er avklart: containerlaget er disponibelt, varige data skal ligge i mounts.
 - Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
   avklares i research/plan etter at CLI-gjennomgangen er ferdig.
 - JSON for strømmede logger og interaktive start/exec/run, inkludert
