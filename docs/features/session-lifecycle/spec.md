@@ -120,6 +120,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   Lokale maler overstyrer medfølgende maler ved samme navn; lokal default er
   tilsvarende brukerens valg av standard. Lokale oppskrifter beholdes ved
   installasjon. Ingen særskilt mekanisme for å omgå lokale overrides er påkrevd.
+- `abx image edit NAVN` rapporterer etter editoravslutning om den lokale
+  oppskriften ble endret eller om det er ingen endringer. Det omfatter også
+  .dockerignore og hjelpeskript i oppskriftskatalogen. --json gir tilsvarende
+  strukturert endringsstatus. Redigering utløser ikke automatisk bygging.
 
 ## Utskrift for mennesker og agenter
 
