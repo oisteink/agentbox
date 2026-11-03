@@ -30,12 +30,14 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   kjørende. Allerede fjernede ressurser krever ingen handling.
 - Stopp/fjerning sletter ikke miljøkonfigurasjon, prosjektfiler eller
   prosjektregistreringer. Fjerning av containerlaget sletter hjem/innlogging.
+- `abx status` viser en tabell over alle konfigurerte miljøer, også dem som
+  aldri er startet eller har fått containeren fjernet. Oversikten viser
+  miljønavn, status (kjører/stoppet/ikke opprettet) og persistens.
+- `abx status NAVN` viser detaljer for ett miljø: tilstand, persistens, image,
+  prosjekter/mounts og nettverkstilganger, også uten opprettet container.
 
 ## Åpent før implementasjon
 
-- Status er neste punkt i brukerens gjennomgang. Forslaget er å vise også
-  konfigurerte miljøer uten container, med kjører/stoppet/ikke opprettet.
-  Forslaget er ikke avklart.
 - Shell er foreslått fjernet fordi start åpner konfigurert kommando.
   Endelig kommandoliste fastsettes i gjennomgangen.
 - Samtidige kjøringer: hvordan hindre at en kjøring stopper en container
