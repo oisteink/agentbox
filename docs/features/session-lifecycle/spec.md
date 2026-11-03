@@ -124,6 +124,11 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   oppskriften ble endret eller om det er ingen endringer. Det omfatter også
   .dockerignore og hjelpeskript i oppskriftskatalogen. --json gir tilsvarende
   strukturert endringsstatus. Redigering utløser ikke automatisk bygging.
+- `abx image build NAVN` tillates når alle containere som bruker imaget er
+  stoppet. Kjørende bruk sperrer bygging; stoppede containere skal ikke måtte
+  fjernes først. Byggingen oppdaterer image/tag uten å endre eksisterende
+  containerlag. Håndtering av nytt image ved neste miljøoppstart avklares
+  sammen med reglene for erstatning av bevart containerlag.
 
 ## Utskrift for mennesker og agenter
 
