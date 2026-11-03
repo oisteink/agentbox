@@ -136,6 +136,11 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   stoppet. Kjørende bruk sperrer bygging; stoppede containere skal ikke måtte
   fjernes først. Byggingen oppdaterer image/tag uten å endre eksisterende
   containerlag.
+- Oversiktskommandoene bruker navnet list: `abx image list` og `abx mount list`.
+  Image ls erstattes av image list; det trengs ikke et ls-alias.
+  Imageoversikten viser lokale oppskrifter og byggestatus, også ubygde.
+  Full liste over miljøer som bruker imaget legges i detaljvisningen,
+  slik at oversikten ikke får en ubegrenset «brukes av»-kolonne.
 - Data som skal overleve et nytt image må ligge i eksplisitte mounts.
   Det gjelder også verktøyprofil, innlogging eller hjemmekatalog når brukeren
   ønsker å bevare dette. Ved neste start med nytt image kan abx erstatte den
