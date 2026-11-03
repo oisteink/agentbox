@@ -116,6 +116,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   maler. De medfølgende malene beholdes og lagres som installasjonseid innhold,
   utenfor brukerstyrt .config. /usr/share er nevnt som mulig plassering;
   konkret installasjons-/pakkesti er ikke fastsatt.
+- Installasjon/reinstallasjon gjenoppretter installasjonens medfølgende malfiler.
+  Lokale maler overstyrer medfølgende maler ved samme navn; lokal default er
+  tilsvarende brukerens valg av standard. Lokale oppskrifter beholdes ved
+  installasjon. Ingen særskilt mekanisme for å omgå lokale overrides er påkrevd.
 
 ## Utskrift for mennesker og agenter
 
@@ -152,5 +156,3 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   til stopp i JSON-/ikke-interaktiv modus avklares i research/plan.
 - Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
   opprettet eller konkret inndeling avklart.
-- Navnekollisjoner mellom lokale og medfølgende imagemaler må ha et entydig
-  valg som fortsatt lar brukeren velge den medfølgende malen.
