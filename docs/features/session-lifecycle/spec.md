@@ -46,6 +46,11 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   beholdes.
 - `abx proxy stop NAVN` beholdes som nettverksnødbrems. Proxyen og dens
   tokenmetadata fjernes, slik at utgående tilgang stenges uten å stoppe agenten.
+- Nettverksnødbremsen skal ikke vente bak langvarige kontrolloperasjoner som
+  imagebygg. Den skal tvinge proxyen ned og bekrefte faktisk fjerning før den
+  melder at nettet er stengt. Feil skal rapporteres, ikke presenteres som
+  vellykket frakobling. Gjennomføring må fortsatt ivareta ressursidentitet og
+  samtidige operasjoner; mekanismen er ikke valgt.
 - Miljøet skal også ha en nødbrems: tvungen stopp av agent og proxy uten å
   vente på normal avslutning. `abx stop NAVN --force` er foreslått syntaks;
   konkret flagg og oppryddings-/persistensdetaljer er ikke valgt.
@@ -78,3 +83,5 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   avklares i research/plan etter at CLI-gjennomgangen er ferdig.
 - JSON for strømmede logger og interaktive start/exec/run, inkludert
   kommandoens egne utdata og exitstatus, er ikke detaljavklart.
+- Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
+  opprettet eller konkret inndeling avklart.
