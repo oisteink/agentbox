@@ -91,6 +91,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   av rettigheter og eventuelt eierskap. Ingen av dem sletter katalogen eller
   filene. Refererende miljøfiler beholdes, men kilden kan ikke brukes før
   den igjen er registrert og aktiv.
+- Hvis kjørende miljøer bruker en kilde som skal fjernes med mount remove,
+  vises hvilke miljøer som berøres og brukeren tilbys å stoppe dem og fullføre
+  fjerningen. Ved avslag beholdes registreringen. Opprydding må lykkes før
+  registreringen fjernes; feil beholder grunnlaget for nytt forsøk.
 - `abx doctor` beholdes som samlet diagnose av installasjon/runtime,
   registrerte mounts og deres rettigheter, samt images som mangler bygg.
   Uten --fix undersøker den og rapporterer funn uten å reparere.
@@ -131,7 +135,7 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
 - Mekanisme for å oppdage endret proxykode og ta nytt proxyimage i bruk ved
   oppgradering er ikke valgt. Den må håndtere at gamle proxycontainere finnes.
 - Mount remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding
-  frem til denne er fullført. Håndtering av miljøer som bruker kilden,
-  og konkrete regler for oppryddingen, avklares i research/plan.
+  frem til denne er fullført. Konkrete regler for oppryddingen og samtykke
+  til stopp i JSON-/ikke-interaktiv modus avklares i research/plan.
 - Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
   opprettet eller konkret inndeling avklart.
