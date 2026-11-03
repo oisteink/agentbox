@@ -19,8 +19,10 @@ og kontrolltilstand under `/var/lib/agentbox/state`. Utviklerens private
 ACL-journal ligger separat i `/var/lib/agentbox-operator`.
 
 Docker-operasjoner bruker fast socket `/run/user/<uid>/docker.sock` og
-kontrollerer daemonidentitet og rootless-modus. Docker-socketen og kontrollfiler
-eksponeres ikke for agenten. Andre Docker-instansers konfigurasjon endres ikke.
+kontrollerer daemonidentitet og rootless-modus. Docker-socketen, kontrollkoden
+og private kontrollfiler eksponeres ikke for agenten. Miljøets offentlige
+CA-katalog er et skrivebeskyttet unntak. Andre Docker-instansers konfigurasjon
+endres ikke.
 
 ## Tilgang til prosjektmapper
 

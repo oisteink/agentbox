@@ -71,8 +71,9 @@ dekningsprosent er ikke et akseptansekriterium.
 ## Krav og bevis
 
 Testnavnene nedenfor viser kjørbare observasjoner. De innebærer ikke at hele
-kravet er uttømmende verifisert. Alle livssyklustestene ligger i
-`tests/integration/test_lifecycle.py` og bruker installert CLI.
+kravet er uttømmende verifisert. Installerte scenarier ligger i
+`tests/integration/test_lifecycle.py`, `test_temporary_run.py`,
+`test_installation.py` og `test_uninstall.py` og bruker installert CLI.
 
 | Krav | Konkret prøve | Avgrensning |
 | --- | --- | --- |
@@ -86,12 +87,12 @@ kravet er uttømmende verifisert. Alle livssyklustestene ligger i
 | A8: DNS og private adresser | `test_policy`, `TestPolicyRejectsUnsafeInputs`, proxyprøvens pinning og endring til loopback | Ingen oppdatert mottakerprøve av Docker-resolverens eksterne videresending |
 | A9: ingen fallback | Proxyprøvens stopp, avvist apply og tom/ikke-tom overgang; `test_proxy_credentials` | Ikke alle crash-/readinessfeil er injisert |
 | A10: agentens begrensninger | `test_socket_capability_and_cgroup_enforcement`: AF_UNIX gir EPERM, Docker-socket mangler, ip link avvises; asyncio fungerer | Alternative socketsyscalls, mount-forsøk og skriving til alle kontrollfiler trenger egne prøver |
-| A11: to images | `test_two_images_and_independent_environments` med utviklingsimage og uavhengig smoke-image | Ikke andre agentsystemer eller arm64 |
+| A11: to images | `test_two_images_and_independent_environments` med utviklingsimage og uavhengig smoke-image | Andre agentmaler har bare bygg-/versjonsprøve; arm64 er ikke prøvd |
 | Lokale imageoppskrifter | `test_images`: filer, binær protokoll, sikker utpakking, eierskap og eksakt brukssjekk; `test_local_image_build_context_and_use_guard`: COPY/ignore og ombygging | Installert på Ubuntu amd64; andre plattformer er ikke prøvd |
 | A12: ressurser | `test_socket_capability_and_cgroup_enforcement` leser CPU/minne/PID og fyller PID-grensen; lokal daemonprøve av manglende støtte | Ingen ny CPU-belastnings- eller OOM-prøve |
 | A13: tilbakekalling | `test_acl_repair_and_revocation_leave_other_project_working`: avslag under read-only bruk, EACCES som tjenestebruker og annet prosjekt fortsetter; ACL-unitprøver | Konkurrerende manuelle ACL-endringer mangler |
 | Installasjon | `test_install` validerer operatørvalg; `test_proxy_image_installation_and_build_failure` prøver proxybygg, gjenbruk og feilstatus; laben sammenligner installerte filer | Minste Debian er ikke fastsatt |
-| Shell, exec og terminal | `test_exec_exit_status_and_configured_shell`, `test_terminal_reads_input_and_preserves_size`, lokal PTY-prøve | Dynamisk størrelsesendring og interaktive signaler trenger egne prøver |
+| Shell, exec og terminal | `test_exec_exit_status_and_configured_shell`, `test_terminal_reads_input_and_preserves_size`, lokal PTY-prøve | Dynamisk størrelsesendring og signaler i vedvarende shell/exec trenger egne prøver; run har Ctrl-C-prøver |
 | Stopp/start og endret profil | `test_stop_start_preserves_container_and_home`, `test_changed_profile_is_rejected_without_losing_home` | Home-markør og samme container-ID; full innlogging er ikke utført her |
 | Midlertidig kjøring | `test_temporary_run.py`: exitkode, terminal, Ctrl-C, ressursfjerning og prosjektbevaring; `test_run.py`: feilbaner og identitetsbinding | SIGKILL/vertskrasj krever eksplisitt opprydding |
 | Eksempelmaler | `test_example_agent_version_in_isolation`, `test_agent_examples_match_cli_templates_and_archive` | Bygg og versjonskommando er prøvd; ikke TUI, innlogging eller modelltrafikk |
@@ -143,5 +144,5 @@ plattformstøtte. De er ikke beståtte prøver:
 4. Prioritet middels: avbrudd mellom hver varig oppstartsoperasjon, samtidig
    start/stop/revoke, manuelle ACL-endringer og gjenoppretting uten fremmede
    ressursendringer. Bruk eksplisitte feilpunkter og ettertilstand.
-5. Prioritet middels: vertsreboot, signaler og dynamisk terminalstørrelse,
+5. Prioritet middels: vertsreboot, signaler i vedvarende shell/exec og dynamisk terminalstørrelse,
    arbeidskatalog som mangler/erstattes, privat loggmodus/rotasjon og CPU/OOM.

@@ -107,9 +107,9 @@ sekund og deler operasjonslås med kontrollverktøyet. Dette er ingen atomisk
 brannmurregel for samtidige nettverksendringer; vertens nettverksadministrasjon
 er betrodd, og stabil vertskonfigurasjon er forutsetningen under normal kjøring.
 
-Den interne Docker-resolveren er testet mot en kontrollert DNS-tjeneste uten
-observert ekstern videresending. Oppgraderinger av Docker/RootlessKit krever
-ny gjennomkjøring av denne prøven.
+Agentcontaineren opprettes med `--dns 127.0.0.1` på det lukkede nettverket.
+Ekstern DNS-videresending gjennom Docker-resolveren trenger en oppdatert
+mottakerprøve på aktuell Docker/RootlessKit; se [teststrategien](testing.md#åpne-verifikasjonshull).
 
 ## Codex-oppstart
 
@@ -127,7 +127,7 @@ Stopp og gjenopptak med uendret konfigurasjon bevarer containerlaget og
 verktøyoppsett og innlogging. Separat profilvolum er ikke implementert.
 Endret agentprofil eller vertsadresse krever eksplisitt fjerning og ny
 opprettelse. Nettverk/tokenregler aktiveres med proxy apply; gjenopptak av
-stoppet Go-miljø validerer og fastlåser DNS på nytt.
+stoppet miljø validerer og fastlåser DNS på nytt.
 Fjerning sletter laget og miljøets logger. Prosjektfiler, registreringer og ACL-er består til egne
 operasjoner endrer dem. Kjøremiljøer gjenopptas ikke automatisk etter vertsreboot.
 

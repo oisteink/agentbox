@@ -17,6 +17,7 @@ OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 | Go race og vet | Bestått, HTTP/1 og HTTP/2 |
 | govulncheck v1.9.0, Go 1.27.3 | Ingen sårbarheter som kan nås |
 | C4-kilde og bilder | SVG/PNG rendret; etiketter, lesbarhet og lenker kontrollert |
+| Dokumentasjon | CLI, skjema, lagring, proxybygg, installasjon og C4 kontrollert mot kode; lokale lenker og eksempler validert |
 | Wheel | Dockerfile-maler og Codex-launcher inkludert |
 | Installasjon og imagebygg i VM | Bestått; installerte filer sammenlignet med kilde |
 | Installert CLI og oppsett | 22 scenarier bestått, ingen skips |
@@ -57,7 +58,7 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
   Go-proxyen på Debian og arm64 gjenstår.
 - Kontrollert UDP/DNS, vert/LAN, alternative socketsyscalls, mount-forsøk og
   skriving til alle kontrollfiler trenger oppdaterte prøver.
-- Krasj, samtidige låser/ACL-endringer, adressevakt, vertsreboot, terminalsignaler,
+- Krasj, samtidige låser/ACL-endringer, adressevakt, vertsreboot, signaler i vedvarende shell/exec,
   dynamisk terminalstørrelse og CPU-/OOM-oppførsel er ikke uttømmende prøvd.
 - Adressevakten reagerer etter oppdaget endring; den er ikke atomisk med
   nettverksendringen. H1-headergrensen kontrolleres etter parsing, med

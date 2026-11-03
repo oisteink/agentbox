@@ -24,8 +24,9 @@ Hjelp, feilmeldinger og Bash-completion bruker dette navnet.
 
 Agenten og kode den kjører behandles som upålitelige. Utvikleren,
 kontrollkoden, Docker, proxyen, valgte images og vertsadministrasjon er betrodd.
-Miljøfiler oppbevares utenfor mapper agenten kan redigere. Kontrollkode og
-kontrolltilstand monteres ikke inn i agentcontaineren.
+Miljøfiler oppbevares utenfor mapper agenten kan redigere. Kontrollkode og privat
+kontrolltilstand monteres ikke inn i agentcontaineren. Bare miljøets offentlige
+CA-katalog deles skrivebeskyttet inn fra kontrollsiden.
 
 Rootless-containere deler vertens kjerne. Utbrudd med tjenestebrukerens
 rettigheter kan gi tilgang til alle registrerte prosjekter og andre filer som
@@ -94,14 +95,15 @@ tilbakekalling.
 
 `abx start FIL.yaml` leser miljønavnet fra `name` i miljøfilen.
 Kommandoer mot eksisterende miljøer, som `shell` og `stop`, bruker miljønavnet.
-`start` og `validate` støtter også kortnavn uten filending fra
+`start`, `run`, `validate` og `proxy apply` støtter også kortnavn uten filending fra
 `~/.config/agentbox/environments/` (eller `$XDG_CONFIG_HOME/agentbox/environments/`).
 `.yaml` og `.yml` støttes. Hvis begge matcher, kreves eksplisitt filvalg.
 Lokale filer uten filending overstyrer ikke kortnavn; bruk eksplisitt sti for slike filer.
 
 YAML-filen avviser ukjente felter og dupliserte nøkler. Verdier for hemmeligheter,
 vilkårlige Docker-flagg og automatisk hjemmedeling inngår ikke i skjemaet.
-Prosjekt- og miljønavn bruker små bokstaver, tall og bindestrek, maksimalt 48 tegn.
+Prosjekt-, miljø- og imagenavn starter med en liten bokstav og bruker deretter
+små bokstaver, tall og bindestrek, maksimalt 48 tegn.
 
 | Felt | Kontrakt og standardverdi |
 | --- | --- |
@@ -109,8 +111,9 @@ Prosjekt- og miljønavn bruker små bokstaver, tall og bindestrek, maksimalt 48 
 | `image` | Påkrevd lokalt oppskriftsnavn, for eksempel `codex` eller `js` |
 | `mounts` | 1 til 32 registrerte prosjekter, hvert med `project`, absolutt `target` og `mode` (`rw` som standard eller `ro`) |
 | `workdir` | Sti inne i et prosjektmount; standard er første mountmål. Må finnes ved start |
-| `command` | Ikke-tom argumentliste; standard `["bash"]`. Kjøres av `shell` |
+| `command` | 1 til 128 ikke-tomme argumenter; standard `["bash"]`. Kjøres av `shell` og `run`, uten shelltolking |
 | `network.allow` | Liste over eksakte `host`/`port`-par, maksimalt 128. Tom som standard |
+| `credentials` | Maksimalt 32 regler med `host`, `port: 443`, `header` og `env`; tom som standard. Se [tokenreglene](#api-tokens-på-proxysiden) |
 | `resources.cpus` | 0,1 til 128; standard 2 CPU |
 | `resources.memory` | Positiv størrelse med `m` eller `g`; standard `4g` |
 | `resources.pids` | 16 til 65536; standard 512 |
@@ -231,7 +234,7 @@ etter vertsreboot finnes ikke.
 Endret agentprofil eller vertsadresse krever eksplisitt `remove` og ny
 `start`. Da slettes containerlaget, inkludert innlogging og verktøyoppsett.
 Montert kode består. Nettverk/tokenregler endres med proxy apply uten å slette
-agentlaget. Gjenopptak av stoppet Go-miljø og apply validerer DNS på nytt.
+agentlaget. Gjenopptak av stoppet miljø og apply validerer DNS på nytt.
 
 `run` avviser eksisterende miljønavn. Kommandoens exitkode returneres etter
 vellykket opprydding; oppryddingsfeil gir feilstatus. Opprettelse og fjerning
@@ -241,6 +244,10 @@ miljø med samme navn ikke fjernes. SIGINT utsettes under kritiske mutasjoner.
 SIGKILL og vertskrasj kan etterlate ressurser som må fjernes eksplisitt.
 
 Terminalsesjoner i vedvarende miljøer har separat levetid fra miljøet.
+`start` starter oppholdsprosessen, ikke `command`. `run`, `shell` og `exec`
+bruker terminal bare når både CLI-ens stdin og stdout er terminaler. Ellers
+er kommandoens stdin lukket; pipet input støttes ikke. Kommandoens stdout og
+stderr samles i CLI-ens stdout.
 Størrelse og størrelsesendringer videresendes. Kontrolloperasjoner låses,
 tilstand skrives atomisk, og opprydding
 avgrenses med ressurs-ID-er og installasjons-/miljøetiketter. Global Docker-

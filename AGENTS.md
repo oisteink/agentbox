@@ -36,7 +36,9 @@ uv sync --extra dev --locked
 uv run --locked pytest -q
 uv run --locked ruff check src tests scripts
 uv run --locked ruff format --check src tests scripts
-bash -n scripts/*.sh scripts/lab/*.sh src/agentbox/templates/codex/codex src/agentbox/completions/abx.bash
+for script in scripts/*.sh scripts/lab/*.sh src/agentbox/templates/codex/codex src/agentbox/completions/abx.bash; do
+  bash -n "$script" || exit
+done
 (cd proxy && GOTOOLCHAIN=go1.27.3 go test -race ./... && GOTOOLCHAIN=go1.27.3 go vet ./...)
 (cd proxy && GOTOOLCHAIN=go1.27.3 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...)
 test -z "$(gofmt -l proxy/*.go)"
