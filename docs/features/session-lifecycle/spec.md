@@ -54,6 +54,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - Miljøet skal også ha en nødbrems: tvungen stopp av agent og proxy uten å
   vente på normal avslutning. `abx stop NAVN --force` er foreslått syntaks;
   konkret flagg og oppryddings-/persistensdetaljer er ikke valgt.
+- `abx proxy build` tas ut av bruker-CLI-en. Oppgradering skjer ved
+  reinstallasjon; installeren skal bygge nytt proxyimage når proxykoden
+  er endret og gjenbruke eksisterende image når den er uendret. Byggingen
+  skal kunne reproduseres fra proxykoden og Dockerfilen i repoet.
 
 ## Utskrift for mennesker og agenter
 
@@ -83,5 +87,7 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   avklares i research/plan etter at CLI-gjennomgangen er ferdig.
 - JSON for strømmede logger og interaktive start/exec/run, inkludert
   kommandoens egne utdata og exitstatus, er ikke detaljavklart.
+- Mekanisme for å oppdage endret proxykode og ta nytt proxyimage i bruk ved
+  oppgradering er ikke valgt. Den må håndtere at gamle proxycontainere finnes.
 - Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
   opprettet eller konkret inndeling avklart.
