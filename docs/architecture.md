@@ -79,8 +79,10 @@ Skriptet bruker systemets Python uavhengig av den installerte CLI-en.
 Vanlige kontrolloperasjoner får ikke denne root-tilgangen. Se
 [avinstallasjon](installation.md#avinstallasjon) for omfang og filrydding.
 
-`stop` bevarer containerlaget, inkludert verktøyoppsett og innlogging.
-Uendret konfigurasjon kan startes igjen. Nettverk/tokenregler aktiveres med `proxy apply` uten å
+Med standardverdien `persistent: true` bevarer `stop` containerlaget, inkludert
+verktøyoppsett og innlogging. Med `false` fjerner både avsluttet `shell` og
+`stop` miljøet; neste `start` oppretter en ny container fra imaget.
+Et bevart miljø kan startes igjen med uendret konfigurasjon. Nettverk/tokenregler aktiveres med `proxy apply` uten å
 slette hjemmet. Endret agentprofil eller vertsadresse krever `remove` og ny
 `start`; hjem og innlogging slettes da, mens monterte prosjektfiler består.
 Separat profilvolum og automatisk oppstart av miljøer etter vertsreboot er
@@ -96,7 +98,10 @@ kjerne. Ved utbrudd med tjenestebrukerens rettigheter gjelder all tilgang
 Felles daemonbruker gir ikke separat vertsisolering mellom prosjektene.
 
 Midlertidig kjøring med `run` bruker samme opprettelse og terminalkjøring som
-`start`/`exec`. Kontrollhjelperen fjerner miljøet ved avslutning. Oppryddingen
+`start`/`exec`. `shell` med `persistent: false` deler den samme identitetsbundne
+oppryddingen. Den reserverer én shell-økt under lås; en samtidig shell avvises.
+Kommandoen kjøres uten global lås. Ved hardt avbrudd beholdes reservasjonen
+til eksplisitt fjerning, så et delvis brukt hjem ikke gjenbrukes av ny shell. Kontrollhjelperen fjerner miljøet ved avslutning. Oppryddingen
 leser ny tilstand under lås og verifiserer agent-ID før fjerning. CLI-en venter
 på opprydding ved Ctrl-C; et hardt prosessavbrudd eller vertskrasj kan etterlate
 ressurser som må fjernes eksplisitt.

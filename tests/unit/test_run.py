@@ -122,3 +122,87 @@ def test_deferred_interrupt_runs_after_mutation():
             os.kill(os.getpid(), signal.SIGINT)
             finished.append(True)
     assert finished == [True]
+
+
+@pytest.fixture
+def disposable_shell(temporary_control, monkeypatch):
+    control, payload, removed = temporary_control
+    payload["persistent"] = False
+    with control.store.locked() as data:
+        data["daemon_id"] = "daemon"
+        data["environments"][payload["name"]] = {
+            "status": "running",
+            "config": payload,
+            "host_addresses": [],
+            "resources": {"agent": "original"},
+        }
+    monkeypatch.setattr("agentbox.control.local_addresses", lambda: [])
+    monkeypatch.setattr(control, "owned", lambda *args: ["original"])
+    return control, payload, removed
+
+
+def test_disposable_shell_reserves_once_and_cleans(disposable_shell):
+    control, payload, removed = disposable_shell
+
+    def execute(*args, **kwargs):
+        with control.store.locked() as data:
+            assert data["environments"][payload["name"]]["shell_active"] is True
+        with pytest.raises(AgentboxError, match="already claimed"):
+            control.shell({"name": payload["name"]})
+        assert removed == []
+        return 17
+
+    control.docker.exec_stream = execute
+    assert control.shell({"name": payload["name"]}) == 17
+    assert removed == ["original"]
+
+
+def test_disposable_shell_queued_interrupt_after_reservation_cleans(disposable_shell, monkeypatch):
+    control, payload, removed = disposable_shell
+    save = control.save
+
+    def interrupted(data):
+        save(data)
+        if data["environments"].get(payload["name"], {}).get("shell_active"):
+            os.kill(os.getpid(), signal.SIGINT)
+
+    monkeypatch.setattr(control, "save", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        control.shell({"name": payload["name"]})
+    assert removed == ["original"]
+    with control.store.locked() as data:
+        assert payload["name"] not in data["environments"]
+
+
+def test_disposable_shell_does_not_remove_replacement(disposable_shell):
+    control, payload, removed = disposable_shell
+
+    def replace(*args, **kwargs):
+        with control.store.locked() as data:
+            data["environments"][payload["name"]] = {"resources": {"agent": "replacement"}}
+        return 0
+
+    control.docker.exec_stream = replace
+    with pytest.raises(AgentboxError, match="replacement kept"):
+        control.shell({"name": payload["name"]})
+    assert removed == []
+
+
+def test_persistent_shell_uses_selected_agent_without_removal(disposable_shell):
+    control, payload, removed = disposable_shell
+    with control.store.locked() as data:
+        data["environments"][payload["name"]]["config"]["persistent"] = True
+
+    def replace(identifier, command, *args, **kwargs):
+        assert identifier == "original"
+        assert command == ["bash"]
+        with control.store.locked() as data:
+            data["environments"][payload["name"]] = {
+                "resources": {"agent": "replacement"},
+                "config": {"persistent": False},
+            }
+        return 0
+
+    control.docker.exec_stream = replace
+    assert control.shell({"name": payload["name"]}) == 0
+    assert removed == []

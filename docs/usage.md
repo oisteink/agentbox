@@ -103,8 +103,8 @@ separat uten å endre konfigurasjonen:
 abx exec example-codex -- bash
 ```
 
-Avslutt programmet eller skallet for å lukke terminalsesjonen. Miljøet
-fortsetter å kjøre. Åpne det igjen med `abx shell example-codex`.
+Med standardinnstillingen `persistent: true` lukker du terminalsesjonen ved å
+avslutte programmet eller skallet. Miljøet fortsetter å kjøre. Åpne det igjen med `abx shell example-codex`.
 
 ```sh
 abx status
@@ -113,6 +113,37 @@ abx stop example-codex
 
 Et stoppet miljø gjenopptas med samme `start`-kommando og miljøfil.
 Miljøene startes ikke automatisk etter vertsreboot.
+
+## Miljø uten bevart containerlag
+
+Sett dette på toppnivå i miljøfilen:
+
+```yaml
+persistent: false
+```
+
+Standardverdien er `true`. Med `false` klargjør `start` miljøet i bakgrunnen
+og varsler om at det er midlertidig. `shell` varsler før den kjører miljøets
+kommando og fjerner miljøet når kommandoen avsluttes, også ved feil og Ctrl-C:
+
+```sh
+abx start example-codex
+abx shell example-codex
+```
+
+Etter fjerning oppretter neste `start` en ny container fra imaget. Hjem, innlogging,
+installerte filer og logger fra økten slettes; prosjektfilene beholdes.
+`stop` fjerner også et slikt miljø, selv om du ikke har kjørt `shell`.
+
+Bare én `shell` kan kjøre i miljøet om gangen. `exec` kan brukes til ekstra
+kommandoer i det klargjorte miljøet; det utløser ikke opprydding. Når `shell`
+avsluttes, fjernes hele miljøet, inkludert eventuelle ekstra prosesser.
+`run` fjerner alltid miljøet, uansett verdien av `persistent`.
+
+Ved SIGKILL eller vertskrasj kan ressurser gjenstå. En allerede reservert
+shell-økt gjenbrukes ikke; fjern miljøet med `abx remove NAVN` og start på nytt.
+Endring av `persistent` for et eksisterende miljø krever også `remove` og ny
+`start`. Da slettes containerlaget; monterte prosjektfiler består.
 
 ## Midlertidig kjøring
 
@@ -349,14 +380,17 @@ abx proxy apply example-codex
 
 | Handling | Prosjektfiler på verten | Containerens hjem, innlogging og installerte filer |
 | --- | --- | --- |
-| Avslutte `shell` eller `exec` | Beholdes | Beholdes; miljøet kjører videre |
+| Avslutte `shell` med `persistent: true` | Beholdes | Beholdes; miljøet kjører videre |
+| Avslutte `exec` | Beholdes | Beholdes til miljøet fjernes |
+| Avslutte `shell` med `persistent: false` | Beholdes | Slettes sammen med miljøet og dets logger |
 | Avslutte `run`, også med Ctrl-C | Beholdes | Slettes sammen med miljøet og dets logger |
-| `stop` og `start` med uendret oppsett | Beholdes | Beholdes |
-| Restart av Docker og manuell gjenopptak | Beholdes | Beholdes |
+| `stop` og `start` med `persistent: true` og uendret oppsett | Beholdes | Beholdes |
+| `stop` med `persistent: false` | Beholdes | Slettes |
+| Restart av Docker og manuell gjenopptak av vedvarende miljø | Beholdes | Beholdes |
 | `remove` og ny `start` | Beholdes | Slettes og opprettes på nytt |
 | `proxy apply` eller `proxy stop` | Beholdes | Beholdes |
 
-Hvert miljø har egen innlogging; separat profilvolum støttes ikke.
+Vedvarende miljøer beholder egen innlogging; separat profilvolum støttes ikke.
 Endret agentimage, mounts, arbeidsprofil eller vertsadresse krever fjerning
 og ny opprettelse. Nettverk/tokenregler kan endres med proxy apply. Start av
 et stoppet miljø og proxy apply validerer DNS på nytt. Prosjektregistreringer

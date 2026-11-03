@@ -80,6 +80,10 @@ start med Bash for å kontrollere filtilgang. Følg
 hjem og innlogging. `abx remove example-codex` sletter containerlaget,
 inkludert innlogging og verktøyoppsett. Monterte prosjektfiler beholdes.
 
+Sett `persistent: false` i miljøfilen for et rent containerhjem ved hver økt.
+`start` klargjør miljøet; `shell` kjører kommandoen og fjerner deretter miljøet.
+Prosjektfiler beholdes. Se [miljø uten bevart containerlag](docs/usage.md#miljø-uten-bevart-containerlag).
+
 ## API-nøkler via proxyen
 
 `credentials[].env` kobler klientens variabel til en kilde på verten:

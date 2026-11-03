@@ -141,3 +141,17 @@ def test_saved_configuration_defaults_to_home(monkeypatch, tmp_path):
     # A project file must not shadow a saved short name from the trusted directory.
     (tmp_path / "saved").write_text("untrusted local file")
     assert resolve_file("saved") == path
+
+
+@pytest.mark.parametrize("value", [None, "false", 0, 1, [], {}])
+def test_persistence_requires_boolean(config, value):
+    config["persistent"] = value
+    with pytest.raises(AgentboxError, match="persistent must be a boolean"):
+        parse(config)
+
+
+def test_persistence_default_and_explicit_choice(config):
+    assert parse(config).persistent is True
+    config["persistent"] = False
+    assert parse(config).persistent is False
+    assert parse(config).to_dict()["persistent"] is False

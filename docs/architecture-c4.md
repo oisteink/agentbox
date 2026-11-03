@@ -80,7 +80,7 @@ System_Boundary(agentbox, "Agentbox") {
     Boundary(environment, "Arbeidsmiljø - ett av flere", "Agent og proxy per miljø") {
         Container(agent, "Kodeagent og utviklingsverktøy", "Docker; UID 0 i containeren", "Upålitelig agentkode i valgt lokalt image. Lukket nettverk, valgte mounts og streng seccomp.")
         Container(proxy, "Utgående proxy", "Docker / Go; UID 10001", "Betrodd proxy med ett grensesnitt internt og ett eksternt. Eksakte destinasjoner, pinnede IP-er og selektiv TLS-avlytting med tokenutskifting.")
-        ContainerDb(home, "Agentens hjem og innlogging", "Containerens skrivbare lag", "/home/agent; verktøyoppsett og innlogging. Stopp bevarer; remove og avsluttet run sletter.")
+        ContainerDb(home, "Agentens hjem og innlogging", "Containerens skrivbare lag", "/home/agent; verktøyoppsett og innlogging. Vedvarende miljø bevarer ved stopp; midlertidig miljø slettes etter bruk.")
     }
 }
 
@@ -129,7 +129,9 @@ SHOW_LEGEND()
   og adressevalidering før de fastlåste adressene tas i bruk.
 - Prosjektmapper ligger på verten og overlever fjerning av miljøet. Agentens
   hjem ligger i containerlaget; separat profilvolum støttes ikke.
-  Midlertidige miljøer fra `run` fjernes når kommandoen avsluttes.
+  Midlertidige miljøer fra `run` fjernes når kommandoen avsluttes. Med
+  `persistent: false` fjernes miljøet etter `shell` eller ved `stop`; neste
+  `start` gir et nytt containerlag.
 - Rootless-containerne deler vertens kjerne. Ved et utbrudd med `agentbox`
   sine rettigheter gjelder brukerens samlede vertstilgang, også til andre registrerte prosjekter.
   Agentens UID 0 mappes til tjenestebrukeren på verten; proxyen bruker en egen

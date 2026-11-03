@@ -181,6 +181,7 @@ class Environment:
     allow: tuple[Rule, ...]
     resources: Resources
     credentials: tuple[Credential, ...] = ()
+    persistent: bool = True
 
     def to_dict(self):
         return asdict(self)
@@ -189,9 +190,22 @@ class Environment:
 def parse(data):
     fields(
         data,
-        {"name", "image", "workdir", "command", "mounts", "network", "resources", "credentials"},
+        {
+            "name",
+            "image",
+            "workdir",
+            "command",
+            "mounts",
+            "network",
+            "resources",
+            "credentials",
+            "persistent",
+        },
         {"name", "image", "mounts"},
     )
+    persistent = data.get("persistent", True)
+    if type(persistent) is not bool:
+        raise AgentboxError("persistent must be a boolean")
     image = name(data["image"])
     command = data.get("command", ["bash"])
     if not isinstance(command, list) or not 1 <= len(command) <= 128:
@@ -282,6 +296,7 @@ def parse(data):
         tuple(rules),
         Resources(float(cpus), memory, pids),
         tuple(parsed_credentials),
+        persistent,
     )
 
 

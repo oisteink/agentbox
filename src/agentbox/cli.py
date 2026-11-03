@@ -19,7 +19,7 @@ from .state import Store, atomic_json
 
 def rpc(request, stream=False, context=None):
     command = ["/usr/bin/sudo", "-H", "-u", "agentbox", "/usr/local/libexec/agentbox-control"]
-    if stream and request.get("action") == "run":
+    if stream and request.get("action") in ("run", "shell"):
         process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True)
         try:
             process.communicate(json.dumps(request))
@@ -293,6 +293,11 @@ def main():
             if args.action == "proxy":
                 request["operation"] = "apply"
             result = rpc(request)
+            if args.action == "start" and not environment.persistent:
+                print(
+                    "abx: Non-persistent environment; shell or stop will remove it.",
+                    file=sys.stderr,
+                )
         elif args.action == "proxy":
             request = {"action": "proxy", "operation": args.operation}
             if hasattr(args, "name"):
@@ -304,7 +309,7 @@ def main():
                 command.pop(0)
             code = rpc(
                 {
-                    "action": "exec",
+                    "action": args.action,
                     "name": args.name,
                     "command": command,
                     "tty": sys.stdin.isatty() and sys.stdout.isatty(),
@@ -362,7 +367,7 @@ def control_main():
             if rest.strip():
                 raise AgentboxError("Unexpected trailing control input")
             result = Control(settings).dispatch(request)
-        if request.get("action") in ("exec", "run"):
+        if request.get("action") in ("exec", "run", "shell"):
             raise SystemExit(result)
         print(json.dumps(result))
     except (AgentboxError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:

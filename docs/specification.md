@@ -111,6 +111,7 @@ små bokstaver, tall og bindestrek, maksimalt 48 tegn.
 | `image` | Påkrevd lokalt oppskriftsnavn, for eksempel `codex` eller `js` |
 | `mounts` | 1 til 32 registrerte prosjekter, hvert med `project`, absolutt `target` og `mode` (`rw` som standard eller `ro`) |
 | `workdir` | Sti inne i et prosjektmount; standard er første mountmål. Må finnes ved start |
+| `persistent` | Boolsk, standard `true`. Med `false` fjerner `shell` miljøet etter kommandoen; `stop` fjerner det også |
 | `command` | 1 til 128 ikke-tomme argumenter; standard `["bash"]`. Kjøres av `shell` og `run`, uten shelltolking |
 | `network.allow` | Liste over eksakte `host`/`port`-par, maksimalt 128. Tom som standard |
 | `credentials` | Maksimalt 32 regler med `host`, `port: 443`, `header` og `env`; tom som standard. Se [tokenreglene](#api-tokens-på-proxysiden) |
@@ -218,17 +219,17 @@ velges eksplisitt for trafikk fra miljøet.
 | --- | --- |
 | `start FIL.yaml` | Leser miljønavnet fra filen, validerer miljø og mounts, oppretter nettverk og proxy før agent; uendret kjørende miljø gjenbrukes |
 | `run FIL.yaml` | Kjører command én gang i terminalen i et nytt miljø; fjerner containere, nettverk og containerlag ved avslutning eller Ctrl-C; prosjektfiler beholdes |
-| `shell` | Kjører miljøets konfigurerte kommando i en terminalsesjon |
+| `shell` | Kjører miljøets konfigurerte kommando; med `persistent: false` fjernes miljøet etterpå, også ved feil eller Ctrl-C |
 | `exec` | Kjører eksplisitt argumentliste i eksisterende miljø |
-| `stop` | Stopper agent og proxy, bevarer containerlaget og registreringene |
+| `stop` | Med `persistent: true` stoppes agent og proxy og containerlaget beholdes; med `false` fjernes miljøet. Prosjektregistreringer beholdes |
 | `remove` | Fjerner miljøets containere, nettverk og logger; prosjektfiler og ACL-er beholdes |
 | `status` | Viser registrert miljøoppsett og observert containertilstand |
 | `logs` | Viser et begrenset utsnitt av agentutdata eller proxylogg med `--proxy` |
 
 Et stoppet miljø gjenopptas med uendret konfigurasjon og vertsadresser.
 
-Containerens `/home/agent`, innlogging og installerte filer beholdes, også
-ved manuell gjenopptak etter daemonrestart. Automatisk oppstart av miljøer
+Med `persistent: true` beholdes containerens `/home/agent`, innlogging og
+installerte filer, også ved manuell gjenopptak etter daemonrestart. Automatisk oppstart av miljøer
 etter vertsreboot finnes ikke.
 
 Endret agentprofil eller vertsadresse krever eksplisitt `remove` og ny
@@ -236,11 +237,18 @@ Endret agentprofil eller vertsadresse krever eksplisitt `remove` og ny
 Montert kode består. Nettverk/tokenregler endres med proxy apply uten å slette
 agentlaget. Gjenopptak av stoppet miljø og apply validerer DNS på nytt.
 
-`run` avviser eksisterende miljønavn. Kommandoens exitkode returneres etter
-vellykket opprydding; oppryddingsfeil gir feilstatus. Opprettelse og fjerning
+`persistent: false` gir ingen bevart container mellom shell-økter. Start
+klargjør i bakgrunnen og varsler om miljøets levetid. Shell varsler før
+kommandoen kjøres og reserverer én økt under lås. Flere shell-forsøk avvises uten opprydding av
+den aktive økten. Reservasjonen beholdes ved start/proxy apply; etter et
+hardt prosessavbrudd kreves eksplisitt remove. Exec er en ekstra kommando
+og utløser ikke opprydding, men prosessen fjernes sammen med miljøet.
+
+`run` er alltid midlertidig og avviser eksisterende miljønavn. Kommandoens
+exitkode returneres etter vellykket opprydding; oppryddingsfeil gir feilstatus. Opprettelse og fjerning
 bruker vanlig daemonverifikasjon og lås, mens kommandoen kjøres uten global
-lås. Fjerning sjekker opprettet agent-ID mot ny tilstand, slik at et gjenskapt
-miljø med samme navn ikke fjernes. SIGINT utsettes under kritiske mutasjoner.
+lås. Opprydding etter run og ikke-persistent shell sjekker valgt agent-ID
+mot ny tilstand, slik at et gjenskapt miljø med samme navn ikke fjernes. SIGINT utsettes under kritiske mutasjoner.
 SIGKILL og vertskrasj kan etterlate ressurser som må fjernes eksplisitt.
 
 Terminalsesjoner i vedvarende miljøer har separat levetid fra miljøet.

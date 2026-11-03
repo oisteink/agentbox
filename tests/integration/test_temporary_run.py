@@ -8,27 +8,42 @@ import pytest
 from conftest import cli
 
 
+@pytest.mark.parametrize("operation", ["run", "shell"])
 @pytest.mark.parametrize("exit_code", [0, 17])
-def test_temporary_command_output_exit_and_project_preservation(lab, exit_code):
+def test_temporary_command_output_exit_and_project_preservation(lab, exit_code, operation):
     project, path = lab.project()
     name, config = lab.configuration(
         project,
+        persistent=operation != "shell",
         command=[
             "python3",
             "-c",
             "import sys; from pathlib import Path; "
+            "assert not Path('/home/agent/dirty').exists(); "
+            "Path('/home/agent/dirty').write_text('discard'); "
             "Path('/workspace/kept').write_text(sys.argv[1]); "
             "print('task-stdout', flush=True); print('task-stderr', file=sys.stderr); "
             f"sys.exit({exit_code})",
             "argument with spaces;$(touch unwanted)",
         ],
     )
-    result = cli("run", str(config), check=False)
+    original = None
+    if operation == "shell":
+        started = cli("start", str(config))
+        assert "Non-persistent" in started.stderr
+        original = lab.state(name)["resources"]["agent"]
+    result = cli(operation, name if operation == "shell" else str(config), check=False)
     assert result.returncode == exit_code, result.stderr
     assert "task-stdout" in result.stdout and "task-stderr" in result.stdout
     assert (path / "kept").read_text() == "argument with spaces;$(touch unwanted)"
     assert not (path / "unwanted").exists()
     lab.assert_removed(name)
+    if operation == "shell":
+        assert "Non-persistent" in result.stderr
+        cli("start", str(config))
+        assert lab.state(name)["resources"]["agent"] != original
+        assert cli("shell", name, check=False).returncode == exit_code
+        lab.assert_removed(name)
 
 
 def test_temporary_run_rejects_existing_name_without_changes(lab):
@@ -68,14 +83,21 @@ def test_temporary_run_terminal_input_and_size(lab):
     lab.assert_removed(name)
 
 
+@pytest.mark.parametrize("operation", ["run", "shell"])
 @pytest.mark.parametrize("terminal", [False, True])
-def test_temporary_run_ctrl_c_cleans_up_without_blocking_other_environment(lab, terminal):
+def test_temporary_run_ctrl_c_cleans_up_without_blocking_other_environment(
+    lab, terminal, operation
+):
     project, path = lab.project()
     other = lab.start(project)
     name, config = lab.configuration(
-        project, command=["sh", "-c", "touch /workspace/run-ready; sleep 60"]
+        project,
+        persistent=operation != "shell",
+        command=["sh", "-c", "touch /workspace/run-ready; sleep 60"],
     )
-    arguments = ["/usr/local/bin/abx", "run", str(config)]
+    if operation == "shell":
+        cli("start", str(config))
+    arguments = ["/usr/local/bin/abx", operation, name if operation == "shell" else str(config)]
     if terminal:
         arguments = ["script", "-q", "-e", "-c", shlex.join(arguments), "/dev/null"]
     process = subprocess.Popen(
@@ -95,6 +117,15 @@ def test_temporary_run_ctrl_c_cleans_up_without_blocking_other_environment(lab, 
         else:
             pytest.fail("Temporary command did not start")
         assert name in json.loads(cli("status", timeout=5).stdout)
+        if operation == "shell":
+            original = lab.state(name)["resources"]["agent"]
+            cli("start", str(config))
+            cli("proxy", "apply", str(config))
+            state = lab.state(name)
+            assert state["shell_active"] is True
+            assert state["resources"]["agent"] == original
+            rejected = cli("shell", name, check=False, timeout=5)
+            assert rejected.returncode == 2 and "already claimed" in rejected.stderr
         cli("exec", other, "--", "true", timeout=5)
         if terminal:
             process.stdin.write("\x03")
@@ -111,3 +142,12 @@ def test_temporary_run_ctrl_c_cleans_up_without_blocking_other_environment(lab, 
             cli("remove", name, check=False)
             process.terminate()
             process.wait(timeout=10)
+
+
+def test_stop_removes_nonpersistent_environment(lab):
+    project, path = lab.project()
+    name = lab.start(project, persistent=False)
+    cli("exec", name, "--", "sh", "-c", "touch /home/agent/dirty /workspace/kept")
+    assert json.loads(cli("stop", name).stdout)["status"] == "removed"
+    lab.assert_removed(name)
+    assert (path / "kept").exists()

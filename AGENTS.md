@@ -56,7 +56,8 @@ opprettes med `abx image new NAVN` (eventuelt `--template codex`) og bygges
 med `abx image build NAVN`. Oppskrifter ligger under `~/.config/agentbox/images/`.
 Bygging av images i bruk av eksisterende containere, også stoppede, avvises.
 `abx run MILJØFIL` kjører kommandoen midlertidig i terminalen og fjerner
-miljøet ved avslutning; prosjektmounts beholdes.
+miljøet ved avslutning; prosjektmounts beholdes. Med `persistent: false`
+klargjør start i bakgrunnen; shell og stop fjerner miljøet.
 `scripts/lab/check.sh` installerer og bygger aktuell kilde inne i laben og
 kjører livssyklus/proxy sekvensielt. `--uninstall` velger avinstallasjon sist.
 

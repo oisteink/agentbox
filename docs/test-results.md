@@ -12,7 +12,7 @@ OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 
 | Kontroll | Resultat |
 | --- | --- |
-| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 190 bestått |
+| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 201 bestått |
 | Ruff lint/format, Bash-syntaks og gofmt | Bestått |
 | Go race og vet | Bestått, HTTP/1 og HTTP/2 |
 | govulncheck v1.9.0, Go 1.27.3 | Ingen sårbarheter som kan nås |
@@ -20,7 +20,7 @@ OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 | Dokumentasjon | CLI, skjema, lagring, proxybygg, installasjon og C4 kontrollert mot kode; lokale lenker og eksempler validert |
 | Wheel | Dockerfile-maler og Codex-launcher inkludert |
 | Installasjon og imagebygg i VM | Bestått; installerte filer sammenlignet med kilde |
-| Installert CLI og oppsett | 22 scenarier bestått, ingen skips |
+| Installert CLI og oppsett | 27 scenarier bestått, ingen skips |
 | Installert proxy | 24 kontroller bestått, ingen oppryddingsfeil |
 | Avinstallasjon | Bestått; annen rootful Docker-instans bevart |
 
@@ -39,8 +39,13 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
 - Installert CLI: to images/miljøer, COPY/.dockerignore, bygg/fjerning under
   kjørende og stoppet bruk, editorens inn-/utdata og exitkode, mounts,
   read-only, ACL/tilbakekalling, socketvern, ressursgrenser og exec-logger.
+- Ikke-persistent miljø: start i bakgrunnen, shell med exitkode 0/17, nytt
+  container-ID og rent hjem ved neste start, bevarte prosjektfiler og stop-fjerning.
+  Konkurrerende shell avvises; start og proxy apply beholder shell-reservasjonen.
+  Lokale prøver dekker ventende SIGINT etter reservasjon og valgt agent-ID
+  ved samtidig erstatning av et vedvarende miljø.
 - Midlertidig kjøring: exitkode 0/17, stdout/stderr, terminalstørrelse og
-  innlesing, Ctrl-C gjennom PTY og signal direkte til CLI, frigitt lås,
+  innlesing, Ctrl-C gjennom PTY og signal direkte til CLI for run og ikke-persistent shell, frigitt lås,
   full ressursfjerning og bevarte prosjektfiler. Lokale feilprøver dekker
   delvis oppstart, oppryddingsfeil og gjenskapt miljø med samme navn.
 - Livssyklus: containerlag ved stopp/start og daemonrestart, prosjektfiler
