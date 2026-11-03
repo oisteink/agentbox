@@ -35,6 +35,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   miljønavn, status (kjører/stoppet/ikke opprettet) og persistens.
 - `abx status NAVN` viser detaljer for ett miljø: tilstand, persistens, image,
   prosjekter/mounts og nettverkstilganger, også uten opprettet container.
+- `abx logs NAVN` viser siste utsnitt av agentloggen; `--proxy` velger
+  proxyloggen. `-f` / `--follow` følger nye logghendelser fortløpende for
+  begge loggtyper. Ctrl-C avslutter loggvisningen uten å stoppe miljøet.
 
 ## Åpent før implementasjon
 
