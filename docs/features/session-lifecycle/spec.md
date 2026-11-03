@@ -39,6 +39,21 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   proxyloggen. `-f` / `--follow` følger nye logghendelser fortløpende for
   begge loggtyper. Ctrl-C avslutter loggvisningen uten å stoppe miljøet.
 
+## Utskrift for mennesker og agenter
+
+Status: felles føring avklart; detaljformat avklares under kommandogjennomgangen.
+
+- Standardutskrift er for mennesker: tabeller for oversikter, lesbare detaljer
+  og konkrete feilmeldinger der det passer kommandoen.
+- `--json` gir strukturert utskrift for agenter. Både resultat og feil skal
+  kunne forstås fra JSON uten tolking av mennesketekst eller exitkoder.
+- I JSON-modus rapporteres håndterte feil i JSON med exitkode 0. Vanlig
+  menneskemodus beholder exitkoder for feil.
+- JSON-resultatet må skille entydig mellom suksess og feil og gi en stabil
+  feilkategori samt forståelig forklaring. Det konkrete skjemaet er ikke valgt.
+- Føringen gjelder på tvers av CLI-en. Utskrift avklares organisk for hver
+  kommando; gjennomføringen samles etter at brukerflyten er ferdig diskutert.
+
 ## Åpent før implementasjon
 
 - Shell er foreslått fjernet fordi start åpner konfigurert kommando.
@@ -50,3 +65,5 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   konfigurasjon som krever erstatning av et bevart containerlag?
 - Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
   avklares i research/plan etter at CLI-gjennomgangen er ferdig.
+- JSON for strømmede logger og interaktive start/exec/run, inkludert
+  kommandoens egne utdata og exitstatus, er ikke detaljavklart.
