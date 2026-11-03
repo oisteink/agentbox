@@ -3,11 +3,9 @@
 set -euo pipefail
 [[ $(hostname) == agentbox-lab ]] || { echo 'Run only in disposable lab' >&2; exit 1; }
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
-service_uid=$(id -u agentbox)
-for entry in 'agentbox-dev:lab images/smoke' 'agentbox-proxy:lab proxy'; do
-  read -r image directory <<< "$entry"
-  tar -C "$repo_dir/$directory" -cf - . |
-    sudo -u agentbox env -i PATH=/usr/bin:/bin HOME=/var/lib/agentbox \
-      XDG_RUNTIME_DIR="/run/user/$service_uid" \
-      docker --host "unix:///run/user/$service_uid/docker.sock" build --tag "$image" -
-done
+recipe_dir=${XDG_CONFIG_HOME:-$HOME/.config}/agentbox/images/smoke
+if [[ ! -e "$recipe_dir" ]]; then
+  abx image new smoke
+fi
+cp -- "$repo_dir/images/smoke/Dockerfile" "$recipe_dir/Dockerfile"
+abx image build smoke

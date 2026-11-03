@@ -7,10 +7,21 @@ _abx()
   COMPREPLY=()
 
   if (( COMP_CWORD == 1 )); then
-    choices="doctor status build-images pull-image validate project proxy start stop remove shell logs login-api-key exec completion --help"
+    choices="doctor status image validate project proxy start stop remove shell logs login-api-key exec completion --help"
+  elif [[ "$action" == image ]]; then
+    if (( COMP_CWORD == 2 )); then
+      choices="ls new edit build inspect rm --help"
+    elif [[ "$prev" == --template ]]; then
+      choices="base codex"
+    elif [[ "${COMP_WORDS[2]}" == new ]]; then
+      choices="--template --help"
+    elif [[ "${COMP_WORDS[2]}" != ls ]]; then
+      kind=images
+      start=3
+    fi
   elif [[ "$action" == proxy ]]; then
     if (( COMP_CWORD == 2 )); then
-      choices="apply stop rotate-ca --help"
+      choices="apply stop rotate-ca build --help"
     elif [[ "${COMP_WORDS[2]}" == apply ]]; then
       compopt -o filenames
       mapfile -t COMPREPLY < <(compgen -f -- "$cur")
@@ -20,7 +31,7 @@ _abx()
         done < <(abx completion --names configs 2>/dev/null)
       fi
       return
-    else
+    elif [[ "${COMP_WORDS[2]}" != build ]]; then
       kind=environments
       start=3
     fi

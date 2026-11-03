@@ -13,7 +13,7 @@ from agentbox.policy import placeholders, render, token_environment, validate_pl
 def environment():
     return {
         "name": "test-env",
-        "image": "agentbox-dev:local",
+        "image": "codex",
         "mounts": [{"project": "test", "target": "/workspace"}],
         "network": {"allow": [{"host": "api.example.com", "port": 443}]},
         "credentials": [

@@ -17,7 +17,8 @@ pakkeflavour eller upstream-build kan endres når kravene tilsier det.
 
 - `src/agentbox/`: Python-CLI, kontrollhjelper, konfigurasjon, ACL, nettverk og tilstand.
 - `src/agentbox/completions/`: Bash-completion, installert av vertsinstalleren.
-- `images/dev/` og `images/smoke/`: Codex-image og separat testimage.
+- `src/agentbox/templates/`: maler for lokale agentimages (base og Codex).
+- `images/smoke/`: separat testoppskrift for laben.
 - `proxy/`: Go-proxy, tester og flertrinns imagebygg; JSON-policy genereres av `src/agentbox/policy.py`.
 - `environments/`: miljøkonfigurasjoner uten hemmeligheter.
 - `scripts/install.sh` og `scripts/uninstall.sh`: administratoroppsett og avinstallasjon.
@@ -35,7 +36,7 @@ uv sync --extra dev --locked
 uv run --locked pytest -q
 uv run --locked ruff check src tests scripts
 uv run --locked ruff format --check src tests scripts
-bash -n scripts/*.sh scripts/lab/*.sh images/dev/codex src/agentbox/completions/abx.bash
+bash -n scripts/*.sh scripts/lab/*.sh src/agentbox/templates/codex/codex src/agentbox/completions/abx.bash
 (cd proxy && GOTOOLCHAIN=go1.27.3 go test -race ./... && GOTOOLCHAIN=go1.27.3 go vet ./...)
 (cd proxy && GOTOOLCHAIN=go1.27.3 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...)
 test -z "$(gofmt -l proxy/*.go)"
@@ -47,7 +48,11 @@ Følg [teststrategien](docs/testing.md) ved nye tester og vurdering av kravdekni
 kontrollverktøy, `AGENTBOX_LAB=1` og verten `agentbox-lab`; følg
 [laboppskriften](docs/test-results.md). Kjør sikkerhetsprøver i disponibel VM. Avinstallasjonsprøven krever separat
 `AGENTBOX_UNINSTALL_LAB=1` og skal kjøres sist; den sletter labinstallasjonen.
-På installert system bygger `abx build-images` utviklingsimage og proxy.
+Installeren bygger proxyimaget når det mangler. `abx proxy build` bygger
+proxykomponenten eksplisitt. Agentimages
+opprettes med `abx image new NAVN` (eventuelt `--template codex`) og bygges
+med `abx image build NAVN`. Oppskrifter ligger under `~/.config/agentbox/images/`.
+Bygging av images i bruk av eksisterende containere, også stoppede, avvises.
 `scripts/lab/check.sh` installerer og bygger aktuell kilde inne i laben og
 kjører livssyklus/proxy sekvensielt. `--uninstall` velger avinstallasjon sist.
 
@@ -58,6 +63,9 @@ i YAML. Bashskript skal ha eksplisitt feilhåndtering. Bruk `test_*.py` og
 `test_*` for tester; ingen dekningsprosent er konfigurert.
 Bruk generiske prosjektnavn, brukernavn og filstier i eksempler og testdata;
 ikke hent dem fra operatørens personlige prosjekter.
+Dokumentasjon beskriver gjeldende produkt, bruk og tekniske begrensninger.
+Ikke ta med utviklingshistorie, migrasjonsfortellinger eller før/nå-sammenligninger.
+Teststatus viser resultater og bevisomfang, ikke en arbeidsdagbok.
 Oppdater relevant dokumentasjon ved endret oppførsel. C4-kilden ligger i
 `docs/architecture-c4.md`; regenerer SVG og PNG med
 `python3 scripts/render-diagrams.py` og samme kommando med `--format png`.
@@ -126,9 +134,9 @@ Ved endrede diagrammer skal både kilde og genererte bilder følge med.
 Dokumentasjonsoppdateringen er en del av leveransen og skal ikke utsettes
 til etter merge; hovedgrenen skal inneholde et komplett produkt.
 
-Bruk korte, handlingsorienterte meldinger, som `Build initial rootless agent
+Commitmeldinger har bare en kort, handlingsorientert emnelinje, som `Build initial rootless agent
 isolation MVP`. Squash-committen skal beskrive de faktiske endringene kort og
 konkret, uten prosa. Vi vedlikeholder foreløpig ingen egen endringslogg.
 Beskriv formål, endret oppførsel og
-utførte tester i pull requests. Forklar konsekvenser for isolering, proxyregler,
+utførte tester kort i pull requests. Utelat samtale- og arbeidshistorikk. Forklar konsekvenser for isolering, proxyregler,
 monteringer og lagring når disse berøres.

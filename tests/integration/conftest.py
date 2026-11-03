@@ -20,7 +20,7 @@ def cli(*arguments, check=True, **kwargs):
         check=check,
         text=True,
         capture_output=True,
-        timeout=120,
+        timeout=kwargs.pop("timeout", 120),
         **kwargs,
     )
 
@@ -31,6 +31,15 @@ class Lab:
         self.suffix = uuid.uuid4().hex[:8]
         self.projects = {}
         self.environments = {}
+        self.images = {}
+
+    def image(self):
+        name = "image-" + self.suffix
+        root = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+        path = root / "agentbox/images" / name
+        self.images[name] = path
+        cli("image", "new", name)
+        return name, path
 
     def project(self, label="project"):
         name = f"{label}-{self.suffix}"
@@ -41,7 +50,7 @@ class Lab:
         assert result["status"] == "active"
         return name, path
 
-    def start(self, project, *, image="agentbox-dev:lab", **overrides):
+    def start(self, project, *, image="smoke", **overrides):
         name = f"env-{len(self.environments)}-{self.suffix}"
         path = self.root / f"{name}.yaml"  # Outside the shared project.
         config = {
@@ -112,6 +121,15 @@ class Lab:
                     errors.append(f"revoke {name}: {exc}")
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
             errors.append(f"list projects: {exc}")
+        for name, path in self.images.items():
+            try:
+                details = json.loads(cli("image", "inspect", name).stdout)
+                if details["id"]:
+                    cli("image", "rm", name)
+                assert json.loads(cli("image", "inspect", name).stdout)["id"] is None
+                shutil.rmtree(path)
+            except (AssertionError, OSError, subprocess.SubprocessError, ValueError) as exc:
+                errors.append(f"remove image {name}: {exc}")
         if errors:
             pytest.fail(f"Lab cleanup failed; files retained at {self.root}:\n" + "\n".join(errors))
         shutil.rmtree(self.root)

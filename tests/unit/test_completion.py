@@ -46,6 +46,12 @@ def test_completion_timeout_is_ignored(monkeypatch):
     "words,expected",
     [
         (["abx", "sh"], ["shell"]),
+        (["abx", "image", "b"], ["build"]),
+        (["abx", "image", "build", "j"], ["js"]),
+        (["abx", "image", "e"], ["edit"]),
+        (["abx", "image", "edit", "j"], ["js"]),
+        (["abx", "image", "new", "js", "--template", "c"], ["codex"]),
+        (["abx", "proxy", "b"], ["build"]),
         (["abx", "shell", "exa"], ["example-codex"]),
         (["abx", "logs", "example-codex", "--p"], ["--proxy"]),
         (["abx", "project", "re"], ["repair", "revoke"]),
@@ -69,6 +75,7 @@ abx() {
     'completion --names environments') printf '%s\\n' other example-codex ;;
     'completion --names projects') printf '%s\\n' example ;;
     'completion --names configs') printf '%s\\n' example-codex ;;
+    'completion --names images') printf '%s\\n' js ;;
     *) return 1 ;;
   esac
 }

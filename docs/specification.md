@@ -4,7 +4,7 @@ Agentbox kjører kodeagenter mot eksplisitt valgte prosjektmapper på én
 Linux-vert. Én utvikler administrerer oppsettet og kan bruke flere miljøer
 samtidig, med ulike images, mounts og nettverkspolicyer.
 
-Dette er produktkontrakten for utviklingsgrenen med Go-proxy. [Bruksveiledningen](usage.md)
+Dette er produktkontrakten for Agentbox. [Bruksveiledningen](usage.md)
 beskriver kommandoene, [arkitekturen](architecture.md) forklarer oppbygningen,
 og [teststatus](test-results.md) avgrenser hva som er verifisert.
 
@@ -92,8 +92,7 @@ tilbakekalling.
 
 ## Miljøkonfigurasjon
 
-Fra 1.0.1 brukes `abx start FIL.yaml`. Miljønavnet
-leses fra `name`; et separat navneargument og `--config` er fjernet.
+`abx start FIL.yaml` leser miljønavnet fra `name` i miljøfilen.
 Kommandoer mot eksisterende miljøer, som `shell` og `stop`, bruker miljønavnet.
 `start` og `validate` støtter også kortnavn uten filending fra
 `~/.config/agentbox/environments/` (eller `$XDG_CONFIG_HOME/agentbox/environments/`).
@@ -107,7 +106,7 @@ Prosjekt- og miljønavn bruker små bokstaver, tall og bindestrek, maksimalt 48 
 | Felt | Kontrakt og standardverdi |
 | --- | --- |
 | `name` | Påkrevd unikt miljønavn; leses fra YAML-filen ved start |
-| `image` | Påkrevd image; `agentbox-dev:local` inneholder Codex 0.166.0 |
+| `image` | Påkrevd lokalt oppskriftsnavn, for eksempel `codex` eller `js` |
 | `mounts` | 1 til 32 registrerte prosjekter, hvert med `project`, absolutt `target` og `mode` (`rw` som standard eller `ro`) |
 | `workdir` | Sti inne i et prosjektmount; standard er første mountmål. Må finnes ved start |
 | `command` | Ikke-tom argumentliste; standard `["bash"]`. Kjøres av `shell` |
@@ -126,12 +125,52 @@ Deklarerte `VOLUME`-mounts avvises. Det valgte imagets entrypoint erstattes
 av miljøets oppholdsprosess; valgt arbeidskommando kjøres separat.
 Imagevalg endrer ikke ACL-, nettverks- eller isoleringsmekanismene.
 
+### Lokale imageoppskrifter
+
+Alle agentimages har en lokal Dockerfile under `~/.config/agentbox/images/`
+(eller `$XDG_CONFIG_HOME/agentbox/images/`). `image new NAVN` lager en ny
+katalog med Dockerfile og .dockerignore uten overskriving. Standardmalen er
+et generelt Linux-miljø; `--template codex` inkluderer Codex 0.166.0.
+Malene følger programmet; det finnes ingen separat standardkatalog i /usr/share.
+
+`image ls` lister lokale oppskrifter, også ubygde, med status og image-ID.
+`image edit NAVN` åpner Dockerfilen som utvikleren i VISUAL, deretter EDITOR,
+ellers Debian sin editor-kommando. Whitespace-only variabler er tomme.
+Siterte editorargumenter støttes uten shelltolking; terminal og miljø arves,
+oppskriftskatalogen er arbeidskatalog, og editorens exitkode returneres.
+Edit krever eksisterende oppskrift, men gjør ingen RPC eller bygging og
+kan brukes mens imaget er i bruk.
+`image inspect NAVN` viser sti, tag, ID og containere. `image build NAVN`
+bygger katalogen i Agentbox sin rootless-instans, med vanlig COPY og
+.dockerignore behandlet av Docker. Konteksten sendes uten generell ACL-tilgang
+til utviklerens hjem; lenker derefereres ikke. Kontrollsiden pakker ut i en
+privat midlertidig katalog med datafilter; lenker ut av konteksten og
+spesialfiler avvises. Katalog og overført arkiv slettes etter byggingen.
+Hele konteksten overføres til kontrollsiden, også filer builderen ignorerer.
+
+Start krever både lokal oppskrift og et image bygget av Agentbox for samme
+installasjon og navn. Dette gjelder også gjenopptak. Ingen automatisk bygg
+eller pull ved start. Registryimages kan brukes i Dockerfilens FROM.
+
+Bygg og `image rm NAVN` avvises når en eksisterende container bruker eksakt
+samme image-ID, inkludert stoppede containere. Avledede images sperrer ikke.
+Operasjonene deler kontrollsidens lås med start og remove. `image rm`
+fjerner bygget tag, men beholder lokal oppskrift. Fjerning av miljøet
+sletter containerlaget, inkludert hjem og innlogging.
+
+Installeren bygger den interne proxykomponenten hvis imaget mangler, med
+samme daemonverifikasjon og operasjonslås som kontrollverktøyet. Byggingen
+kjører som agentbox med rent miljø; feil gir mislykket installasjon.
+Eksisterende image beholdes, også når containere bruker det. `proxy build`
+bygger komponenten eksplisitt fra installert kilde og beholder brukssperren.
+Proxyen inngår ikke i image ls.
+
 Agentens UID 0 mappes til tjenestebrukeren på verten. Den kjører med droppede
 capabilities, `no-new-privileges`, ressursgrenser og en revisjonslåst Moby-
 seccomp-profil med strengere sperrer mot Unix-sockets og alternative socket-
 syscalls. Privilegert modus, vertsnettverk, vertens PID-namespace og ekstra
 enheter tilbys ikke. Verktøy som trenger filsystem- eller abstrakte Unix-
-sockets faller utenfor kompatibiliteten i 1.0.
+sockets støttes ikke.
 
 ## Nettverk og proxy
 
@@ -164,7 +203,7 @@ Det må ha minst to ledige `/28`-subnett; vertsruter og eksisterende nettverk
 på Agentbox-daemonen utelukkes. Standardområdet er `172.28.0.0/16`.
 Proxyens faste ressursgrenser er 0,5 CPU, 256 MiB og 128 prosesser.
 
-Imagebygging og imagehenting skjer på den betrodde kontrollsiden utenfor
+Imagebygging og henting av baseimages skjer på den betrodde kontrollsiden utenfor
 agentens nettverkspolicy. Agenten har ingen kontrollkanal for å bestille slike
 operasjoner. Innloggingsdomener, API-er, MCP-tjenester og pakkeregistre må
 velges eksplisitt for trafikk fra miljøet.
@@ -208,8 +247,8 @@ sudo-passord og har en tidsgrense på to sekunder.
 
 ## Verifikasjonskriterier
 
-Kriteriene A1 til A13 videreføres fra utviklingen av 1.0. Integrasjonsprøver
-bruker midlertidige mapper og kontrollerte nettverksdestinasjoner. Forventet
+Integrasjonsprøver bruker midlertidige mapper og kontrollerte
+nettverksdestinasjoner. Forventet
 blokkering bekreftes mot en fungerende kontrolltjeneste. Observerte resultater,
 manuell utprøving og utestede kombinasjoner står i [teststatus](test-results.md).
 Testenes ansvar, kravdekning og regler ved endringer står i
@@ -232,7 +271,7 @@ negative prøver skal bekrefte riktig avvisning og relevante konsekvenser.
 | A12 | CPU-, minne- og prosessgrenser verifiseres; manglende støtte gir feil |
 | A13 | Tilbakekalling av prosjekttilgang bevarer uvedkommende ACL-er og tilgang til andre registrerte prosjekter |
 
-## Avinstallasjon i 1.0.1
+## Avinstallasjon
 
 `sudo scripts/uninstall.sh` er en administratoroperasjon som stopper alle Agentbox-
 miljøer, overfører tjenestebrukerens prosjektfiler til utviklerens UID/GID og

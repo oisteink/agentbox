@@ -10,7 +10,7 @@ from agentbox.errors import AgentboxError
 def config():
     return {
         "name": "example-dev",
-        "image": "agentbox-dev:local",
+        "image": "codex",
         "mounts": [{"project": "example", "target": "/home/agent/src/example"}],
         "network": {"allow": [{"host": "api.example.com", "port": 443}]},
     }

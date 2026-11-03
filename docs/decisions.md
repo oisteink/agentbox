@@ -1,6 +1,6 @@
 # Arkitekturvalg for Agentbox
 
-Agentbox 1.0.1 bruker en felles tjenestebruker, prosjekt-ACL-er og en proxy per
+Agentbox bruker en felles tjenestebruker, prosjekt-ACL-er og en proxy per
 miljø. Valgene under forklarer hvordan isoleringen håndheves og hvilke
 begrensninger den gir. Prøvegrunnlaget finnes i [teststatus](test-results.md),
 og produktkontrakten i [spesifikasjonen](specification.md).
@@ -15,6 +15,44 @@ under `/opt/agentbox`; hjelperen bruker isolert Python-oppstart og fast socket.
 Utviklerens ACL-journal ligger separat i `/var/lib/agentbox-operator` med modus
 0700. Agentmiljøene får ingen av disse katalogene montert inn.
 
+## Lokale imageoppskrifter
+
+Agentimages har lokale Dockerfiles under utviklerens `~/.config/agentbox/images/`.
+Katalogen er byggkontekst; vanlige FROM, COPY og hjelpeskript brukes uten et
+eget byggformat eller imageregister. Malene følger Python-pakken og kopieres
+bare ved eksplisitt `image new`. Oppskrifter eies og redigeres av utvikleren.
+Proxyimaget er en intern komponent som installeren bygger når det mangler.
+Eksisterende image beholdes; `proxy build` brukes til ombygging.
+
+CLI-en pakker konteksten som tar uten å følge lenker og sender den etter en
+JSON-header. Kontrollhjelperen autentiserer først og mellomlagrer i private,
+midlertidige filer. Ingen generell tilgang til utviklerens hjem eller nye
+prosjekt-ACL-er trengs. Utpakking bruker Pythons datafilter; lenker ut av
+konteksten og spesialfiler avvises. Docker bygger den midlertidige katalogen,
+slik at Docker selv behandler .dockerignore. BuildKits upload-kontekst
+filtrerer ikke ignore-reglene. Hele konteksten overføres til kontrollsiden
+før builderen filtrerer filer.
+
+En fast tag avledes fra navnet, `agentbox-image-NAVN:local`. Docker-labels
+identifiserer installasjon og oppskrift; et tilfeldig image med samme tag
+aksepteres ikke ved start. Oppskriftskatalogene gir oversikten over lokale
+oppskrifter; Docker gir bygde ID-er og brukere. Ingen ekstra tilstandsfil.
+
+Bygg og fjerning undersøker alle containere og sammenligner eksakt image-ID.
+Avledede images inngår ikke i brukssjekken. Stoppede containere regnes som
+brukere. Kontrollsidens operasjonslås serialiserer sjekken og mutasjonen
+med start/remove. Dette forutsetter
+at Docker-instansen administreres gjennom kontrollhjelperen.
+
+Containerlaget følger vanlig Docker-livssyklus. Fjern miljøene før ombygging,
+og behold nødvendige arbeidsfiler i mounts. Fjerning sletter containerlaget,
+inkludert hjem og innlogging.
+
+Kildegrunnlag: [Docker-byggkontekst](https://docs.docker.com/build/concepts/context/),
+[ancestor-filter](https://docs.docker.com/reference/cli/docker/container/ls/),
+[Buildx-ruting](https://github.com/docker/buildx/blob/master/build/opt.go) og
+[BuildKit-kontekst](https://github.com/moby/buildkit/blob/master/frontend/dockerui/config.go).
+
 ## Prosjektroten som grense for tilbakekalling
 
 Prosjektroten må eies av utvikleren. Registrering gir `agentbox` tilgang til
@@ -23,7 +61,7 @@ bruker-ACL prioriteres foran gruppe- og andre-rettigheter. Prøven bekrefter at
 denne sperren blokkerer filtilgang også når `agentbox` eier filen under roten.
 
 Alle berørte containere må være stoppet først. Overlappende registreringer
-avvises i versjon 1.0.1, slik at en separat registrert undermappe ikke krever tilgang
+avvises, slik at en separat registrert undermappe ikke krever tilgang
 gjennom en tilbakekalt rot. Delte foreldrekataloger mellom søskenprosjekter
 håndteres med referanser i journalen.
 
@@ -40,18 +78,16 @@ selv eier. Ingen rekursiv root-operasjon eller `chown` brukes i daglig drift.
 
 ## Unix-sockets og seccomp
 
-Et katalogmount kan eksponere en Unix-socket på verten. Det er demonstrert
-med standardprofilen i laben. Agentprofilen er derfor en strengere variant
-av en revisjonslåst Moby-profil; standard syscallbegrensninger beholdes.
+Et katalogmount kan eksponere en Unix-socket på verten. Agentprofilen
+blokkerer nye Unix-sockets og bygger på en revisjonslåst Moby-profil
+med standard syscallbegrensninger.
 
 Nye `AF_UNIX`-sockets, datagram-socketpar, `socketcall` og io_uring-operasjoner
-blokkeres. Tilkoblede stream-socketpar beholdes for privat prosesskommunikasjon;
-prøven bekrefter at de ikke kan kobles om til vertens filsystemsocket.
-Profilen gjelder også `docker exec`. Python `asyncio` fungerer i prøven.
+blokkeres. Tilkoblede stream-socketpar beholdes for privat prosesskommunikasjon.
+Profilen gjelder også `docker exec`. Enkel bruk av Python `asyncio` er prøvd i lab.
 
 Verktøy som trenger filsystem- eller abstrakte Unix-sockets støttes ikke av
-denne imageprofilen. Dette er en reell kompatibilitetsbegrensning, ikke et
-signal om at mer privilegier skal slås på automatisk.
+denne imageprofilen. Isoleringsprofilen utvides ikke automatisk for slike verktøy.
 
 ## Nettverk, DNS og vertsadresser
 
@@ -75,14 +111,11 @@ Den interne Docker-resolveren er testet mot en kontrollert DNS-tjeneste uten
 observert ekstern videresending. Oppgraderinger av Docker/RootlessKit krever
 ny gjennomkjøring av denne prøven.
 
-## Codex-oppstart i 1.0.1
+## Codex-oppstart
 
-Utviklingsimaget har en launcher som kjører Codex med `--no-daemon`.
-Codex 0.166.0 forsøkte ellers å starte en delt app-server ved gjentatt oppstart,
-og dette feilet med `Operation not permitted` under isoleringsprofilen.
-Det konkrete avslåtte systemkallet er ikke kartlagt. To oppstarter uten
-bakgrunnsserver viste grensesnittet, og innloggingsstatus var fortsatt gyldig.
-Rettelsen beholder seccomp-profilen og endrer ikke felles image- eller nettverkslogikk.
+Codex-launcheren bruker `--no-daemon` fordi oppstart av delt app-server
+feiler under isoleringsprofilen. Agenten bruker samme seccomp- og nettverksregler
+som andre images. Det konkrete avslåtte systemkallet er ikke kartlagt.
 
 ## Logger og lagring
 
@@ -100,13 +133,10 @@ operasjoner endrer dem. Kjøremiljøer gjenopptas ikke automatisk etter vertsreb
 
 ## Go-proxy og miljøbaserte tokens
 
-En avgrenset Go-proxy med goproxy håndterer nøkkelutskifting. Squid og
-mitmproxy ble vurdert; vi valgte Go for å samle den konkrete destinasjons-
-og headerpolicyen i en liten, testbar implementasjon. HTTP/TLS håndteres av
-bibliotek og standardbibliotek, ikke egen protokoll- eller kryptokode. Én prosess per miljø
-håndhever eksisterende destinasjons-/IP-policy, selektiv TLS-avlytting og
-plassholderutskifting i headere. Ingen parallell proxykjede eller separat autorisasjonsdatabase.
-Proxyen kjører fortsatt uten root i containeren og får bare egne PKI-filer.
+Go-proxyen bruker goproxy og Go sitt standardbibliotek til HTTP/TLS.
+Én prosess per miljø håndhever destinasjons-/IP-policy, selektiv TLS-avlytting
+og plassholderutskifting i headere. Proxyen kjører uten root i containeren
+og får bare egne PKI-filer.
 
 Tokens kommer fra eksplisitt navngitte variabler i operatørens miljø. De gis
 til proxyens miljø gjennom kontrollhjelperen uten verdier i argumenter eller
@@ -119,8 +149,8 @@ plassholder eller Bearer-formen matcher en regel. Nye tokenvariabler krever
 gjenskaping av container; ingen egen oppdateringsmekanisme for shellmiljø.
 
 Proxyen gjenskapes ved endringer; gamle forbindelser lukkes før aktivering.
-Feil etter stopp gir ingen fallback til gammel nøkkel. Read-only filsnapshots
-av privat CA ligger under hostkatalog0700; token har ingen filsnapshot.
+Feil etter stopp gir ingen fallback til gammel nøkkel. Read-only snapshots av privat CA ligger i en vertskatalog med modus 0700.
+Ekte tokens lagres ikke i filsnapshots.
 
 Tilfeldige plassholdere er ufarlige utenfor miljøets proxy. Tilgang fra innsiden
 av et autorisert miljø kan likevel forbruke den ekte nøkkelens rettigheter.
@@ -156,11 +186,3 @@ dekningsprosent er ikke leveransemål. Kravdekning og åpne hull vedlikeholdes i
 Skannere hopper over kjente nestede mountpunkter før de åpnes. Tjenestebrukeren
 skal ikke trenge lesetilgang til en mappe utenfor prosjektets valgte filsystem
 for å starte miljøet. Samme regel gjelder avinstallasjonens inspeksjon.
-
-## Kommandonavn
-
-CLI-en heter `abx` for å gjøre daglig bruk kortere å skrive. Pakke-entrypoint
-og vertslauncher bruker samme navn, slik at completion og skript fungerer
-uten skallalias. Agentbox er fortsatt produktnavnet; tjenestebruker, interne
-stier og kontrollhjelper beholder navnene sine. Installeren rydder det gamle
-CLI-navnet ved oppgradering, og avinstalleren kjenner begge installasjonsnavn.

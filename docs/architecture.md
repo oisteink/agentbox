@@ -57,15 +57,21 @@ IPv4-adresse per navn. Proxyen har ingen ekstern DNS-fallback.
 En systemd-adressevakt stopper miljøer ved endrede vertsadresser;
 vakten er asynkron, og nettverksadministrasjon på verten er betrodd.
 
-Codex-imaget og det separate testimaget bruker samme isolering. Andre
-kompatible images velges i YAML. Images må støtte UID 0, `/bin/sh` og
+Agentimages bygges fra lokale Dockerfiles under `~/.config/agentbox/images/`
+og velges med oppskriftsnavn i YAML. Codex-malen og det separate testimaget
+bruker samme isolering. Images må støtte UID 0, `/bin/sh` og
 `sleep infinity`; deklarerte `VOLUME`-mounts avvises.
-Imagebygging og imagehenting skjer på den betrodde kontrollsiden.
+Byggkonteksten overføres fra CLI-en som tar etter en JSON-header og pakkes ut
+i en privat midlertidig katalog med datafilter. Docker bygger katalogen og
+behandler .dockerignore. Bygging og henting av baseimages skjer på den
+betrodde kontrollsiden. Installeren bygger proxyimaget når det mangler;
+ombygging gjøres med `proxy build`.
+Bygg og fjerning sperres ved containere med samme eksakte image-ID,
+også stoppede. Se [imagevalgene](decisions.md#lokale-imageoppskrifter).
 
 ## Livssyklus og sikkerhetsgrense
 
-Fra 1.0.1 finnes `scripts/uninstall.sh`, kjørt fra repoet som administrator
-på samme måte som installeren. Det stopper tjenestebrukerens
+`scripts/uninstall.sh` kjøres fra repoet som administrator. Det stopper tjenestebrukerens
 prosesser, overfører eierskap i registrerte prosjekter og fjerner installasjonen.
 Skriptet bruker systemets Python uavhengig av den installerte CLI-en.
 Vanlige kontrolloperasjoner får ikke denne root-tilgangen. Se
@@ -87,16 +93,11 @@ kjerne. Ved utbrudd med tjenestebrukerens rettigheter gjelder all tilgang
 `agentbox` har, inkludert andre registrerte prosjekter og allment lesbare filer.
 Felles daemonbruker gir ikke separat vertsisolering mellom prosjektene.
 
-## Avgrensninger og videre arbeid
+## Avgrensninger
 
 Se [teststatus](test-results.md) for labprøver, manuell bruk og testavgrensninger.
-Linked worktrees støttes ikke i versjon 1.0.1, inkludert tilgang
-til delte Git-metadata utenfor arbeidsmappen. Separat profillagring er et
-mulig senere valg.
-
-Neste vurdering er sammenligning med OpenShell og Docker
-Sandboxes: isoleringsgrenser, nettverkspolicy, mounts og rettigheter,
-samtidige miljøer, imagevalg, plattformkrav og vedlikehold.
+Linked worktrees med Git-metadata utenfor arbeidsmappen og separat
+profillagring støttes ikke.
 
 ## Teknisk grunnlag
 

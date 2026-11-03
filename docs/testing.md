@@ -44,6 +44,9 @@ med miljøets etikett etter fjerning; en vellykket CLI-respons alene er utilstre
 
 ## Kontroller før merge
 
+En agentsandkasse kan skjule `/dev/kvm` selv om verten har KVM. Kontroller
+tilgangen på verten før laben regnes som utilgjengelig.
+
 Kjør `scripts/check.sh` for låste Python-avhengigheter, pytest, Ruff,
 Bash-syntaks, Go race/vet, govulncheck og gofmt. Dette krever Python 3.12+,
 uv, Go og tilgang til toolchain 1.27.3 og sårbarhetsdatabasen.
@@ -62,8 +65,7 @@ bruker versjoner og pakkehasher fra `uv.lock`. Hoppede eller ingen
 livssyklustester gjør kjøringen mislykket. Proxyprøven kjøres også om et
 livssyklusscenario feiler; samlet resultat forblir mislykket.
 
-Oppdater kravmatrisen ved endrede kontrakter. Teststatus skal skille mellom
-ny kjøring, eldre observasjoner og hull. Nytt testantall eller høyere
+Oppdater kravmatrisen ved endrede kontrakter. Teststatus skal oppgi resultat, dato, plattform, prøvenes omfang og hull. Nytt testantall eller høyere
 dekningsprosent er ikke et akseptansekriterium.
 
 ## Krav og bevis
@@ -85,9 +87,10 @@ kravet er uttømmende verifisert. Alle livssyklustestene ligger i
 | A9: ingen fallback | Proxyprøvens stopp, avvist apply og tom/ikke-tom overgang; `test_proxy_credentials` | Ikke alle crash-/readinessfeil er injisert |
 | A10: agentens begrensninger | `test_socket_capability_and_cgroup_enforcement`: AF_UNIX gir EPERM, Docker-socket mangler, ip link avvises; asyncio fungerer | Alternative socketsyscalls, mount-forsøk og skriving til alle kontrollfiler trenger egne prøver |
 | A11: to images | `test_two_images_and_independent_environments` med utviklingsimage og uavhengig smoke-image | Ikke andre agentsystemer eller arm64 |
+| Lokale imageoppskrifter | `test_images`: filer, binær protokoll, sikker utpakking, eierskap og eksakt brukssjekk; `test_local_image_build_context_and_use_guard`: COPY/ignore og ombygging | Installert på Ubuntu amd64; andre plattformer er ikke prøvd |
 | A12: ressurser | `test_socket_capability_and_cgroup_enforcement` leser CPU/minne/PID og fyller PID-grensen; lokal daemonprøve av manglende støtte | Ingen ny CPU-belastnings- eller OOM-prøve |
 | A13: tilbakekalling | `test_acl_repair_and_revocation_leave_other_project_working`: avslag under read-only bruk, EACCES som tjenestebruker og annet prosjekt fortsetter; ACL-unitprøver | Konkurrerende manuelle ACL-endringer mangler |
-| Installasjon | `test_install` validerer operatørvalg; labinngangen kjører install og sammenligner filer | Unitprøven stopper før privilegerte steg; minste Debian er ikke fastsatt |
+| Installasjon | `test_install` validerer operatørvalg; `test_proxy_image_installation_and_build_failure` prøver proxybygg, gjenbruk og feilstatus; laben sammenligner installerte filer | Minste Debian er ikke fastsatt |
 | Shell, exec og terminal | `test_exec_exit_status_and_configured_shell`, `test_terminal_reads_input_and_preserves_size`, lokal PTY-prøve | Dynamisk størrelsesendring og interaktive signaler trenger egne prøver |
 | Stopp/start og endret profil | `test_stop_start_preserves_container_and_home`, `test_changed_profile_is_rejected_without_losing_home` | Home-markør og samme container-ID; full innlogging er ikke utført her |
 | Daemonrestart | `test_daemon_restart_preserves_home` | Ikke vertsreboot eller avbrudd ved hvert oppstartssteg |
@@ -103,11 +106,13 @@ kravet er uttømmende verifisert. Alle livssyklustestene ligger i
 | `test_proxy_credentials.py`, `test_credentials.py` | Tokenreferanser, alias, plassholdere, hemmelighetsfrie argumenter/feil og avslag ved overganger; enkelte eksterne kontrolloperasjoner erstattes |
 | `test_cli.py`, `test_control_entry.py` | Utvalgte CLI-forespørsler, identitet før dispatch og avvisning av feil input uten ekko av hemmeligheter |
 | `test_runtime.py` | Daemonkrav og renset miljø med simulerte Docker-svar; ekte PTY/prosess for utdata og initial størrelse |
+| `test_images.py` | Ekte lokale oppskrifter, editorprosesser, tar og utpakking; binær kontrollprotokoll og avslag før Docker-mutasjon |
 | `test_projects.py`, `test_uninstall.py` | ACL-transformasjoner, lenker, identitet og filsystemopprydding; smale mocks for eksterne ACL-operasjoner |
 | `test_state.py` | Reell atomisk lagring og avbrutt transaksjon i midlertidig mappe |
 | `test_install.py`, `test_completion.py` | Operatørvalg før privilegier, ekte Bash-completion og kontrollerte navneoppslag |
 | `proxy/proxy_test.go`, `proxy/security_test.go` | Ekte HTTP/TLS, H1/H2, auth-/destinasjonsregler, mottakerobservasjon og positive kontrollrequests |
 | `tests/integration/conftest.py`, `test_lifecycle.py` | Funksjonsavgrenset ressursoppsett og selvstendige scenarier mot installert kode |
+| `tests/integration/test_installation.py` | Faktisk installasjon med eksisterende/manglende proxyimage og ugyldig Dockerfile; gjenoppretter installasjonen etter prøven |
 | `tests/integration/test_uninstall.py` | Destruktiv installert prøve; eierbytte, ACL, symlinker, nestet mount og bevart annen daemon |
 | `scripts/lab/credential_proxy.py`, `fixture.py` | Samlet proxy-/tokenlivssyklus med syntetisk upstream i egen nettverksnamespace; fixture er bare labserver |
 | `scripts/check.sh`, `scripts/lab/check.sh` | Lokale kontroller og installert akseptanse; resultatfilene er disponible |
@@ -137,6 +142,3 @@ plattformstøtte. De er ikke beståtte prøver:
    ressursendringer. Bruk eksplisitte feilpunkter og ettertilstand.
 5. Prioritet middels: vertsreboot, signaler og dynamisk terminalstørrelse,
    arbeidskatalog som mangler/erstattes, privat loggmodus/rotasjon og CPU/OOM.
-
-Eldre gjennomførbarhetsprøver av standard-Docker og kandidatprofil inngår ikke
-i akseptansepakken. De er fjernet; unike manglende sikkerhetsprøver står over.

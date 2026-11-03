@@ -11,7 +11,6 @@ import yaml
 from .errors import AgentboxError
 
 NAME = re.compile(r"[a-z][a-z0-9-]{0,47}\Z")
-IMAGE = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._/@:-]{0,255}\Z")
 MEMORY = re.compile(r"[1-9][0-9]*[mg]\Z")
 VARIABLE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}\Z")
 RESERVED_VARIABLES = {
@@ -193,9 +192,7 @@ def parse(data):
         {"name", "image", "workdir", "command", "mounts", "network", "resources", "credentials"},
         {"name", "image", "mounts"},
     )
-    image = text(data["image"])
-    if not IMAGE.fullmatch(image):
-        raise AgentboxError("Invalid image reference")
+    image = name(data["image"])
     command = data.get("command", ["bash"])
     if not isinstance(command, list) or not 1 <= len(command) <= 128:
         raise AgentboxError("Command must be a nonempty argument list")

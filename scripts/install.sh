@@ -64,7 +64,8 @@ fi
 cp -r -- "$repo_dir/src/agentbox" /opt/agentbox/lib/
 find /opt/agentbox/lib/agentbox -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
 find /opt/agentbox/lib/agentbox -type d -name __pycache__ -empty -delete
-cp -r -- "$repo_dir/images" "$repo_dir/proxy" /opt/agentbox/
+cp -r -- "$repo_dir/proxy" /opt/agentbox/
+rm -rf -- /opt/agentbox/images
 python3 "$repo_dir/src/agentbox/seccomp.py" > /opt/agentbox/security/seccomp.json
 if [[ ! -x /opt/agentbox/venv/bin/python3 ]]; then
   python3 -m venv /opt/agentbox/venv
@@ -161,4 +162,18 @@ runuser -u agentbox -- env -i PATH=/usr/bin:/bin HOME=/var/lib/agentbox \
   XDG_RUNTIME_DIR="/run/user/$service_uid" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$service_uid/bus" \
   systemctl --user restart agentbox-watch.service
-echo 'Installed. Run as the developer: abx doctor; abx build-images'
+echo 'Preparing proxy image...'
+runuser -u agentbox -- env -i PATH=/usr/bin:/bin HOME=/var/lib/agentbox \
+  XDG_RUNTIME_DIR="/run/user/$service_uid" \
+  /opt/agentbox/venv/bin/python3 -I - <<'PY'
+import sys
+sys.path.insert(0, '/opt/agentbox/lib')
+from agentbox.control import Control
+from agentbox.settings import load_settings
+
+control = Control(load_settings())
+with control.store.locked() as data:
+    control.verified(data)
+    control.build_proxy(if_missing=True)
+PY
+echo 'Installed. Run as the developer: abx doctor; abx image new codex --template codex; abx image build codex'

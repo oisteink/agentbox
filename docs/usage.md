@@ -11,6 +11,7 @@ Se [installasjon](installation.md) hvis `doctor` ikke fungerer.
 | Prosjekt | `example` | Registrert vertsmappe, eksempelvis `~/src/example` |
 | Miljø | `example-codex` | Agentcontainer, proxy og nettverk med egen livssyklus |
 | Miljøfil | `~/.config/agentbox/environments/example-codex.yaml` | Valgt image, prosjektmonteringer og nettverkspolicy |
+| Imageoppskrift | `~/.config/agentbox/images/codex/` | Redigerbar Dockerfile og byggkontekst |
 
 Ett miljø kan montere flere registrerte prosjekter. Samme prosjekt kan brukes
 i flere miljøer, men alle med skrivetilgang arbeider på de samme filene.
@@ -45,7 +46,7 @@ Bruk ikke en konfigurasjon agenten kan endre til å styre denne tilgangen.
 
 ```yaml
 name: example-codex
-image: agentbox-dev:local
+image: codex
 workdir: /home/agent/src/example
 command: ["codex"]
 mounts:
@@ -74,8 +75,7 @@ Bruk `command: ["bash"]` for å åpne et vanlig skall mens du prøver filtilgang
 
 ## Start, åpne og avslutt
 
-Fra 1.0.1 tar `start` bare miljøfilen. Det separate
-navneargumentet og `--config` fra 1.0 er fjernet.
+`start` leser miljønavnet fra miljøfilen.
 
 ```sh
 abx validate example-codex
@@ -260,11 +260,6 @@ reserverte navn dekker ikke alle verktøy: navn som `SSLKEYLOGFILE`,
 `OPENSSL_CONF` og `JAVA_TOOL_OPTIONS` kan endre verktøyoppførsel eller opprette
 filer i arbeidsmappen. De skal ikke brukes som tokenreferanser.
 
-Gamle Go-miljøer uten generert plassholder må også gjenskapes eksplisitt.
-Ved migrasjon fra tidligere headerinnsetting: fjern `Bearer ` fra den ekte
-vertsvariabelen, og la klienten lage dette prefikset. Ingen automatisk migrasjon
-av innlogging eller tokenverdier utføres.
-
 ```sh
 abx proxy stop example-codex
 unset context7_api_key
@@ -303,7 +298,7 @@ innholdsfiltrering; utdata kan inneholde hemmeligheter.
 
 Legg nødvendige eksakte navn og porter til under `network.allow`. Bare HTTP
 på 80 og HTTPS via CONNECT på 443 støttes. Underdomener tillates ikke
-automatisk. Imagebygging og imagehenting skjer på kontrollsiden og bruker
+automatisk. Imagebygging og henting av baseimages skjer på kontrollsiden og bruker
 ikke denne listen.
 
 Endret nettverkspolicy eller tokenregel aktiveres med `proxy apply`.
@@ -323,7 +318,7 @@ abx proxy apply example-codex
 | `remove` og ny `start` | Beholdes | Slettes og opprettes på nytt |
 | `proxy apply` eller `proxy stop` | Beholdes | Beholdes |
 
-Hvert miljø har egen innlogging; separat profilvolum finnes ikke i 1.0.
+Hvert miljø har egen innlogging; separat profilvolum støttes ikke.
 Endret agentimage, mounts, arbeidsprofil eller vertsadresse krever fjerning
 og ny opprettelse. Nettverk/tokenregler kan endres med proxy apply. Start av
 et stoppet Go-miljø og proxy apply validerer DNS på nytt. Prosjektregistreringer og ACL-er består til du tilbakekaller dem.
@@ -334,10 +329,62 @@ Registrer neste prosjekt, lag en egen miljøfil og start miljøet med et nytt
 navn. Det eksisterende miljøet kan fortsette å kjøre. For et annet verktøy
 mot samme prosjekt bruker du også et nytt miljønavn og velger image i YAML.
 
-Andre kompatible images kan hentes med `abx pull-image IMAGE`. De må
-være amd64 eller arm64, støtte UID 0 og ha `/bin/sh` og `sleep infinity`.
-Images med deklarerte `VOLUME`-mounts avvises. Alle images bruker samme
-nettverks- og syscallbegrensninger; se [arkitekturvalg](decisions.md).
+Alle agentimages bygges fra lokale oppskrifter. Opprett for eksempel et
+JavaScript-miljø:
+
+```sh
+abx image new js
+abx image edit js
+abx image build js
+abx image ls
+abx image inspect js
+```
+
+`new` lager Dockerfile og `.dockerignore` uten å overskrive eksisterende
+kataloger. Standardmalen har Bash, CA-sertifikater, curl, Git, Python og
+nettverksverktøy. Bytt eller utvid Dockerfilen med verktøyene du trenger;
+`FROM node:22-bookworm-slim` kan for eksempel brukes som utgangspunkt.
+Codex-malen velges med `abx image new codex --template codex` og inkluderer
+Codex CLI 0.166.0 og launcheren med `--no-daemon`.
+
+`edit NAVN` åpner Dockerfilen i `$VISUAL`, deretter `$EDITOR`, eller `editor`
+hvis ingen er satt. Editorargumenter støttes, for eksempel `VISUAL="code --wait"`.
+Editoren kjører som deg med oppskriftskatalogen som arbeidskatalog, og arver
+terminalen. Du kan også åpne `.dockerignore` og hjelpeskript derfra. Kommandoen
+returnerer editorens exitkode. Redigering er tillatt mens imaget brukes;
+bygging skjer først når du kjører `image build`.
+
+Oppskriftene ligger under `~/.config/agentbox/images/`, eller
+`$XDG_CONFIG_HOME/agentbox/images/`. Hele katalogen er byggkontekst, slik at
+vanlig `COPY` og hjelpeskript fungerer. Symbolske lenker pakkes som lenker;
+lenker ut av konteksten og spesialfiler avvises. Hele konteksten overføres
+til en privat midlertidig katalog på kontrollsiden, mens Docker behandler
+`.dockerignore` under byggingen. Hold oppskrifter og kontekst utenfor agentens
+skrivbare mounts. Byggingen bruker kontrollsidens nettverkstilgang.
+
+Velg `image: js` i miljøfilen. `ls` viser oppskrifter med status `unbuilt`
+eller `built`, tag, ID og containere. `inspect` viser også oppskriftsstien.
+Status forteller om et bygget image finnes; den sporer ikke endringer i
+Dockerfilen. Bygging skjer eksplisitt, uten automatisk pull ved miljøstart.
+Baseimages i `FROM` kan hentes fra registry som ved vanlig Docker-bygging.
+
+Bygg og `abx image rm js` avvises så lenge en eksisterende container bruker
+samme image-ID, også når containeren er stoppet. Fjern de berørte miljøene
+med `abx remove MILJØ` før ombygging. `remove` sletter containerlaget,
+inkludert hjem og innlogging; behold nødvendige arbeidsfiler i prosjektmounts.
+`image rm` fjerner det bygde imagets tag og beholder oppskriften for senere bygg.
+
+Images må være amd64 eller arm64, støtte UID 0 og ha `/bin/sh` og
+`sleep infinity`, samt støtte [CA-oppsettet](#api-tokens-i-proxyen).
+Deklarerte `VOLUME`-mounts avvises. Alle images bruker samme nettverks- og
+syscallbegrensninger; se [arkitekturvalg](decisions.md#lokale-imageoppskrifter).
+
+Proxyimaget er en intern komponent som installeren bygger når det mangler.
+`abx proxy build` bygger det på nytt fra installert kilde. Det vises ikke i `image ls`, og har ingen brukeroppskrift. Bygging
+avvises hvis proxyimaget har eksisterende containere. `abx proxy stop MILJØ`
+fjerner miljøets proxycontainer, men beholder agenten og hjemmet; neste start
+eller `proxy apply` oppretter proxyen på nytt. Stopp agentmiljøene før en
+komponentoppgradering.
 
 ## Reparer eller tilbakekall prosjekttilgang
 
@@ -368,7 +415,8 @@ source <(abx completion bash)
 ```
 
 Installeren legger inn completion for nye skall med `bash-completion` aktivert.
-Tab foreslår kommandoer, flagg, eksisterende miljønavn og registrerte prosjekter.
+Tab foreslår kommandoer, flagg, eksisterende miljønavn, registrerte prosjekter
+og lokale imageoppskrifter etter `image edit`, `build`, `inspect` og `rm`.
 Etter `start` og `validate` foreslås lagrede kortnavn og lokale filstier.
 Filstier fullføres også etter `--key-file`, og kataloger etter `--path`.
 Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.
@@ -377,21 +425,18 @@ Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.
 
 ### Codex starter ikke på nytt etter avslutning
 
-Codex 0.166.0 kan forsøke å starte en delt app-server i bakgrunnen ved neste
-oppstart. I Agentbox 1.0 er dette observert som `failed to spawn detached
-app-server process` med `Operation not permitted`. Feilen betyr ikke at
-innloggingen er slettet. Kontroller status og start uten bakgrunnsserver:
+Codex-malen bruker `--no-daemon` fordi isoleringsprofilen blokkerer
+oppstart av delt app-server. Hvis et eget image gir
+`failed to spawn detached app-server process` med `Operation not permitted`,
+kontroller innloggingen og kjør uten bakgrunnsserver:
 
 ```sh
 abx exec example-codex -- codex login status
 abx exec example-codex -- codex --no-daemon
 ```
 
-For en tidligere sesjon kan du bruke
-`abx exec example-codex -- codex --no-daemon resume`.
-Fra 1.0.1 legger utviklingsimaget `--no-daemon` i Codex-launcheren. Eksisterende miljøer beholder sin gamle launcher til den
-oppdateres eller miljøet opprettes fra det nye imaget. Ikke bruk `remove`
-bare for denne feilen; det sletter hjem og innlogging.
+Gjenoppta en sesjon med `codex --no-daemon resume`. Feilen krever ikke
+fjerning av miljøet; `remove` sletter hjem og innlogging.
 
 ### Andre feil
 

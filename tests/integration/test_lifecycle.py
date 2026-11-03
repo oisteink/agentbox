@@ -1,6 +1,7 @@
 """Independent installed-CLI scenarios, each with its own resources and cleanup."""
 
 import json
+import os
 import pwd
 import shlex
 import subprocess
@@ -20,7 +21,7 @@ def test_two_images_and_independent_environments(lab):
     first, first_path = lab.project("first")
     second, second_path = lab.project("second")
     (second_path / "marker").write_text("second environment")
-    env1 = lab.start(first, image="agentbox-dev:local")
+    env1 = lab.start(first, image="codex")
     env2 = lab.start(second)
     assert cli("exec", env1, "--", "codex", "--version").stdout.strip() == "codex-cli 0.166.0"
     # Re-registering an unchanged, in-use project must be harmless.
@@ -31,6 +32,71 @@ def test_two_images_and_independent_environments(lab):
     lab.assert_removed(env1)
     assert lab.state(env2)["containers"] == {"agent": "running", "proxy": "running"}
     assert cli("exec", env2, "--", "cat", "/workspace/marker").stdout == "second environment"
+
+
+def test_local_image_build_context_and_use_guard(lab):
+    name, recipe = lab.image()
+    (recipe / "Dockerfile").write_text("FROM agentbox-image-smoke:local\nCOPY . /recipe/\n")
+    (recipe / ".dockerignore").write_text("ignored\n")
+    (recipe / "marker").write_text("first")
+    (recipe / "ignored").write_text("must not be copied")
+    assert json.loads(cli("image", "ls").stdout)[name]["status"] == "unbuilt"
+
+    first = json.loads(cli("image", "build", name, timeout=900).stdout)["id"]
+    project, path = lab.project()
+    (path / "keep").write_text("project content")
+    env = lab.start(project, image=name)
+    assert cli("exec", env, "--", "cat", "/recipe/marker").stdout == "first"
+    cli("exec", env, "--", "test", "!", "-e", "/recipe/ignored")
+    for stopped in (False, True):
+        if stopped:
+            cli("stop", env)
+        for operation in ("build", "rm"):
+            blocked = cli("image", operation, name, check=False)
+            assert blocked.returncode != 0 and "Image is in use" in blocked.stderr
+        assert json.loads(cli("image", "inspect", name).stdout)["id"] == first
+    blocked_proxy = cli("proxy", "build", check=False)
+    assert blocked_proxy.returncode != 0 and "Image is in use" in blocked_proxy.stderr
+    cli("remove", env)
+    lab.assert_removed(env)
+    assert (path / "keep").read_text() == "project content"
+    (recipe / "marker").write_text("second")
+    second = json.loads(cli("image", "build", name, timeout=900).stdout)["id"]
+    assert first != second
+    env = lab.start(project, image=name)
+    assert cli("exec", env, "--", "cat", "/recipe/marker").stdout == "second"
+    cli("remove", env)
+    lab.assert_removed(env)
+    cli("image", "rm", name)
+    assert (recipe / "Dockerfile").is_file()
+    assert json.loads(cli("image", "ls").stdout)[name]["status"] == "unbuilt"
+
+
+def test_edit_image_uses_operator_editor_and_returns_status(lab):
+    name, recipe = lab.image()
+    editor = lab.root / "test editor.py"
+    editor.write_text(
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        f"assert os.getuid() == {os.getuid()}\n"
+        "path = Path(sys.argv[-1])\n"
+        "assert path.is_absolute() and path.parent == Path.cwd()\n"
+        "assert sys.argv[1:-1] == ['quoted argument']\n"
+        "assert input() == 'terminal input'\n"
+        "path.write_text('FROM ubuntu:24.04\\n# edited\\n')\n"
+        "print('editor output')\n"
+        "sys.exit(19)\n"
+    )
+    environment = dict(
+        os.environ,
+        VISUAL=shlex.join(["python3", str(editor), "quoted argument"]),
+        EDITOR="/missing-editor",
+    )
+    result = cli("image", "edit", name, input="terminal input\n", env=environment, check=False)
+    assert result.returncode == 19
+    assert result.stdout == "editor output\n"
+    assert (recipe / "Dockerfile").read_text() == "FROM ubuntu:24.04\n# edited\n"
+    assert json.loads(cli("image", "inspect", name).stdout)["status"] == "unbuilt"
 
 
 def test_exec_exit_status_and_configured_shell(lab):
