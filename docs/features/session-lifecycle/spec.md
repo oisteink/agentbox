@@ -65,6 +65,13 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   add NAVN MAPPE, list, check, revoke og remove. En registrering
   godkjenner én katalog og administrerer dens identitet og filtilgang.
   Katalogen kan inneholde kode, bilder eller andre data.
+- Mount-gruppen skal også håndtere navngitte Docker-volumer, med samme
+  registrerte navnerom og source-referanse i miljøfilen. Agentbox håndterer
+  lagringen i sin dedikerte Docker-instans. Add NAVN --volume er foreslått
+  syntaks for volumopprettelse; vertskataloger bruker add NAVN MAPPE.
+  List skal vise mount-type sammen med navn og registreringsstatus.
+  Volumer beholdes ved miljøstopp, containerfjerning og imagebytte, inkludert
+  avsluttet run; eksplisitt mount remove sletter volumet og volumdataene.
 - `abx mount add NAVN MAPPE` bruker to påkrevde posisjonelle argumenter,
   uten --name eller --path. Utdata viser at registreringen er OK, eller
   konkret hva som er feil. Dette gjelder både menneskemodus og --json;
@@ -88,9 +95,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   uten automatisk stopp; nye monteringer avvises. Dette lover ikke umiddelbar
   tilbakekalling av all eksisterende tilgang.
   `abx mount remove NAVN` avslutter registreringen etter nødvendig rydding
-  av rettigheter og eventuelt eierskap. Ingen av dem sletter katalogen eller
-  filene. Refererende miljøfiler beholdes, men kilden kan ikke brukes før
-  den igjen er registrert og aktiv.
+  av rettigheter og eventuelt eierskap for vertskataloger. Katalogen og filene
+  beholdes. For Docker-volumer sletter remove både volumet og innholdet.
+  Revoke beholder innhold for begge typer. Refererende miljøfiler beholdes,
+  men kilden kan ikke brukes før den igjen er registrert og aktiv.
 - Hvis kjørende miljøer bruker en kilde som skal fjernes med mount remove,
   vises hvilke miljøer som berøres og brukeren tilbys å stoppe dem og fullføre
   fjerningen. Ved avslag beholdes registreringen. Opprydding må lykkes før
