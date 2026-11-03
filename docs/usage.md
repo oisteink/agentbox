@@ -379,8 +379,8 @@ Images må være amd64 eller arm64, støtte UID 0 og ha `/bin/sh` og
 Deklarerte `VOLUME`-mounts avvises. Alle images bruker samme nettverks- og
 syscallbegrensninger; se [arkitekturvalg](decisions.md#lokale-imageoppskrifter).
 
-Proxyimaget er en intern komponent. `abx proxy build` bygger det fra installert
-kilde. Det vises ikke i `image ls`, og har ingen brukeroppskrift. Bygging
+Proxyimaget er en intern komponent som installeren bygger når det mangler.
+`abx proxy build` bygger det på nytt fra installert kilde. Det vises ikke i `image ls`, og har ingen brukeroppskrift. Bygging
 avvises hvis proxyimaget har eksisterende containere. `abx proxy stop MILJØ`
 fjerner miljøets proxycontainer, men beholder agenten og hjemmet; neste start
 eller `proxy apply` oppretter proxyen på nytt. Stopp agentmiljøene før en

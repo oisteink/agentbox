@@ -158,8 +158,12 @@ Operasjonene deler kontrollsidens lås med start og remove. `image rm`
 fjerner bygget tag, men beholder lokal oppskrift. Fjerning av miljøet
 sletter containerlaget, inkludert hjem og innlogging.
 
-`proxy build` bygger bare den interne proxykomponenten fra installert kilde,
-med tilsvarende brukssperre. Proxyen inngår ikke i image ls.
+Installeren bygger den interne proxykomponenten hvis imaget mangler, med
+samme daemonverifikasjon og operasjonslås som kontrollverktøyet. Byggingen
+kjører som agentbox med rent miljø; feil gir mislykket installasjon.
+Eksisterende image beholdes, også når containere bruker det. `proxy build`
+bygger komponenten eksplisitt fra installert kilde og beholder brukssperren.
+Proxyen inngår ikke i image ls.
 
 Agentens UID 0 mappes til tjenestebrukeren på verten. Den kjører med droppede
 capabilities, `no-new-privileges`, ressursgrenser og en revisjonslåst Moby-

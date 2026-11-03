@@ -64,7 +64,8 @@ bruker samme isolering. Images må støtte UID 0, `/bin/sh` og
 Byggkonteksten overføres fra CLI-en som tar etter en JSON-header og pakkes ut
 i en privat midlertidig katalog med datafilter. Docker bygger katalogen og
 behandler .dockerignore. Bygging og henting av baseimages skjer på den
-betrodde kontrollsiden. Proxyen bygges separat med `proxy build`.
+betrodde kontrollsiden. Installeren bygger proxyimaget når det mangler;
+ombygging gjøres med `proxy build`.
 Bygg og fjerning sperres ved containere med samme eksakte image-ID,
 også stoppede. Se [imagevalgene](decisions.md#lokale-imageoppskrifter).
 

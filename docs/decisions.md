@@ -21,7 +21,8 @@ Agentimages har lokale Dockerfiles under utviklerens `~/.config/agentbox/images/
 Katalogen er byggkontekst; vanlige FROM, COPY og hjelpeskript brukes uten et
 eget byggformat eller imageregister. Malene følger Python-pakken og kopieres
 bare ved eksplisitt `image new`. Oppskrifter eies og redigeres av utvikleren.
-Proxyimaget er en intern komponent med separat `proxy build`.
+Proxyimaget er en intern komponent som installeren bygger når det mangler.
+Eksisterende image beholdes; `proxy build` brukes til ombygging.
 
 CLI-en pakker konteksten som tar uten å følge lenker og sender den etter en
 JSON-header. Kontrollhjelperen autentiserer først og mellomlagrer i private,

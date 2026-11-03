@@ -4,7 +4,9 @@ Installer fra repoet på Linux-verten som skal kjøre agentmiljøene.
 Daglig bruk skjer som utvikleren, uten `sudo abx`.
 
 Agentimages bygges fra egne Dockerfiles under `~/.config/agentbox/images/`.
-Proxyen er en intern komponent og bygges separat med `abx proxy build`.
+Installeren bygger det interne proxyimaget når det mangler. Eksisterende
+image beholdes; ombygging gjøres med `abx proxy build`. Byggfeil gir
+mislykket installasjon.
 Go-proxyen kompileres og testes i et byggetrinn; Go trenger ikke installeres
 på verten. Tokens bygges ikke inn i imaget.
 
@@ -21,7 +23,6 @@ før prosjektets installer kjøres. Andre nødvendige pakker på Debian/Ubuntu:
 sudo apt-get install acl uidmap dbus-user-session slirp4netns python3-venv sudo iproute2
 sudo scripts/install.sh
 abx doctor
-abx proxy build
 abx image new codex --template codex
 abx image build codex
 ```
@@ -61,8 +62,8 @@ Installeren bevarer adressevalget ved reinstallasjon.
 ## Kontroller installasjonen
 
 `abx doctor` skal rapportere `rootless: true`, riktig daemon-ID og
-`cgroup: systemd`. `abx proxy build` bygger komponenten
-`agentbox-proxy:local`. `abx image ls` viser den lokale Codex-oppskriften
+`cgroup: systemd`. Proxyimaget `agentbox-proxy:local` skal være bygget.
+`abx image ls` viser den lokale Codex-oppskriften
 med status `built` etter `abx image build codex`. `abx status` kan vise `{}`
 før første miljø er opprettet.
 

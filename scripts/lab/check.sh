@@ -29,7 +29,6 @@ PY
 "$lab_python" -I -m pip --isolated install --disable-pip-version-check \
   --no-deps --require-hashes -r "$results_dir/requirements.txt"
 sudo bash scripts/install.sh --operator developer
-abx proxy build
 recipe_dir=${XDG_CONFIG_HOME:-$HOME/.config}/agentbox/images/codex
 if [[ ! -e "$recipe_dir" ]]; then
   abx image new codex --template codex
@@ -98,7 +97,8 @@ PY
 
 # Run both even if one fails, while preserving a failing overall exit status.
 failed=0
-AGENTBOX_LAB=1 "$lab_python" -m pytest -q tests/integration/test_lifecycle.py \
+AGENTBOX_LAB=1 "$lab_python" -m pytest -q tests/integration/test_installation.py \
+  tests/integration/test_lifecycle.py \
   --junitxml="$results_dir/lifecycle.xml" || failed=1
 verify_report "$results_dir/lifecycle.xml" || failed=1
 sudo "$lab_python" scripts/lab/credential_proxy.py > "$results_dir/proxy.json" || failed=1

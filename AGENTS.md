@@ -48,7 +48,8 @@ Følg [teststrategien](docs/testing.md) ved nye tester og vurdering av kravdekni
 kontrollverktøy, `AGENTBOX_LAB=1` og verten `agentbox-lab`; følg
 [laboppskriften](docs/test-results.md). Kjør sikkerhetsprøver i disponibel VM. Avinstallasjonsprøven krever separat
 `AGENTBOX_UNINSTALL_LAB=1` og skal kjøres sist; den sletter labinstallasjonen.
-På installert system bygger `abx proxy build` proxykomponenten. Agentimages
+Installeren bygger proxyimaget når det mangler. `abx proxy build` bygger
+proxykomponenten eksplisitt. Agentimages
 opprettes med `abx image new NAVN` (eventuelt `--template codex`) og bygges
 med `abx image build NAVN`. Oppskrifter ligger under `~/.config/agentbox/images/`.
 Bygging av images i bruk av eksisterende containere, også stoppede, avvises.

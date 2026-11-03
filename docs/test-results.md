@@ -1,6 +1,6 @@
 # Teststatus for Agentbox
 
-Resultater fra 2. november 2026. Kravdekning og åpne verifikasjonshull står i
+Resultater fra 2. og 3. november 2026. Kravdekning og åpne verifikasjonshull står i
 [teststrategien](testing.md). Beståtte prøver gjelder det angitte oppsettet.
 
 ## Plattform og resultater
@@ -17,7 +17,7 @@ Debian 13, Go 1.27.3 og goproxy v1.9.2. Laben bruker Codex 0.166.0 og smoke-imag
 | govulncheck v1.9.0, Go 1.27.3 | Ingen sårbarheter som kan nås |
 | Wheel | Dockerfile-maler og Codex-launcher inkludert |
 | Installasjon og imagebygg i VM | Bestått; installerte filer sammenlignet med kilde |
-| Installert CLI | 13 livssyklusscenarioer bestått, ingen skips |
+| Installert CLI og oppsett | 14 scenarier bestått, ingen skips |
 | Installert proxy | 24 kontroller bestått, ingen oppryddingsfeil |
 | Avinstallasjon | Bestått; annen rootful Docker-instans bevart |
 
@@ -28,6 +28,8 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
 
 ## Verifisert omfang
 
+- Installasjon: proxyimage ved første oppsett, gjenbruk under reinstallasjon
+  med en stoppet container og feil ved ugyldig kilde når imaget mangler.
 - Lokale prøver: konfigurasjon, ACL-regler, policy, tokenaliaser, plassholdere,
   editorvalg, binær kontrollprotokoll og sikker utpakking av byggkontekst.
 - Installert CLI: to images/miljøer, COPY/.dockerignore, bygg/fjerning under

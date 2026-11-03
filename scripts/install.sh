@@ -162,4 +162,18 @@ runuser -u agentbox -- env -i PATH=/usr/bin:/bin HOME=/var/lib/agentbox \
   XDG_RUNTIME_DIR="/run/user/$service_uid" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$service_uid/bus" \
   systemctl --user restart agentbox-watch.service
-echo 'Installed. Run as the developer: abx doctor; abx proxy build; abx image new codex --template codex; abx image build codex'
+echo 'Preparing proxy image...'
+runuser -u agentbox -- env -i PATH=/usr/bin:/bin HOME=/var/lib/agentbox \
+  XDG_RUNTIME_DIR="/run/user/$service_uid" \
+  /opt/agentbox/venv/bin/python3 -I - <<'PY'
+import sys
+sys.path.insert(0, '/opt/agentbox/lib')
+from agentbox.control import Control
+from agentbox.settings import load_settings
+
+control = Control(load_settings())
+with control.store.locked() as data:
+    control.verified(data)
+    control.build_proxy(if_missing=True)
+PY
+echo 'Installed. Run as the developer: abx doctor; abx image new codex --template codex; abx image build codex'

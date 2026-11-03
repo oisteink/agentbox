@@ -28,6 +28,15 @@ class Control:
         data["daemon_id"] = info["ID"]
         return info
 
+    def build_proxy(self, *, if_missing=False):
+        image = self.settings["proxy_image"]
+        details = images.lookup(self.docker, image)
+        if if_missing and details is not None:
+            return {"image": image}
+        images.require_idle(self.docker, details)
+        self.docker.mutate("build", "--tag", image, "/opt/agentbox/proxy", timeout=900)
+        return {"image": image}
+
     def labels(self, data, environment):
         return {"agentbox.installation": data["installation"], "agentbox.environment": environment}
 
@@ -594,17 +603,7 @@ class Control:
             if action == "proxy":
                 operation = request.get("operation")
                 if operation == "build":
-                    images.require_idle(
-                        self.docker, images.lookup(self.docker, self.settings["proxy_image"])
-                    )
-                    self.docker.mutate(
-                        "build",
-                        "--tag",
-                        self.settings["proxy_image"],
-                        "/opt/agentbox/proxy",
-                        timeout=900,
-                    )
-                    return {"image": self.settings["proxy_image"]}
+                    return self.build_proxy()
                 if operation == "apply":
                     return self.apply_proxy(
                         data, config.parse(request["config"]), request.get("tokens", {})

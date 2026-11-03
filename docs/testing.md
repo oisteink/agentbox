@@ -90,7 +90,7 @@ kravet er uttømmende verifisert. Alle livssyklustestene ligger i
 | Lokale imageoppskrifter | `test_images`: filer, binær protokoll, sikker utpakking, eierskap og eksakt brukssjekk; `test_local_image_build_context_and_use_guard`: COPY/ignore og ombygging | Installert på Ubuntu amd64; andre plattformer er ikke prøvd |
 | A12: ressurser | `test_socket_capability_and_cgroup_enforcement` leser CPU/minne/PID og fyller PID-grensen; lokal daemonprøve av manglende støtte | Ingen ny CPU-belastnings- eller OOM-prøve |
 | A13: tilbakekalling | `test_acl_repair_and_revocation_leave_other_project_working`: avslag under read-only bruk, EACCES som tjenestebruker og annet prosjekt fortsetter; ACL-unitprøver | Konkurrerende manuelle ACL-endringer mangler |
-| Installasjon | `test_install` validerer operatørvalg; labinngangen kjører install og sammenligner filer | Unitprøven stopper før privilegerte steg; minste Debian er ikke fastsatt |
+| Installasjon | `test_install` validerer operatørvalg; `test_proxy_image_installation_and_build_failure` prøver proxybygg, gjenbruk og feilstatus; laben sammenligner installerte filer | Minste Debian er ikke fastsatt |
 | Shell, exec og terminal | `test_exec_exit_status_and_configured_shell`, `test_terminal_reads_input_and_preserves_size`, lokal PTY-prøve | Dynamisk størrelsesendring og interaktive signaler trenger egne prøver |
 | Stopp/start og endret profil | `test_stop_start_preserves_container_and_home`, `test_changed_profile_is_rejected_without_losing_home` | Home-markør og samme container-ID; full innlogging er ikke utført her |
 | Daemonrestart | `test_daemon_restart_preserves_home` | Ikke vertsreboot eller avbrudd ved hvert oppstartssteg |
@@ -112,6 +112,7 @@ kravet er uttømmende verifisert. Alle livssyklustestene ligger i
 | `test_install.py`, `test_completion.py` | Operatørvalg før privilegier, ekte Bash-completion og kontrollerte navneoppslag |
 | `proxy/proxy_test.go`, `proxy/security_test.go` | Ekte HTTP/TLS, H1/H2, auth-/destinasjonsregler, mottakerobservasjon og positive kontrollrequests |
 | `tests/integration/conftest.py`, `test_lifecycle.py` | Funksjonsavgrenset ressursoppsett og selvstendige scenarier mot installert kode |
+| `tests/integration/test_installation.py` | Faktisk installasjon med eksisterende/manglende proxyimage og ugyldig Dockerfile; gjenoppretter installasjonen etter prøven |
 | `tests/integration/test_uninstall.py` | Destruktiv installert prøve; eierbytte, ACL, symlinker, nestet mount og bevart annen daemon |
 | `scripts/lab/credential_proxy.py`, `fixture.py` | Samlet proxy-/tokenlivssyklus med syntetisk upstream i egen nettverksnamespace; fixture er bare labserver |
 | `scripts/check.sh`, `scripts/lab/check.sh` | Lokale kontroller og installert akseptanse; resultatfilene er disponible |

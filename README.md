@@ -27,7 +27,6 @@ Kjør deretter fra repoet:
 ```sh
 sudo scripts/install.sh
 abx doctor
-abx proxy build
 abx image new codex --template codex
 abx image build codex
 source <(abx completion bash)
