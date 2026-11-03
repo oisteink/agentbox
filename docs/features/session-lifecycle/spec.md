@@ -83,6 +83,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - Mount repair tilbys ikke som egen brukerkommando. Reparasjonen er felles
   intern funksjonalitet bak mount check --fix og doctor --fix.
 - `abx mount revoke NAVN` trekker tilbake tilgang og beholder registreringen.
+  Hvis kjørende miljøer bruker kilden, advares brukeren med navnene på disse
+  miljøene og at åpne filhåndtak kan beholde tilgang. Tilbakekallingen gjennomføres
+  uten automatisk stopp; nye monteringer avvises. Dette lover ikke umiddelbar
+  tilbakekalling av all eksisterende tilgang.
   `abx mount remove NAVN` avslutter registreringen etter nødvendig rydding
   av rettigheter og eventuelt eierskap. Ingen av dem sletter katalogen eller
   filene. Refererende miljøfiler beholdes, men kilden kan ikke brukes før
