@@ -61,6 +61,16 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx login-api-key` fjernes, inkludert kontrolloperasjonen som sender ekte
   nøkkel til Codex. API-nøkler gis gjennom proxyens plassholder-/tokenbytte.
   Kontoinnlogging via nettleser/device-login håndteres av agentverktøyet.
+- Begrepet prosjekt erstattes av workspace (arbeidsmappe): én registrert og
+  godkjent vertskatalog med identitet og administrert filtilgang. CLI-gruppen
+  blir `abx workspace`; miljøfilens `mounts[].project` blir `mounts[].workspace`.
+  Ett miljø kan montere flere registrerte workspaces. Uregistrerte eller
+  tilbakekalte mapper avvises uansett eksisterende filrettigheter.
+- `abx workspace revoke NAVN` trekker tilbake tilgang og beholder registreringen.
+  `abx workspace remove NAVN` avslutter registreringen etter nødvendig rydding
+  av rettigheter og eventuelt eierskap. Ingen av dem sletter katalogen eller
+  prosjektfilene. Refererende miljøfiler beholdes, men arbeidsmappen kan ikke
+  brukes før den igjen er registrert og aktiv.
 
 ## Utskrift for mennesker og agenter
 
@@ -92,5 +102,8 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   kommandoens egne utdata og exitstatus, er ikke detaljavklart.
 - Mekanisme for å oppdage endret proxykode og ta nytt proxyimage i bruk ved
   oppgradering er ikke valgt. Den må håndtere at gamle proxycontainere finnes.
+- Workspace remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding
+  frem til denne er fullført. Håndtering av miljøer som bruker arbeidsmappen,
+  og konkrete regler for oppryddingen, avklares i research/plan.
 - Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
   opprettet eller konkret inndeling avklart.
