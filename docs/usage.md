@@ -112,6 +112,33 @@ abx stop example-codex
 Et stoppet miljø gjenopptas med samme `start`-kommando og miljøfil.
 Miljøene startes ikke automatisk etter vertsreboot.
 
+## Midlertidig kjøring
+
+`abx run FIL.yaml` kjører miljøfilens `command` én gang i terminalen og
+fjerner deretter agent, proxy, nettverk og containerlag. Monterte prosjektfiler
+beholdes. Lagre dette som `task.yaml`; det bruker lokalt `codex`-image og
+registrert prosjekt `example`:
+
+```yaml
+name: example-task
+image: codex
+command: ["bash"]
+mounts:
+  - project: example
+    target: /workspace
+```
+
+```sh
+abx run ./task.yaml
+```
+
+Bruk et ledig miljønavn. Et eksisterende miljø med samme navn avvises uten
+endringer. Kommandoens exitkode returneres etter opprydding. Ctrl-C avbryter
+kjøringen og venter på oppryddingen; oppryddingsfeil gir feilstatus.
+Containerlaget, innloggingen og miljøets logger slettes. Legg filer som
+skal beholdes i prosjektmountene. Ved SIGKILL eller vertskrasj kan ressurser
+gjenstå; kontroller `abx status` og fjern miljøet med `abx remove NAVN`.
+
 ## Innlogging og verktøyoppsett
 
 Logg inn i Codex inne i miljøet. For headless ChatGPT-innlogging beskriver
@@ -347,6 +374,41 @@ nettverksverktøy. Bytt eller utvid Dockerfilen med verktøyene du trenger;
 Codex-malen velges med `abx image new codex --template codex` og inkluderer
 Codex CLI 0.166.0 og launcheren med `--no-daemon`.
 
+Eksempelmaler og miljøfiler:
+
+| Verktøy | Mal | Kommando | Miljøfil |
+| --- | --- | --- | --- |
+| Codex 0.166.0 | `codex` | `codex` | [codex.yaml](../environments/codex.yaml) |
+| OpenCode 1.19.5 | `opencode` | `opencode` | [opencode.yaml](../environments/opencode.yaml) |
+| Claude Code 2.1.316 | `claude-code` | `claude` | [claude-code.yaml](../environments/claude-code.yaml) |
+
+Opprett og bygg ønsket image, for eksempel:
+
+```sh
+abx image new opencode --template opencode
+abx image build opencode
+```
+
+Kopier miljøfilen til `~/.config/agentbox/environments/` og endre
+`mounts[].project` til et registrert prosjekt. Eksemplene bruker API-nøkler:
+Codex trenger `OPENAI_API_KEY` i vertens miljø; OpenCode og Claude Code
+trenger `ANTHROPIC_API_KEY`. Eksporter nøkkelen før `abx start`, slik at
+proxyen kan erstatte agentens plassholder. OpenCode-eksemplet bruker
+Anthropic; velg en Anthropic-modell med `/models` i verktøyet.
+
+Eksemplene tillater bare leverandørens API på port 443. Abonnementsinnlogging,
+andre modelltilbydere, MCP, pakkeregistre og verktøyenes tilleggstjenester
+krever egne tillatte domener. [OpenCode](https://opencode.ai/docs/) og
+[Claude Code](https://code.claude.com/docs/en/setup) installeres via deres
+npm-pakker med versjonen angitt i Dockerfilen. Endre versjonen med
+`abx image edit NAVN` før ny bygging. OpenCode-malen setter `NO_PROXY` for
+loopback fordi terminalgrensesnittet bruker en lokal HTTP-server; dette
+åpner ingen ekstern nettverkstilgang. Claude Code-malen slår av automatisk
+oppdateringssjekk med `DISABLE_AUTOUPDATER=1`.
+
+Malene og miljøfilene er utgangspunkt. Tilpass pakker, versjoner, kommando og
+nettverkspolicy til egen bruk. Prøveomfanget står i [teststatus](test-results.md).
+
 `edit NAVN` åpner Dockerfilen i `$VISUAL`, deretter `$EDITOR`, eller `editor`
 hvis ingen er satt. Editorargumenter støttes, for eksempel `VISUAL="code --wait"`.
 Editoren kjører som deg med oppskriftskatalogen som arbeidskatalog, og arver
@@ -417,7 +479,7 @@ source <(abx completion bash)
 Installeren legger inn completion for nye skall med `bash-completion` aktivert.
 Tab foreslår kommandoer, flagg, eksisterende miljønavn, registrerte prosjekter
 og lokale imageoppskrifter etter `image edit`, `build`, `inspect` og `rm`.
-Etter `start` og `validate` foreslås lagrede kortnavn og lokale filstier.
+Etter `start`, `run` og `validate` foreslås lagrede kortnavn og lokale filstier.
 Filstier fullføres også etter `--key-file`, og kataloger etter `--path`.
 Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.
 

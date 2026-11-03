@@ -50,7 +50,7 @@ class Lab:
         assert result["status"] == "active"
         return name, path
 
-    def start(self, project, *, image="smoke", **overrides):
+    def configuration(self, project, *, image="smoke", **overrides):
         name = f"env-{len(self.environments)}-{self.suffix}"
         path = self.root / f"{name}.yaml"  # Outside the shared project.
         config = {
@@ -62,6 +62,10 @@ class Lab:
         } | overrides
         path.write_text(yaml.safe_dump(config))
         self.environments[name] = path
+        return name, path
+
+    def start(self, project, *, image="smoke", **overrides):
+        name, path = self.configuration(project, image=image, **overrides)
         assert json.loads(cli("start", str(path)).stdout)["status"] == "running"
         return name
 

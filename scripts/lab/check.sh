@@ -29,12 +29,14 @@ PY
 "$lab_python" -I -m pip --isolated install --disable-pip-version-check \
   --no-deps --require-hashes -r "$results_dir/requirements.txt"
 sudo bash scripts/install.sh --operator developer
-recipe_dir=${XDG_CONFIG_HOME:-$HOME/.config}/agentbox/images/codex
-if [[ ! -e "$recipe_dir" ]]; then
-  abx image new codex --template codex
-fi
-cp -- src/agentbox/templates/codex/Dockerfile src/agentbox/templates/codex/codex "$recipe_dir/"
-abx image build codex
+for template in codex opencode claude-code; do
+  recipe_dir=${XDG_CONFIG_HOME:-$HOME/.config}/agentbox/images/$template
+  if [[ ! -e "$recipe_dir" ]]; then
+    abx image new "$template" --template "$template"
+  fi
+  cp -- src/agentbox/templates/"$template"/* "$recipe_dir/"
+  abx image build "$template"
+done
 bash scripts/lab/build-images.sh
 "$lab_python" - <<'PY' > "$results_dir/platform.json"
 import hashlib
@@ -71,7 +73,8 @@ images = subprocess.check_output([
     'sudo', '-u', 'agentbox', 'env', 'HOME=/var/lib/agentbox',
     f'XDG_RUNTIME_DIR=/run/user/{uid}', 'docker', '--host', f'unix:///run/user/{uid}/docker.sock',
     'image', 'inspect', '--format', '{{.RepoTags}} {{.Id}}',
-    'agentbox-image-codex:local', 'agentbox-image-smoke:local', 'agentbox-proxy:local',
+    'agentbox-image-codex:local', 'agentbox-image-opencode:local',
+    'agentbox-image-claude-code:local', 'agentbox-image-smoke:local', 'agentbox-proxy:local',
 ], text=True)
 print(json.dumps({
     'platform': platform.platform(), 'os': platform.freedesktop_os_release(),
@@ -98,7 +101,7 @@ PY
 # Run both even if one fails, while preserving a failing overall exit status.
 failed=0
 AGENTBOX_LAB=1 "$lab_python" -m pytest -q tests/integration/test_installation.py \
-  tests/integration/test_lifecycle.py \
+  tests/integration/test_lifecycle.py tests/integration/test_temporary_run.py \
   --junitxml="$results_dir/lifecycle.xml" || failed=1
 verify_report "$results_dir/lifecycle.xml" || failed=1
 sudo "$lab_python" scripts/lab/credential_proxy.py > "$results_dir/proxy.json" || failed=1

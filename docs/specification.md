@@ -130,7 +130,8 @@ Imagevalg endrer ikke ACL-, nettverks- eller isoleringsmekanismene.
 Alle agentimages har en lokal Dockerfile under `~/.config/agentbox/images/`
 (eller `$XDG_CONFIG_HOME/agentbox/images/`). `image new NAVN` lager en ny
 katalog med Dockerfile og .dockerignore uten overskriving. Standardmalen er
-et generelt Linux-miljø; `--template codex` inkluderer Codex 0.166.0.
+et generelt Linux-miljø. Eksempelmaler finnes for Codex 0.166.0
+(`codex`), OpenCode 1.19.5 (`opencode`) og Claude Code 2.1.316 (`claude-code`).
 Malene følger programmet; det finnes ingen separat standardkatalog i /usr/share.
 
 `image ls` lister lokale oppskrifter, også ubygde, med status og image-ID.
@@ -213,6 +214,7 @@ velges eksplisitt for trafikk fra miljøet.
 | Operasjon | Oppførsel |
 | --- | --- |
 | `start FIL.yaml` | Leser miljønavnet fra filen, validerer miljø og mounts, oppretter nettverk og proxy før agent; uendret kjørende miljø gjenbrukes |
+| `run FIL.yaml` | Kjører command én gang i terminalen i et nytt miljø; fjerner containere, nettverk og containerlag ved avslutning eller Ctrl-C; prosjektfiler beholdes |
 | `shell` | Kjører miljøets konfigurerte kommando i en terminalsesjon |
 | `exec` | Kjører eksplisitt argumentliste i eksisterende miljø |
 | `stop` | Stopper agent og proxy, bevarer containerlaget og registreringene |
@@ -221,6 +223,7 @@ velges eksplisitt for trafikk fra miljøet.
 | `logs` | Viser et begrenset utsnitt av agentutdata eller proxylogg med `--proxy` |
 
 Et stoppet miljø gjenopptas med uendret konfigurasjon og vertsadresser.
+
 Containerens `/home/agent`, innlogging og installerte filer beholdes, også
 ved manuell gjenopptak etter daemonrestart. Automatisk oppstart av miljøer
 etter vertsreboot finnes ikke.
@@ -230,8 +233,16 @@ Endret agentprofil eller vertsadresse krever eksplisitt `remove` og ny
 Montert kode består. Nettverk/tokenregler endres med proxy apply uten å slette
 agentlaget. Gjenopptak av stoppet Go-miljø og apply validerer DNS på nytt.
 
-Terminalsesjoner har separat levetid fra miljøet. Størrelse og størrelsesendringer
-videresendes. Kontrolloperasjoner låses, tilstand skrives atomisk, og opprydding
+`run` avviser eksisterende miljønavn. Kommandoens exitkode returneres etter
+vellykket opprydding; oppryddingsfeil gir feilstatus. Opprettelse og fjerning
+bruker vanlig daemonverifikasjon og lås, mens kommandoen kjøres uten global
+lås. Fjerning sjekker opprettet agent-ID mot ny tilstand, slik at et gjenskapt
+miljø med samme navn ikke fjernes. SIGINT utsettes under kritiske mutasjoner.
+SIGKILL og vertskrasj kan etterlate ressurser som må fjernes eksplisitt.
+
+Terminalsesjoner i vedvarende miljøer har separat levetid fra miljøet.
+Størrelse og størrelsesendringer videresendes. Kontrolloperasjoner låses,
+tilstand skrives atomisk, og opprydding
 avgrenses med ressurs-ID-er og installasjons-/miljøetiketter. Global Docker-
 prune brukes ikke. Testavgrensninger for krasj og samtidighet står i teststatus.
 

@@ -10,7 +10,8 @@ Prosjektmapper deles med filrettigheter (ACL-er) og eksplisitte monteringer.
 En Go-proxy håndhever tillatte destinasjoner og kan erstatte ufarlige
 plassholdere med API-nøkler. Den ekte nøkkelen ligger bare på den betrodde
 siden; agenten får en generert verdi i klientens miljøvariabel.
-Det medfølgende utviklingsimaget inneholder Codex CLI 0.166.0.
+Eksempelmaler finnes for Codex, OpenCode og Claude Code.
+Se [maler og miljøeksempler](docs/usage.md#bytt-prosjekt-eller-image).
 
 ![Agentbox, utvikleren og eksterne tjenester](docs/diagrams/agentbox-context.svg)
 
@@ -119,6 +120,15 @@ ikke-tom nøkkel brukes `abx proxy apply context7-codex`. Nye klientnavn
 og tom/ikke-tom overgang krever gjenskaping; `remove` sletter hjem og innlogging.
 Se [brukerveiledningen](docs/usage.md#api-tokens-i-proxyen) for tilbakekalling
 og begrensninger.
+
+For midlertidig kjøring, bruk en miljøfil med ledig navn:
+
+```sh
+abx run ./task.yaml
+```
+
+Kommandoen kjører i terminalen. Miljøet fjernes ved avslutning; prosjektfiler
+beholdes. Se [midlertidig kjøring](docs/usage.md#midlertidig-kjøring).
 
 ## Dokumentasjon
 

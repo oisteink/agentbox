@@ -93,6 +93,12 @@ kjerne. Ved utbrudd med tjenestebrukerens rettigheter gjelder all tilgang
 `agentbox` har, inkludert andre registrerte prosjekter og allment lesbare filer.
 Felles daemonbruker gir ikke separat vertsisolering mellom prosjektene.
 
+Midlertidig kjøring med `run` bruker samme opprettelse og terminalkjøring som
+`start`/`exec`. Kontrollhjelperen fjerner miljøet ved avslutning. Oppryddingen
+leser ny tilstand under lås og verifiserer agent-ID før fjerning. CLI-en venter
+på opprydding ved Ctrl-C; et hardt prosessavbrudd eller vertskrasj kan etterlate
+ressurser som må fjernes eksplisitt.
+
 ## Avgrensninger
 
 Se [teststatus](test-results.md) for labprøver, manuell bruk og testavgrensninger.

@@ -131,6 +131,15 @@ stoppet Go-miljø validerer og fastlåser DNS på nytt.
 Fjerning sletter laget og miljøets logger. Prosjektfiler, registreringer og ACL-er består til egne
 operasjoner endrer dem. Kjøremiljøer gjenopptas ikke automatisk etter vertsreboot.
 
+## Midlertidige miljøer
+
+`run` gjenbruker opprettelse, terminalkjøring og fjerning. Kommandoen kjører
+uten global operasjonslås; oppryddingen verifiserer opprettet agent-ID mot
+ny tilstand under lås. Dermed kan andre miljøer brukes samtidig, uten at
+en samtidig remove/gjenskaping med samme navn rammes av feil opprydding.
+SIGINT utsettes under opprettelse og fjerning. Run-klienten venter på
+hjelperens opprydding ved avbrudd. Ingen ekstra daemon er nødvendig.
+
 ## Go-proxy og miljøbaserte tokens
 
 Go-proxyen bruker goproxy og Go sitt standardbibliotek til HTTP/TLS.

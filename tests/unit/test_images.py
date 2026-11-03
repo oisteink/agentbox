@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from agentbox import cli, images
-from agentbox.config import parse
+from agentbox.config import load, parse
 from agentbox.errors import AgentboxError
 
 
@@ -31,6 +31,27 @@ def test_new_recipe_preserves_user_changes_and_lists_unbuilt(recipes):
     images.new("codex", "codex")
     assert "@openai/codex" in (recipes / "codex/Dockerfile").read_text()
     assert "--no-daemon" in (recipes / "codex/codex").read_text()
+
+
+@pytest.mark.parametrize("template", ["codex", "opencode", "claude-code"])
+def test_agent_examples_match_cli_templates_and_archive(recipes, template):
+    args = cli.parser().parse_args(["image", "new", template, "--template", template])
+    images.new(args.name, args.template)
+    context = io.BytesIO()
+    images.archive(template, context)
+    context.seek(0)
+    with tarfile.open(fileobj=context) as bundle:
+        assert "./Dockerfile" in bundle.getnames()
+        assert "./.dockerignore" in bundle.getnames()
+        if template == "codex":
+            assert bundle.getmember("./codex").isfile()
+    example = load(Path(__file__).resolve().parents[2] / "environments" / f"{template}.yaml")
+    assert example.image == template
+    assert len(example.credentials) == 1
+    credential = example.credentials[0]
+    assert [(rule.host, rule.port) for rule in example.allow] == [
+        (credential.host, credential.port)
+    ]
 
 
 @pytest.mark.parametrize("choice", ["visual", "editor", "default"])

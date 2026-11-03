@@ -1,0 +1,25 @@
+# Copy outside agent-writable projects, e.g. ~/.config/agentbox/environments/.
+# Register project "example" and build image "opencode" from its matching template.
+# Export ANTHROPIC_API_KEY on the host before abx start; never put the key here.
+# API-key example; subscription login needs a separate network policy.
+name: example-opencode
+image: opencode
+workdir: /workspace
+command: ["opencode"]
+mounts:
+  - project: example
+    target: /workspace
+    mode: rw
+network:
+  allow:
+    - host: api.anthropic.com
+      port: 443
+credentials:
+  - host: api.anthropic.com
+    port: 443
+    header: x-api-key
+    env: ANTHROPIC_API_KEY
+resources:
+  cpus: 2
+  memory: 4g
+  pids: 512

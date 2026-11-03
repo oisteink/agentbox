@@ -93,6 +93,8 @@ kravet er uttømmende verifisert. Alle livssyklustestene ligger i
 | Installasjon | `test_install` validerer operatørvalg; `test_proxy_image_installation_and_build_failure` prøver proxybygg, gjenbruk og feilstatus; laben sammenligner installerte filer | Minste Debian er ikke fastsatt |
 | Shell, exec og terminal | `test_exec_exit_status_and_configured_shell`, `test_terminal_reads_input_and_preserves_size`, lokal PTY-prøve | Dynamisk størrelsesendring og interaktive signaler trenger egne prøver |
 | Stopp/start og endret profil | `test_stop_start_preserves_container_and_home`, `test_changed_profile_is_rejected_without_losing_home` | Home-markør og samme container-ID; full innlogging er ikke utført her |
+| Midlertidig kjøring | `test_temporary_run.py`: exitkode, terminal, Ctrl-C, ressursfjerning og prosjektbevaring; `test_run.py`: feilbaner og identitetsbinding | SIGKILL/vertskrasj krever eksplisitt opprydding |
+| Eksempelmaler | `test_example_agent_version_in_isolation`, `test_agent_examples_match_cli_templates_and_archive` | Bygg og versjonskommando er prøvd; ikke TUI, innlogging eller modelltrafikk |
 | Daemonrestart | `test_daemon_restart_preserves_home` | Ikke vertsreboot eller avbrudd ved hvert oppstartssteg |
 | Tokenlivssyklus | `test_proxy_credentials`, Go-testene og `credential_proxy.py` med syntetiske tokens | Nye prøver bruker ingen ekte nøkler eller modellkall |
 | Tilstand og logger | `test_state`, kontrollinngangens feilprøver, exec-testens logginnhold og proxyprøvens loggkontroll | Samtidige låser, loggrotasjon og private filmoduser mangler full labdekning |
@@ -112,6 +114,7 @@ kravet er uttømmende verifisert. Alle livssyklustestene ligger i
 | `test_install.py`, `test_completion.py` | Operatørvalg før privilegier, ekte Bash-completion og kontrollerte navneoppslag |
 | `proxy/proxy_test.go`, `proxy/security_test.go` | Ekte HTTP/TLS, H1/H2, auth-/destinasjonsregler, mottakerobservasjon og positive kontrollrequests |
 | `tests/integration/conftest.py`, `test_lifecycle.py` | Funksjonsavgrenset ressursoppsett og selvstendige scenarier mot installert kode |
+| `tests/unit/test_run.py`, `tests/integration/test_temporary_run.py` | Midlertidig kjøring, signaler, opprydding og feilstatus |
 | `tests/integration/test_installation.py` | Faktisk installasjon med eksisterende/manglende proxyimage og ugyldig Dockerfile; gjenoppretter installasjonen etter prøven |
 | `tests/integration/test_uninstall.py` | Destruktiv installert prøve; eierbytte, ACL, symlinker, nestet mount og bevart annen daemon |
 | `scripts/lab/credential_proxy.py`, `fixture.py` | Samlet proxy-/tokenlivssyklus med syntetisk upstream i egen nettverksnamespace; fixture er bare labserver |

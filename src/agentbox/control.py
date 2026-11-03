@@ -4,14 +4,31 @@ import ipaddress
 import json
 import os
 import shutil
+import signal
 import subprocess
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import config, images, policy, projects
 from .errors import AgentboxError
 from .runtime import Docker, local_addresses
 from .state import Store, atomic_json
+
+
+@contextmanager
+def defer_interrupts():
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+    try:
+        yield
+    except BaseException:
+        try:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+        except KeyboardInterrupt:
+            pass  # Preserve a mutation/cleanup failure over a queued interrupt.
+        raise
+    else:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
 
 
 class Control:
@@ -36,6 +53,58 @@ class Control:
         images.require_idle(self.docker, details)
         self.docker.mutate("build", "--tag", image, "/opt/agentbox/proxy", timeout=900)
         return {"image": image}
+
+    def run(self, payload, tokens, *, tty=False):
+        environment = config.parse(payload)
+        name = environment.name
+        identifier = None
+        terminal = None
+        try:
+            with defer_interrupts(), self.store.locked() as data:
+                self.verified(data)
+                if name in data["environments"]:
+                    raise AgentboxError("Environment already exists; choose a new temporary name")
+                try:
+                    entry = self.start(data, payload, tokens)
+                except Exception:
+                    try:
+                        self.remove(data, name)
+                    except Exception:
+                        raise AgentboxError(
+                            "Temporary environment setup and cleanup failed; resources may remain"
+                        ) from None
+                    raise
+                identifier = entry["resources"]["agent"]
+                daemon_id = data["daemon_id"]
+            self.docker.verify(daemon_id)
+            terminal = open("/dev/tty") if tty else None
+            return self.docker.exec_stream(
+                identifier,
+                list(environment.command),
+                self.store.root / "environments" / name,
+                terminal=terminal,
+            )
+        finally:
+            try:
+                if terminal:
+                    terminal.close()
+            finally:
+                if identifier is not None:
+                    try:
+                        with defer_interrupts(), self.store.locked() as current:
+                            self.verified(current)
+                            entry = current["environments"].get(name)
+                            if entry is not None:
+                                if entry["resources"].get("agent") != identifier:
+                                    raise AgentboxError(
+                                        "Temporary environment name was reused; replacement kept"
+                                    )
+                                self.remove(current, name)
+                    except Exception as exc:
+                        detail = str(exc) if isinstance(exc, AgentboxError) else type(exc).__name__
+                        raise AgentboxError(
+                            f"Temporary environment cleanup failed: {detail}. Check 'abx status'"
+                        ) from None
 
     def labels(self, data, environment):
         return {"agentbox.installation": data["installation"], "agentbox.environment": environment}
@@ -564,6 +633,10 @@ class Control:
 
     def dispatch(self, request, context=None):
         action = request["action"]
+        if action == "run":
+            return self.run(
+                request["config"], request.get("tokens", {}), tty=request.get("tty") is True
+            )
         with self.store.locked() as data:
             info = self.verified(data)
             if action == "doctor":

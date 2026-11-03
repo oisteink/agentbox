@@ -7,12 +7,12 @@ _abx()
   COMPREPLY=()
 
   if (( COMP_CWORD == 1 )); then
-    choices="doctor status image validate project proxy start stop remove shell logs login-api-key exec completion --help"
+    choices="doctor status image validate project proxy start run stop remove shell logs login-api-key exec completion --help"
   elif [[ "$action" == image ]]; then
     if (( COMP_CWORD == 2 )); then
       choices="ls new edit build inspect rm --help"
     elif [[ "$prev" == --template ]]; then
-      choices="base codex"
+      choices="base codex opencode claude-code"
     elif [[ "${COMP_WORDS[2]}" == new ]]; then
       choices="--template --help"
     elif [[ "${COMP_WORDS[2]}" != ls ]]; then
@@ -35,10 +35,10 @@ _abx()
       kind=environments
       start=3
     fi
-  elif [[ "$prev" == --key-file ]] || { [[ "$action" == start || "$action" == validate ]] && (( COMP_CWORD == 2 )) && [[ "$cur" != -* ]]; }; then
+  elif [[ "$prev" == --key-file ]] || { [[ "$action" == start || "$action" == run || "$action" == validate ]] && (( COMP_CWORD == 2 )) && [[ "$cur" != -* ]]; }; then
     compopt -o filenames
     mapfile -t COMPREPLY < <(compgen -f -- "$cur")
-    if [[ "$action" == start || "$action" == validate ]] && [[ "$prev" != --key-file && "$cur" != */* ]]; then
+    if [[ "$action" == start || "$action" == run || "$action" == validate ]] && [[ "$prev" != --key-file && "$cur" != */* ]]; then
       while IFS= read -r value; do
         [[ -n "$value" && "$value" == "$cur"* && ! -e "$value" ]] && COMPREPLY+=("$value")
       done < <(abx completion --names configs 2>/dev/null)
@@ -59,7 +59,7 @@ _abx()
     fi
   else
     case "$action" in
-      start|validate) choices="--help" ;;
+      start|run|validate) choices="--help" ;;
       stop|remove|shell|exec) kind=environments; choices="--help" ;;
       logs) kind=environments; choices="--proxy --help" ;;
       login-api-key) kind=environments; choices="--key-file --help" ;;

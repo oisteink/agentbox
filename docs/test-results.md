@@ -7,23 +7,25 @@ Resultater fra 2. og 3. november 2026. Kravdekning og åpne verifikasjonshull st
 
 Lab: Ubuntu 24.04.5 amd64, kernel 6.8.0-147-generic, systemd/cgroup v2,
 rootless Docker 29.9.2, Python 3.12.3 og pytest 9.0.3. Proxyimaget bruker
-Debian 13, Go 1.27.3 og goproxy v1.9.2. Laben bruker Codex 0.166.0 og smoke-imaget.
+Debian 13, Go 1.27.3 og goproxy v1.9.2. Laben bygger Codex 0.166.0,
+OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 
 | Kontroll | Resultat |
 | --- | --- |
-| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 178 bestått |
+| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 190 bestått |
 | Ruff lint/format, Bash-syntaks og gofmt | Bestått |
 | Go race og vet | Bestått, HTTP/1 og HTTP/2 |
 | govulncheck v1.9.0, Go 1.27.3 | Ingen sårbarheter som kan nås |
 | C4-kilde og bilder | SVG/PNG rendret; etiketter, lesbarhet og lenker kontrollert |
 | Wheel | Dockerfile-maler og Codex-launcher inkludert |
 | Installasjon og imagebygg i VM | Bestått; installerte filer sammenlignet med kilde |
-| Installert CLI og oppsett | 14 scenarier bestått, ingen skips |
+| Installert CLI og oppsett | 22 scenarier bestått, ingen skips |
 | Installert proxy | 24 kontroller bestått, ingen oppryddingsfeil |
 | Avinstallasjon | Bestått; annen rootful Docker-instans bevart |
 
-Lokale kontroller bruker `scripts/check.sh`; laben bruker
-`scripts/lab/check.sh --uninstall`. Labprøvene bruker syntetiske tokens,
+Lokale kontroller bruker `scripts/check.sh`; laben bruker `scripts/lab/check.sh`
+og avinstallasjonsprøven til slutt med `AGENTBOX_UNINSTALL_LAB=1`.
+Labprøvene bruker syntetiske tokens,
 uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
 31. oktober fullførte ett read-only modellkall med `resolve-library-id`.
 
@@ -36,6 +38,10 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
 - Installert CLI: to images/miljøer, COPY/.dockerignore, bygg/fjerning under
   kjørende og stoppet bruk, editorens inn-/utdata og exitkode, mounts,
   read-only, ACL/tilbakekalling, socketvern, ressursgrenser og exec-logger.
+- Midlertidig kjøring: exitkode 0/17, stdout/stderr, terminalstørrelse og
+  innlesing, Ctrl-C gjennom PTY og signal direkte til CLI, frigitt lås,
+  full ressursfjerning og bevarte prosjektfiler. Lokale feilprøver dekker
+  delvis oppstart, oppryddingsfeil og gjenskapt miljø med samme navn.
 - Livssyklus: containerlag ved stopp/start og daemonrestart, prosjektfiler
   ved remove, samt eierskap/ACL ved avinstallasjon. Nestede mounts og
   beskyttede filer utenfor prosjektet inngår i prøvene.
@@ -59,6 +65,11 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
 - Codex-prøven viser klientintegrasjon. Codex sine OAuth-data og hemmeligheter
   i prosjektfiler omfattes ikke av proxyens tokenbeskyttelse. En tillatt tjeneste
   kan returnere en ekte nøkkel i responsen; svar skannes ikke etter hemmeligheter.
+
+OpenCode- og Claude Code-malene er bygget, og `--version` virker i Agentbox-
+isoleringen. Lokale prøver dekker CLI-valg, kopiering, arkivering, miljøfiler
+og samsvar mellom API-regel og credential-destinasjon. TUI, innlogging,
+modelltrafikk og verktøyenes bruk av CA/tokenbytte er ikke prøvd.
 
 ## Reproduser laben
 
