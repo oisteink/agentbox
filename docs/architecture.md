@@ -58,8 +58,8 @@ En systemd-adressevakt stopper miljøer ved endrede vertsadresser;
 vakten er asynkron, og nettverksadministrasjon på verten er betrodd.
 
 Agentimages bygges fra lokale Dockerfiles under `~/.config/agentbox/images/`
-og velges med oppskriftsnavn i YAML. Codex-malen og det separate testimaget
-bruker samme isolering. Images må støtte UID 0, `/bin/sh` og
+og velges med oppskriftsnavn i YAML. Alle kompatible agentimages bruker
+samme isolering. Images må støtte UID 0, `/bin/sh` og
 `sleep infinity`; deklarerte `VOLUME`-mounts avvises.
 Byggkonteksten overføres fra CLI-en som tar etter en JSON-header og pakkes ut
 i en privat midlertidig katalog med datafilter. Docker bygger katalogen og
@@ -77,8 +77,8 @@ Skriptet bruker systemets Python uavhengig av den installerte CLI-en.
 Vanlige kontrolloperasjoner får ikke denne root-tilgangen. Se
 [avinstallasjon](installation.md#avinstallasjon) for omfang og filrydding.
 
-`stop` bevarer containerlaget, inkludert Codex-innlogging. Uendret konfigurasjon
-kan startes igjen. Nettverk/tokenregler aktiveres med `proxy apply` uten å
+`stop` bevarer containerlaget, inkludert verktøyoppsett og innlogging.
+Uendret konfigurasjon kan startes igjen. Nettverk/tokenregler aktiveres med `proxy apply` uten å
 slette hjemmet. Endret agentprofil eller vertsadresse krever `remove` og ny
 `start`; hjem og innlogging slettes da, mens monterte prosjektfiler består.
 Separat profilvolum og automatisk oppstart av miljøer etter vertsreboot er
@@ -146,5 +146,5 @@ En godkjent upstream kan reflektere en ekte nøkkel i responsen. Responsen
 skannes ikke etter hemmeligheter. Tunnelerte CDN-domener kan tillate domain
 fronting; en tillatt tjeneste er del av tillitsvurderingen. Plassholdere som
 videresendes i URL/body eller vanlige tunneler gir ingen tilgang utenfor
-miljøets proxy. Agentens egne Codex/OAuth-data og hemmeligheter i prosjektfiler
+miljøets proxy. Verktøyenes egne innloggingsdata og hemmeligheter i prosjektfiler
 omfattes ikke av denne nøkkelskjermingen.

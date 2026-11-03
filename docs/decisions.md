@@ -124,7 +124,7 @@ tilgangslogg viser bare destinasjon og resultat. Agentens egne utdata streames
 og lagres i private, roterte logger; de kan inneholde det agenten skriver.
 
 Stopp og gjenopptak med uendret konfigurasjon bevarer containerlaget og
-Codex-innlogging. Separat profilvolum er ikke implementert.
+verktøyoppsett og innlogging. Separat profilvolum er ikke implementert.
 Endret agentprofil eller vertsadresse krever eksplisitt fjerning og ny
 opprettelse. Nettverk/tokenregler aktiveres med proxy apply; gjenopptak av
 stoppet Go-miljø validerer og fastlåser DNS på nytt.
