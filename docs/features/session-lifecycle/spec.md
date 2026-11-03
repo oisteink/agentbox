@@ -69,6 +69,8 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   uten --name eller --path. Utdata viser at registreringen er OK, eller
   konkret hva som er feil. Dette gjelder både menneskemodus og --json;
   JSON følger den felles kontrakten for strukturert suksess eller feil.
+- `abx mount list` viser navn, katalogsti og registreringsstatus
+  (aktiv/tilbakekalt) i tabell. --json gir tilsvarende strukturerte data.
 - Miljøfilens `mounts` bruker `source: NAVN`, `target: /sti/i/container` og
   `mode: ro` eller `rw`. Source refererer til registreringen; target og mode
   velges per miljø. Ett miljø kan bruke flere mounts. Uregistrerte eller
