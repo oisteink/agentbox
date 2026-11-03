@@ -62,7 +62,7 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   nøkkel til Codex. API-nøkler gis gjennom proxyens plassholder-/tokenbytte.
   Kontoinnlogging via nettleser/device-login håndteres av agentverktøyet.
 - Registrerte vertskataloger kalles mounts. CLI-gruppen blir `abx mount`:
-  add NAVN MAPPE, list, check, repair, revoke og remove. En registrering
+  add NAVN MAPPE, list, check, revoke og remove. En registrering
   godkjenner én katalog og administrerer dens identitet og filtilgang.
   Katalogen kan inneholde kode, bilder eller andre data.
 - `abx mount add NAVN MAPPE` bruker to påkrevde posisjonelle argumenter,
@@ -73,13 +73,15 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   (aktiv/tilbakekalt) i tabell. --json gir tilsvarende strukturerte data.
 - `abx mount check NAVN` kontrollerer katalogidentitet og rettigheter for
   operatøren og Agentbox uten å endre noe. --fix reparerer påviste problemer
-  gjennom samme reparasjonslogikk som doctor --fix og mount repair.
+  gjennom samme interne reparasjonslogikk som doctor --fix.
   Begge utskriftsmoduser viser OK eller konkrete feil, og ved --fix hva som
   er reparert og eventuelt gjenstår.
 - Miljøfilens `mounts` bruker `source: NAVN`, `target: /sti/i/container` og
   `mode: ro` eller `rw`. Source refererer til registreringen; target og mode
   velges per miljø. Ett miljø kan bruke flere mounts. Uregistrerte eller
   tilbakekalte kilder avvises uansett eksisterende filrettigheter.
+- Mount repair tilbys ikke som egen brukerkommando. Reparasjonen er felles
+  intern funksjonalitet bak mount check --fix og doctor --fix.
 - `abx mount revoke NAVN` trekker tilbake tilgang og beholder registreringen.
   `abx mount remove NAVN` avslutter registreringen etter nødvendig rydding
   av rettigheter og eventuelt eierskap. Ingen av dem sletter katalogen eller
@@ -89,7 +91,7 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   registrerte mounts og deres rettigheter, samt images som mangler bygg.
   Uten --fix undersøker den og rapporterer funn uten å reparere.
 - `abx doctor --fix` reparerer påviste problemer gjennom de samme operasjonene
-  som blant annet mount repair og image build. Kontroll og reparasjon skal
+  som mount check --fix og image build. Kontroll og reparasjon skal
   gjenbruke eksisterende felles kode, uten parallelle implementasjoner.
   Resultatet viser hva som er reparert og hvilke problemer som gjenstår.
   Gjeldende eierskaps-, bruks- og sikkerhetskontroller gjelder også via --fix.
@@ -127,7 +129,5 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
 - Mount remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding
   frem til denne er fullført. Håndtering av miljøer som bruker kilden,
   og konkrete regler for oppryddingen, avklares i research/plan.
-- Vurder om separat mount repair skal beholdes som brukerkommando når
-  mount check --fix finnes. Intern reparasjonslogikk skal uansett være felles.
 - Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
   opprettet eller konkret inndeling avklart.
