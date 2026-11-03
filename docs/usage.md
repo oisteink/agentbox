@@ -75,8 +75,7 @@ Bruk `command: ["bash"]` for å åpne et vanlig skall mens du prøver filtilgang
 
 ## Start, åpne og avslutt
 
-Fra 1.0.1 tar `start` bare miljøfilen. Det separate
-navneargumentet og `--config` fra 1.0 er fjernet.
+`start` leser miljønavnet fra miljøfilen.
 
 ```sh
 abx validate example-codex
@@ -261,11 +260,6 @@ reserverte navn dekker ikke alle verktøy: navn som `SSLKEYLOGFILE`,
 `OPENSSL_CONF` og `JAVA_TOOL_OPTIONS` kan endre verktøyoppførsel eller opprette
 filer i arbeidsmappen. De skal ikke brukes som tokenreferanser.
 
-Gamle Go-miljøer uten generert plassholder må også gjenskapes eksplisitt.
-Ved migrasjon fra tidligere headerinnsetting: fjern `Bearer ` fra den ekte
-vertsvariabelen, og la klienten lage dette prefikset. Ingen automatisk migrasjon
-av innlogging eller tokenverdier utføres.
-
 ```sh
 abx proxy stop example-codex
 unset context7_api_key
@@ -324,7 +318,7 @@ abx proxy apply example-codex
 | `remove` og ny `start` | Beholdes | Slettes og opprettes på nytt |
 | `proxy apply` eller `proxy stop` | Beholdes | Beholdes |
 
-Hvert miljø har egen innlogging; separat profilvolum finnes ikke i 1.0.
+Hvert miljø har egen innlogging; separat profilvolum støttes ikke.
 Endret agentimage, mounts, arbeidsprofil eller vertsadresse krever fjerning
 og ny opprettelse. Nettverk/tokenregler kan endres med proxy apply. Start av
 et stoppet Go-miljø og proxy apply validerer DNS på nytt. Prosjektregistreringer og ACL-er består til du tilbakekaller dem.
@@ -431,21 +425,18 @@ Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.
 
 ### Codex starter ikke på nytt etter avslutning
 
-Codex 0.166.0 kan forsøke å starte en delt app-server i bakgrunnen ved neste
-oppstart. I Agentbox 1.0 er dette observert som `failed to spawn detached
-app-server process` med `Operation not permitted`. Feilen betyr ikke at
-innloggingen er slettet. Kontroller status og start uten bakgrunnsserver:
+Codex-malen bruker `--no-daemon` fordi isoleringsprofilen blokkerer
+oppstart av delt app-server. Hvis et eget image gir
+`failed to spawn detached app-server process` med `Operation not permitted`,
+kontroller innloggingen og kjør uten bakgrunnsserver:
 
 ```sh
 abx exec example-codex -- codex login status
 abx exec example-codex -- codex --no-daemon
 ```
 
-For en tidligere sesjon kan du bruke
-`abx exec example-codex -- codex --no-daemon resume`.
-Fra 1.0.1 legger utviklingsimaget `--no-daemon` i Codex-launcheren. Eksisterende miljøer beholder sin gamle launcher til den
-oppdateres eller miljøet opprettes fra det nye imaget. Ikke bruk `remove`
-bare for denne feilen; det sletter hjem og innlogging.
+Gjenoppta en sesjon med `codex --no-daemon resume`. Feilen krever ikke
+fjerning av miljøet; `remove` sletter hjem og innlogging.
 
 ### Andre feil
 

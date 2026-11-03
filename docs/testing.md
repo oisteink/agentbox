@@ -65,8 +65,7 @@ bruker versjoner og pakkehasher fra `uv.lock`. Hoppede eller ingen
 livssyklustester gjør kjøringen mislykket. Proxyprøven kjøres også om et
 livssyklusscenario feiler; samlet resultat forblir mislykket.
 
-Oppdater kravmatrisen ved endrede kontrakter. Teststatus skal skille mellom
-ny kjøring, eldre observasjoner og hull. Nytt testantall eller høyere
+Oppdater kravmatrisen ved endrede kontrakter. Teststatus skal oppgi resultat, dato, plattform, prøvenes omfang og hull. Nytt testantall eller høyere
 dekningsprosent er ikke et akseptansekriterium.
 
 ## Krav og bevis
@@ -142,6 +141,3 @@ plattformstøtte. De er ikke beståtte prøver:
    ressursendringer. Bruk eksplisitte feilpunkter og ettertilstand.
 5. Prioritet middels: vertsreboot, signaler og dynamisk terminalstørrelse,
    arbeidskatalog som mangler/erstattes, privat loggmodus/rotasjon og CPU/OOM.
-
-Eldre gjennomførbarhetsprøver av standard-Docker og kandidatprofil inngår ikke
-i akseptansepakken. De er fjernet; unike manglende sikkerhetsprøver står over.

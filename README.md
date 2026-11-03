@@ -139,15 +139,6 @@ Full avinstallasjon gjøres med `sudo scripts/uninstall.sh`.
 Kommandoen stopper miljøene, overfører agentbox-eide prosjektfiler til deg og
 fjerner installasjon og tjenestebruker. Se [avinstallasjon](docs/installation.md#avinstallasjon).
 
-Versjon 1.0 er prøvd i Ubuntu-VM og manuelt på utviklerens Debian-vert.
-Linked worktrees, separat profillagring og sterkere isolering per prosjekt
-inngår ikke i versjonen. Sammenligning med OpenShell og Docker Sandboxes er
-videre arbeid.
-
-## Videre arbeid
-
-Go-proxyen er prøvd i Ubuntu-VM og med reell Codex/Context7-bruk.
-Uavhengig sikkerhetsgjennomgang fant ingen blokkerende funn. Ny
-Debian-vertsprøve gjenstår; se [teststatus](docs/test-results.md).
-
-Gjenværende verifikasjonshull og prioriteringer står i [teststrategien](docs/testing.md#åpne-verifikasjonshull).
+Linked worktrees og separat profillagring støttes ikke. Verifiserte
+plattformer står i [teststatus](docs/test-results.md), og åpne
+verifikasjonshull i [teststrategien](docs/testing.md#åpne-verifikasjonshull).

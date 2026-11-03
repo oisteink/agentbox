@@ -107,4 +107,4 @@ Filryddingen følger ikke symlinker og krysser ikke nestede mounts.
 Endret prosjektrot, manglende aktiv prosjektmappe eller berørte hardlenker gir
 feil før brukeren og installasjonsdataene slettes. Rett årsaken og kjør
 `sudo scripts/uninstall.sh` igjen. Miljøene kan allerede være stoppet ved en slik feil.
-Gamle tilbakekalte prosjekter som er slettet, hoppes over.
+Slettede tilbakekalte prosjekter hoppes over.

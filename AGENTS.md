@@ -62,6 +62,9 @@ i YAML. Bashskript skal ha eksplisitt feilhåndtering. Bruk `test_*.py` og
 `test_*` for tester; ingen dekningsprosent er konfigurert.
 Bruk generiske prosjektnavn, brukernavn og filstier i eksempler og testdata;
 ikke hent dem fra operatørens personlige prosjekter.
+Dokumentasjon beskriver gjeldende produkt, bruk og tekniske begrensninger.
+Ikke ta med utviklingshistorie, migrasjonsfortellinger eller før/nå-sammenligninger.
+Teststatus viser resultater og bevisomfang, ikke en arbeidsdagbok.
 Oppdater relevant dokumentasjon ved endret oppførsel. C4-kilden ligger i
 `docs/architecture-c4.md`; regenerer SVG og PNG med
 `python3 scripts/render-diagrams.py` og samme kommando med `--format png`.
@@ -130,9 +133,9 @@ Ved endrede diagrammer skal både kilde og genererte bilder følge med.
 Dokumentasjonsoppdateringen er en del av leveransen og skal ikke utsettes
 til etter merge; hovedgrenen skal inneholde et komplett produkt.
 
-Bruk korte, handlingsorienterte meldinger, som `Build initial rootless agent
+Commitmeldinger har bare en kort, handlingsorientert emnelinje, som `Build initial rootless agent
 isolation MVP`. Squash-committen skal beskrive de faktiske endringene kort og
 konkret, uten prosa. Vi vedlikeholder foreløpig ingen egen endringslogg.
 Beskriv formål, endret oppførsel og
-utførte tester i pull requests. Forklar konsekvenser for isolering, proxyregler,
+utførte tester kort i pull requests. Utelat samtale- og arbeidshistorikk. Forklar konsekvenser for isolering, proxyregler,
 monteringer og lagring når disse berøres.

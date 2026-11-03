@@ -70,8 +70,7 @@ også stoppede. Se [imagevalgene](decisions.md#lokale-imageoppskrifter).
 
 ## Livssyklus og sikkerhetsgrense
 
-Fra 1.0.1 finnes `scripts/uninstall.sh`, kjørt fra repoet som administrator
-på samme måte som installeren. Det stopper tjenestebrukerens
+`scripts/uninstall.sh` kjøres fra repoet som administrator. Det stopper tjenestebrukerens
 prosesser, overfører eierskap i registrerte prosjekter og fjerner installasjonen.
 Skriptet bruker systemets Python uavhengig av den installerte CLI-en.
 Vanlige kontrolloperasjoner får ikke denne root-tilgangen. Se
@@ -93,16 +92,11 @@ kjerne. Ved utbrudd med tjenestebrukerens rettigheter gjelder all tilgang
 `agentbox` har, inkludert andre registrerte prosjekter og allment lesbare filer.
 Felles daemonbruker gir ikke separat vertsisolering mellom prosjektene.
 
-## Avgrensninger og videre arbeid
+## Avgrensninger
 
 Se [teststatus](test-results.md) for labprøver, manuell bruk og testavgrensninger.
-Linked worktrees støttes ikke i versjon 1.0.1, inkludert tilgang
-til delte Git-metadata utenfor arbeidsmappen. Separat profillagring er et
-mulig senere valg.
-
-Neste vurdering er sammenligning med OpenShell og Docker
-Sandboxes: isoleringsgrenser, nettverkspolicy, mounts og rettigheter,
-samtidige miljøer, imagevalg, plattformkrav og vedlikehold.
+Linked worktrees med Git-metadata utenfor arbeidsmappen og separat
+profillagring støttes ikke.
 
 ## Teknisk grunnlag
 

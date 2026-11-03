@@ -4,7 +4,7 @@ Agentbox kjører kodeagenter mot eksplisitt valgte prosjektmapper på én
 Linux-vert. Én utvikler administrerer oppsettet og kan bruke flere miljøer
 samtidig, med ulike images, mounts og nettverkspolicyer.
 
-Dette er produktkontrakten for utviklingsgrenen med Go-proxy. [Bruksveiledningen](usage.md)
+Dette er produktkontrakten for Agentbox. [Bruksveiledningen](usage.md)
 beskriver kommandoene, [arkitekturen](architecture.md) forklarer oppbygningen,
 og [teststatus](test-results.md) avgrenser hva som er verifisert.
 
@@ -92,8 +92,7 @@ tilbakekalling.
 
 ## Miljøkonfigurasjon
 
-Fra 1.0.1 brukes `abx start FIL.yaml`. Miljønavnet
-leses fra `name`; et separat navneargument og `--config` er fjernet.
+`abx start FIL.yaml` leser miljønavnet fra `name` i miljøfilen.
 Kommandoer mot eksisterende miljøer, som `shell` og `stop`, bruker miljønavnet.
 `start` og `validate` støtter også kortnavn uten filending fra
 `~/.config/agentbox/environments/` (eller `$XDG_CONFIG_HOME/agentbox/environments/`).
@@ -152,13 +151,12 @@ Hele konteksten overføres til kontrollsiden, også filer builderen ignorerer.
 Start krever både lokal oppskrift og et image bygget av Agentbox for samme
 installasjon og navn. Dette gjelder også gjenopptak. Ingen automatisk bygg
 eller pull ved start. Registryimages kan brukes i Dockerfilens FROM.
-Direkte imagereferanser og kommandoene build-images/pull-image er fjernet.
 
 Bygg og `image rm NAVN` avvises når en eksisterende container bruker eksakt
 samme image-ID, inkludert stoppede containere. Avledede images sperrer ikke.
 Operasjonene deler kontrollsidens lås med start og remove. `image rm`
-fjerner bygget tag, men beholder lokal oppskrift. Ingen automatisk migrasjon
-eller bevaring av containerdata ved remove/gjenskaping.
+fjerner bygget tag, men beholder lokal oppskrift. Fjerning av miljøet
+sletter containerlaget, inkludert hjem og innlogging.
 
 `proxy build` bygger bare den interne proxykomponenten fra installert kilde,
 med tilsvarende brukssperre. Proxyen inngår ikke i image ls.
@@ -168,7 +166,7 @@ capabilities, `no-new-privileges`, ressursgrenser og en revisjonslåst Moby-
 seccomp-profil med strengere sperrer mot Unix-sockets og alternative socket-
 syscalls. Privilegert modus, vertsnettverk, vertens PID-namespace og ekstra
 enheter tilbys ikke. Verktøy som trenger filsystem- eller abstrakte Unix-
-sockets faller utenfor kompatibiliteten i 1.0.
+sockets støttes ikke.
 
 ## Nettverk og proxy
 
@@ -245,8 +243,8 @@ sudo-passord og har en tidsgrense på to sekunder.
 
 ## Verifikasjonskriterier
 
-Kriteriene A1 til A13 videreføres fra utviklingen av 1.0. Integrasjonsprøver
-bruker midlertidige mapper og kontrollerte nettverksdestinasjoner. Forventet
+Integrasjonsprøver bruker midlertidige mapper og kontrollerte
+nettverksdestinasjoner. Forventet
 blokkering bekreftes mot en fungerende kontrolltjeneste. Observerte resultater,
 manuell utprøving og utestede kombinasjoner står i [teststatus](test-results.md).
 Testenes ansvar, kravdekning og regler ved endringer står i
@@ -269,7 +267,7 @@ negative prøver skal bekrefte riktig avvisning og relevante konsekvenser.
 | A12 | CPU-, minne- og prosessgrenser verifiseres; manglende støtte gir feil |
 | A13 | Tilbakekalling av prosjekttilgang bevarer uvedkommende ACL-er og tilgang til andre registrerte prosjekter |
 
-## Avinstallasjon i 1.0.1
+## Avinstallasjon
 
 `sudo scripts/uninstall.sh` er en administratoroperasjon som stopper alle Agentbox-
 miljøer, overfører tjenestebrukerens prosjektfiler til utviklerens UID/GID og
