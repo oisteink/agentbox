@@ -103,6 +103,19 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   gjenbruke eksisterende felles kode, uten parallelle implementasjoner.
   Resultatet viser hva som er reparert og hvilke problemer som gjenstår.
   Gjeldende eierskaps-, bruks- og sikkerhetskontroller gjelder også via --fix.
+- `abx image new NAVN --template MAL` kan bruke både medfølgende maler
+  (base, codex, opencode, claude-code) og lokale imageoppskrifter som mal.
+  Oppskriften kopieres med Dockerfile, .dockerignore og hjelpeskript;
+  den trenger ikke være bygget. Kopien er selvstendig og følger ikke senere
+  endringer i malen. Eksisterende målkatalog overskrives ikke.
+- Egne oppskrifter/maler ligger under ~/.config/agentbox/images/ (med samme
+  XDG-støtte som øvrig brukerkonfigurasjon). Uten --template brukes lokal
+  oppskrift med navnet default hvis den finnes, ellers medfølgende base.
+  Egen standard redigeres med `abx image edit default`.
+- Autocomplete for --template foreslår både lokale oppskrifter og medfølgende
+  maler. De medfølgende malene beholdes og lagres som installasjonseid innhold,
+  utenfor brukerstyrt .config. /usr/share er nevnt som mulig plassering;
+  konkret installasjons-/pakkesti er ikke fastsatt.
 
 ## Utskrift for mennesker og agenter
 
@@ -139,3 +152,5 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   til stopp i JSON-/ikke-interaktiv modus avklares i research/plan.
 - Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
   opprettet eller konkret inndeling avklart.
+- Navnekollisjoner mellom lokale og medfølgende imagemaler må ha et entydig
+  valg som fortsatt lar brukeren velge den medfølgende malen.
