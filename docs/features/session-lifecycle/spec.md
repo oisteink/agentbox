@@ -62,9 +62,13 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   nøkkel til Codex. API-nøkler gis gjennom proxyens plassholder-/tokenbytte.
   Kontoinnlogging via nettleser/device-login håndteres av agentverktøyet.
 - Registrerte vertskataloger kalles mounts. CLI-gruppen blir `abx mount`:
-  add NAVN --path MAPPE, list, check, repair, revoke og remove. En registrering
+  add NAVN MAPPE, list, check, repair, revoke og remove. En registrering
   godkjenner én katalog og administrerer dens identitet og filtilgang.
   Katalogen kan inneholde kode, bilder eller andre data.
+- `abx mount add NAVN MAPPE` bruker to påkrevde posisjonelle argumenter,
+  uten --name eller --path. Utdata viser at registreringen er OK, eller
+  konkret hva som er feil. Dette gjelder både menneskemodus og --json;
+  JSON følger den felles kontrakten for strukturert suksess eller feil.
 - Miljøfilens `mounts` bruker `source: NAVN`, `target: /sti/i/container` og
   `mode: ro` eller `rw`. Source refererer til registreringen; target og mode
   velges per miljø. Ett miljø kan bruke flere mounts. Uregistrerte eller
