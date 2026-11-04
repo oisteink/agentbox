@@ -144,6 +144,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx image inspect NAVN` viser oppskriftskatalog, byggestatus, image-ID og
   hvilke miljøer som bruker imaget. Standardutskriften er lesbar for mennesker;
   --json gir tilsvarende strukturerte detaljer.
+- `abx image remove NAVN` erstatter image rm. Den fjerner det bygde imaget,
+  men beholder den lokale Dockerfilen og resten av oppskriften for senere bygg.
+  Fjerning avvises når containere bruker imaget, også stoppede containere.
+  Dette er forskjellig fra bygging, som tillates når alle brukere er stoppet.
 - Data som skal overleve et nytt image må ligge i eksplisitte mounts.
   Det gjelder også verktøyprofil, innlogging eller hjemmekatalog når brukeren
   ønsker å bevare dette. Ved neste start med nytt image kan abx erstatte den
