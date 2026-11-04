@@ -57,6 +57,19 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - Miljøet skal også ha en nødbrems: tvungen stopp av agent og proxy uten å
   vente på normal avslutning. `abx stop NAVN --force` er foreslått syntaks;
   konkret flagg og oppryddings-/persistensdetaljer er ikke valgt.
+- Nødstopp trumfer aktive kjøringer, eventuell sesjonsregistrering og
+  --keep-running. Den skal bryte proxytrafikk og tvinge berørte agentprosesser
+  ned uten å vente på normal avslutning, aktive sesjoner eller felles
+  operasjonslås. Tyngre opprydding må ikke forsinke selve stansen.
+- Global nødstopp skal ha en lett gjenkjennelig inngang via tjenestestyringen;
+  `sudo systemctl stop agentbox` er foreslått brukerhandling. Dagens
+  installasjon har ikke en agentbox.service; konkret tjenesteoppsett må
+  undersøkes. Global stopp skal ramme alle Agentbox-miljøer og proxyer,
+  uten å berøre andre Docker-instansers ressurser eller slette mountdata.
+- Nødstopp skal også hindre at pågående oppstarter eller avslutningslogikk
+  gjenoppretter miljø/proxy etter stansen. Ny oppstart skal kreve en eksplisitt
+  handling. Tjenestestopp må fungere uavhengig av vanlig CLI-kø; håndtering
+  av en utilgjengelig Docker-daemon og bekreftelse av faktisk stans må avklares.
 - `abx proxy build` tas ut av bruker-CLI-en. Oppgradering skjer ved
   reinstallasjon; installeren skal bygge nytt proxyimage når proxykoden
   er endret og gjenbruke eksisterende image når den er uendret. Byggingen
