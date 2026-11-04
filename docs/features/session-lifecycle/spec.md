@@ -195,6 +195,11 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   eller overstyre mounts, nettverk eller miljøvariabler ved kjøring.
   --keep-running og eksplisitt kommando til exec er kjørevalg. Ekte tokenverdier
   leses fra operatørens miljø; miljøfilen inneholder referanser, ikke nøkler.
+- Ved endret miljøkonfigurasjon tilpasses eller erstattes en stoppet container
+  ved neste oppstart. Et kjørende miljø fortsetter med eksisterende oppsett;
+  brukeren varsles om at endringer venter til stopp og ny oppstart. Nettverk
+  og tokens kan fortsatt aktiveres underveis med proxy apply. Mountdata
+  beholdes ved erstatning.
 - `abx env delete NAVN` rydder eventuelle opprettede miljøressurser før
   miljøfilen slettes. Mount-registreringer, volumdata og imageoppskrifter
   beholdes. Kjørende miljø vises, og brukeren spørres om å stoppe og fjerne
@@ -230,9 +235,10 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   oppdagelse av krasjede klienter og --keep-running fra en annen kjøring
   mens oppstarteren er aktiv, avklares i research/plan. Modellen med oversikt
   over aktive kjøringer og vanlig stopp etter siste kjøring er avklart.
-- Hvordan oppskriftsendringer oppdages, og hvordan øvrige endringer i
-  miljøkonfigurasjonen håndteres, avklares i research/plan. Automatisk bygg
-  ved manglende/endret imageoppskrift og erstatning ved imagebytte er avklart.
+- Hvordan oppskriftsendringer oppdages, avklares i research/plan. Automatisk
+  bygg ved manglende/endret imageoppskrift og erstatning ved imagebytte er
+  avklart. Miljøkonfigurasjonsendringer gjelder ved neste oppstart, med
+  eksplisitt proxy apply som mulighet for nettverk/tokens underveis.
 - Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
   avklares i research/plan etter at CLI-gjennomgangen er ferdig.
 - JSON for strømmede logger og interaktive start/exec/run, inkludert
