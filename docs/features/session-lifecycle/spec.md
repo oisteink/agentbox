@@ -152,6 +152,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   Installeren setter opp completion for nye Bash-skall med bash-completion.
   Forslag omfatter kommandoer, flagg, miljøer, mounts, images, imagemaler og
   relevante filstier. Andre skall er ikke avtalt.
+- `abx env new NAVN` oppretter en ny, redigerbar miljøfil under
+  ~/.config/agentbox/environments/ (med samme XDG-støtte som øvrig konfigurasjon).
+  Eksisterende fil gir feil og overskrives ikke. Resultatet rapporteres
+  som OK eller konkret feil etter den felles utskriftskontrakten.
 - Data som skal overleve et nytt image må ligge i eksplisitte mounts.
   Det gjelder også verktøyprofil, innlogging eller hjemmekatalog når brukeren
   ønsker å bevare dette. Ved neste start med nytt image kan abx erstatte den
