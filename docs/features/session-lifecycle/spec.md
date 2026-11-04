@@ -141,6 +141,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   Imageoversikten viser lokale oppskrifter og byggestatus, også ubygde.
   Full liste over miljøer som bruker imaget legges i detaljvisningen,
   slik at oversikten ikke får en ubegrenset «brukes av»-kolonne.
+- `abx image inspect NAVN` viser oppskriftskatalog, byggestatus, image-ID og
+  hvilke miljøer som bruker imaget. Standardutskriften er lesbar for mennesker;
+  --json gir tilsvarende strukturerte detaljer.
 - Data som skal overleve et nytt image må ligge i eksplisitte mounts.
   Det gjelder også verktøyprofil, innlogging eller hjemmekatalog når brukeren
   ønsker å bevare dette. Ved neste start med nytt image kan abx erstatte den
