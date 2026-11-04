@@ -148,6 +148,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   men beholder den lokale Dockerfilen og resten av oppskriften for senere bygg.
   Fjerning avvises når containere bruker imaget, også stoppede containere.
   Dette er forskjellig fra bygging, som tillates når alle brukere er stoppet.
+- `abx completion bash` beholdes for aktivering i et eksisterende skall.
+  Installeren setter opp completion for nye Bash-skall med bash-completion.
+  Forslag omfatter kommandoer, flagg, miljøer, mounts, images, imagemaler og
+  relevante filstier. Andre skall er ikke avtalt.
 - Data som skal overleve et nytt image må ligge i eksplisitte mounts.
   Det gjelder også verktøyprofil, innlogging eller hjemmekatalog når brukeren
   ønsker å bevare dette. Ved neste start med nytt image kan abx erstatte den
