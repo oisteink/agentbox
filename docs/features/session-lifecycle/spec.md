@@ -8,6 +8,8 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 
 - Normal bruk starter nødvendige ressurser automatisk. Brukeren skal ikke
   henvises til en annen kommando når abx har informasjonen som trengs.
+- Shell fjernes helt fra CLI-en, uten alias. Start kjører miljøets
+  konfigurerte kommando; exec kjører en annen eksplisitt kommando.
 - Start, exec, run, validate og proxy apply bruker samme config-oppslag.
   Kortnavn hentes fra ~/.config/agentbox/environments/ med øvrig XDG-støtte;
   eksplisitt filsti bruker den angitte filen. Manglende eller tvetydig filvalg
@@ -239,8 +241,6 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
 
 ## Åpent før implementasjon
 
-- Shell er foreslått fjernet fordi start åpner konfigurert kommando.
-  Endelig kommandoliste fastsettes i gjennomgangen.
 - Konkrete mekanismer for registrering/opprydding av aktive kjøringer,
   oppdagelse av krasjede klienter og --keep-running fra en annen kjøring
   mens oppstarteren er aktiv, avklares i research/plan. Modellen med oversikt
