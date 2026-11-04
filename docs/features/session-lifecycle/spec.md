@@ -162,6 +162,12 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx env edit NAVN` åpner en eksisterende miljøfil med samme editorvalg som
   image edit. Manglende miljøfil gir feil. Etter editoravslutning rapporteres
   om filen ble endret, etter den felles utskriftskontrakten.
+- Miljøinnstillinger konfigureres kun i miljøfilen: image, mounts, nettverk,
+  tokenreferanser/miljøvariabeloppsett, command, resources og persistent.
+  Env edit er en snarvei til filen; CLI-en tilbyr ikke flagg for å koble til
+  eller overstyre mounts, nettverk eller miljøvariabler ved kjøring.
+  --keep-running og eksplisitt kommando til exec er kjørevalg. Ekte tokenverdier
+  leses fra operatørens miljø; miljøfilen inneholder referanser, ikke nøkler.
 - `abx env delete NAVN` rydder eventuelle opprettede miljøressurser før
   miljøfilen slettes. Mount-registreringer, volumdata og imageoppskrifter
   beholdes. Kjørende miljø vises, og brukeren spørres om å stoppe og fjerne
