@@ -224,6 +224,12 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   menneskemodus beholder exitkoder for feil.
 - JSON-resultatet må skille entydig mellom suksess og feil og gi en stabil
   feilkategori samt forståelig forklaring. Det konkrete skjemaet er ikke valgt.
+- Løpende utdata i --json bruker JSON Lines: én JSON-verdi per linje.
+  Logger og programutdata sendes fortløpende som hendelser. Ved avslutning
+  sendes et strukturert sluttresultat med kommandoens exitstatus eller feil.
+  Mennesketekst blandes ikke inn i JSON-strømmen. Klienten kan reagere på
+  kjente feilkategorier og styre egen timeout; dette innfører ikke et eget
+  timeout-flagg i abx.
 - Føringen gjelder på tvers av CLI-en. Utskrift avklares organisk for hver
   kommando; gjennomføringen samles etter at brukerflyten er ferdig diskutert.
 
@@ -241,8 +247,8 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   eksplisitt proxy apply som mulighet for nettverk/tokens underveis.
 - Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
   avklares i research/plan etter at CLI-gjennomgangen er ferdig.
-- JSON for strømmede logger og interaktive start/exec/run, inkludert
-  kommandoens egne utdata og exitstatus, er ikke detaljavklart.
+- Detaljskjema for JSON-hendelser og samspill med stdin/TTY ved start/exec/run
+  avklares i research/plan. JSON Lines med hendelser og sluttresultat er valgt.
 - Mekanisme for å oppdage endret proxykode og ta nytt proxyimage i bruk ved
   oppgradering er ikke valgt. Den må håndtere at gamle proxycontainere finnes.
 - Mount remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding
