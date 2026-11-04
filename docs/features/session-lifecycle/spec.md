@@ -13,9 +13,16 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx exec CONFIG [--keep-running] -- KOMMANDO` har samme livssyklus, med
   en eksplisitt kommando. Interaktiv terminal velges automatisk når det passer.
   Pipet stdin skal videresendes uten TTY; stdout skal kunne omdirigeres.
-- Hver kjøring rydder bare etter egen oppstart: stopp ved avslutning bare
-  dersom denne kjøringen startet containeren og ikke fikk --keep-running.
-  En container som allerede kjørte, skal fortsatt kjøre etter kommandoen.
+- Start/exec registreres som aktive kjøringer knyttet til konkret container.
+  Når abx starter containeren for slike kjøringer, stoppes den automatisk
+  etter at siste aktive kjøring er ferdig, med mindre --keep-running gjelder.
+  Oppstarterens avslutning skal ikke avbryte andre aktive kjøringer.
+  En container som allerede står og kjører utenfor denne automatiske
+  livssyklusen, stoppes ikke av en kjøring som bare bruker den.
+- Oversikten registrerer kjøringene fremfor bare et antall, slik at en
+  krasjet klient kan oppdages. Registrering og avgjørelse om vanlig stopp
+  samordnes under lås og bindes til containeridentitet; en gammel kjøring
+  skal ikke stoppe en erstatningscontainer med samme navn.
 - --keep-running lar containeren kjøre etter avsluttet kommando. Den stoppes
   eksplisitt med `abx stop NAVN`. Gjentatt bruk av flagget gir ingen teller
   eller ekstra eierskap.
@@ -213,9 +220,10 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
 
 - Shell er foreslått fjernet fordi start åpner konfigurert kommando.
   Endelig kommandoliste fastsettes i gjennomgangen.
-- Samtidige kjøringer: hvordan hindre at en kjøring stopper en container
-  mens en annen bruker den? Ingen teller eller sesjonsmekanisme er valgt.
-  Avklar også --keep-running fra en annen kjøring mens oppstarteren er aktiv.
+- Konkrete mekanismer for registrering/opprydding av aktive kjøringer,
+  oppdagelse av krasjede klienter og --keep-running fra en annen kjøring
+  mens oppstarteren er aktiv, avklares i research/plan. Modellen med oversikt
+  over aktive kjøringer og vanlig stopp etter siste kjøring er avklart.
 - Når kreves imagebygg utover manglende image, og hvordan håndteres endret
   konfigurasjon som krever erstatning av et bevart containerlag? Imagebytte
   er avklart: containerlaget er disponibelt, varige data skal ligge i mounts.
