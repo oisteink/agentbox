@@ -236,6 +236,11 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   Mennesketekst blandes ikke inn i JSON-strømmen. Klienten kan reagere på
   kjente feilkategorier og styre egen timeout; dette innfører ikke et eget
   timeout-flagg i abx.
+- Handlinger som krever bekreftelse spør brukeren i interaktiv menneskemodus.
+  JSON-modus spør aldri interaktivt; uten samtykke returneres et strukturert
+  resultat om at bekreftelse kreves, med hvilke miljøer som berøres.
+  --yes gir samtykke på forhånd. --force gjelder tvungen nødstopp og er ikke
+  et synonym for --yes. Bekreftelseskrav følger øvrig JSON-feilkontrakt.
 - Føringen gjelder på tvers av CLI-en. Utskrift avklares organisk for hver
   kommando; gjennomføringen samles etter at brukerflyten er ferdig diskutert.
 
@@ -256,7 +261,7 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
 - Mekanisme for å oppdage endret proxykode og ta nytt proxyimage i bruk ved
   oppgradering er ikke valgt. Den må håndtere at gamle proxycontainere finnes.
 - Mount remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding
-  frem til denne er fullført. Konkrete regler for oppryddingen og samtykke
-  til stopp i JSON-/ikke-interaktiv modus avklares i research/plan.
+  frem til denne er fullført. Konkrete regler for oppryddingen avklares i
+  research/plan; samtykke i JSON-modus håndteres med --yes som avklart over.
 - Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
   opprettet eller konkret inndeling avklart.
