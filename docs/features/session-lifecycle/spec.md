@@ -44,6 +44,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx proxy apply CONFIG` beholdes for eksplisitt oppdatering av nettverksregler
   og API-nøkler underveis. Proxyen erstattes; agentcontaineren og innloggingen
   beholdes.
+- Nettverksregler og tokenreferanser tilhører miljøkonfigurasjonen, med
+  network/credentials i miljøfilen. Proxykommandoene styrer miljøets separate
+  proxykomponent; det trengs ikke en egen brukerredigert proxykonfigurasjon.
 - `abx proxy stop NAVN` beholdes som nettverksnødbrems. Proxyen og dens
   tokenmetadata fjernes, slik at utgående tilgang stenges uten å stoppe agenten.
 - Nettverksnødbremsen skal ikke vente bak langvarige kontrolloperasjoner som
@@ -159,6 +162,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx env edit NAVN` åpner en eksisterende miljøfil med samme editorvalg som
   image edit. Manglende miljøfil gir feil. Etter editoravslutning rapporteres
   om filen ble endret, etter den felles utskriftskontrakten.
+- `abx env delete NAVN` rydder eventuelle opprettede miljøressurser før
+  miljøfilen slettes. Mount-registreringer, volumdata og imageoppskrifter
+  beholdes. Kjørende miljø vises, og brukeren spørres om å stoppe og fjerne
+  det før sletting. Ved avslag beholdes miljøet og miljøfilen.
 - Data som skal overleve et nytt image må ligge i eksplisitte mounts.
   Det gjelder også verktøyprofil, innlogging eller hjemmekatalog når brukeren
   ønsker å bevare dette. Ved neste start med nytt image kan abx erstatte den
