@@ -160,6 +160,12 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   stoppet. Kjørende bruk sperrer bygging; stoppede containere skal ikke måtte
   fjernes først. Byggingen oppdaterer image/tag uten å endre eksisterende
   containerlag.
+- Start og exec bygger automatisk før oppstart hvis imaget mangler eller
+  oppskriften er endret siden bygg. Hvis miljøets container allerede kjører,
+  brukes den uten ombygging eller erstatning; brukeren varsles om at endret
+  oppskrift får virkning etter stopp og ny oppstart. Nytt image tas i bruk
+  med ny container; mountene beholdes. Kjørende bruk i andre miljøer gir
+  fortsatt byggesperre etter den felles byggeregelen.
 - Oversiktskommandoene bruker navnet list: `abx image list` og `abx mount list`.
   Image ls erstattes av image list; det trengs ikke et ls-alias.
   Imageoversikten viser lokale oppskrifter og byggestatus, også ubygde.
@@ -224,9 +230,9 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   oppdagelse av krasjede klienter og --keep-running fra en annen kjøring
   mens oppstarteren er aktiv, avklares i research/plan. Modellen med oversikt
   over aktive kjøringer og vanlig stopp etter siste kjøring er avklart.
-- Når kreves imagebygg utover manglende image, og hvordan håndteres endret
-  konfigurasjon som krever erstatning av et bevart containerlag? Imagebytte
-  er avklart: containerlaget er disponibelt, varige data skal ligge i mounts.
+- Hvordan oppskriftsendringer oppdages, og hvordan øvrige endringer i
+  miljøkonfigurasjonen håndteres, avklares i research/plan. Automatisk bygg
+  ved manglende/endret imageoppskrift og erstatning ved imagebytte er avklart.
 - Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
   avklares i research/plan etter at CLI-gjennomgangen er ferdig.
 - JSON for strømmede logger og interaktive start/exec/run, inkludert
