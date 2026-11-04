@@ -8,6 +8,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 
 - Normal bruk starter nødvendige ressurser automatisk. Brukeren skal ikke
   henvises til en annen kommando når abx har informasjonen som trengs.
+- Start, exec, run, validate og proxy apply bruker samme config-oppslag.
+  Kortnavn hentes fra ~/.config/agentbox/environments/ med øvrig XDG-støtte;
+  eksplisitt filsti bruker den angitte filen. Manglende eller tvetydig filvalg
+  gir en konkret feil.
 - `abx start CONFIG [--keep-running]` bygger image ved behov, oppretter eller
   starter miljøet og kjører miljøets konfigurerte kommando i terminalen.
 - `abx exec CONFIG [--keep-running] -- KOMMANDO` har samme livssyklus, med
