@@ -156,6 +156,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   ~/.config/agentbox/environments/ (med samme XDG-støtte som øvrig konfigurasjon).
   Eksisterende fil gir feil og overskrives ikke. Resultatet rapporteres
   som OK eller konkret feil etter den felles utskriftskontrakten.
+- `abx env edit NAVN` åpner en eksisterende miljøfil med samme editorvalg som
+  image edit. Manglende miljøfil gir feil. Etter editoravslutning rapporteres
+  om filen ble endret, etter den felles utskriftskontrakten.
 - Data som skal overleve et nytt image må ligge i eksplisitte mounts.
   Det gjelder også verktøyprofil, innlogging eller hjemmekatalog når brukeren
   ønsker å bevare dette. Ved neste start med nytt image kan abx erstatte den
