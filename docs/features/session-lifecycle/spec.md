@@ -61,15 +61,16 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   --keep-running. Den skal bryte proxytrafikk og tvinge berørte agentprosesser
   ned uten å vente på normal avslutning, aktive sesjoner eller felles
   operasjonslås. Tyngre opprydding må ikke forsinke selve stansen.
-- Global nødstopp skal ha en lett gjenkjennelig inngang via tjenestestyringen;
-  `sudo systemctl stop agentbox` er foreslått brukerhandling. Dagens
-  installasjon har ikke en agentbox.service; konkret tjenesteoppsett må
-  undersøkes. Global stopp skal ramme alle Agentbox-miljøer og proxyer,
-  uten å berøre andre Docker-instansers ressurser eller slette mountdata.
+- Brukerens eksempel med systemctl stop agentbox beskriver hva en person
+  i panikk kan forsøke, ikke et krav om agentbox.service. Ingen slik ny
+  tjeneste er ønsket. Nødstopp må være lett å finne og forstå; eventuell
+  global inngang avklares uten å innføre en tjeneste bare for dette navnet.
+  Global stopp skal avgrenses til Agentbox-miljøer og proxyer, uten å berøre
+  andre Docker-instansers ressurser eller slette mountdata.
 - Nødstopp skal også hindre at pågående oppstarter eller avslutningslogikk
   gjenoppretter miljø/proxy etter stansen. Ny oppstart skal kreve en eksplisitt
-  handling. Tjenestestopp må fungere uavhengig av vanlig CLI-kø; håndtering
-  av en utilgjengelig Docker-daemon og bekreftelse av faktisk stans må avklares.
+  handling. Nødstopp må fungere uavhengig av vanlig CLI-kø; håndtering av
+  en utilgjengelig Docker-daemon og bekreftelse av faktisk stans må avklares.
 - `abx proxy build` tas ut av bruker-CLI-en. Oppgradering skjer ved
   reinstallasjon; installeren skal bygge nytt proxyimage når proxykoden
   er endret og gjenbruke eksisterende image når den er uendret. Byggingen
