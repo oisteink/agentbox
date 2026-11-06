@@ -14,7 +14,7 @@ results_dir="$repo_dir/.lab/results"
 mkdir -p -- "$results_dir"
 python3 -m venv "$repo_dir/.lab/venv"
 lab_python="$repo_dir/.lab/venv/bin/python"
-# This small project has one lock resolution. Install its registry packages,
+# This small mount has one lock resolution. Install its registry packages,
 # including transitive dependencies, without pip resolving different versions.
 python3 - <<'PY' > "$results_dir/requirements.txt"
 import tomllib
@@ -102,7 +102,7 @@ PY
 failed=0
 AGENTBOX_LAB=1 "$lab_python" -m pytest -q tests/integration/test_installation.py \
   tests/integration/test_lifecycle.py tests/integration/test_temporary_run.py \
-  tests/integration/test_json.py \
+  tests/integration/test_json.py tests/integration/test_mounts.py \
   --junitxml="$results_dir/lifecycle.xml" || failed=1
 verify_report "$results_dir/lifecycle.xml" || failed=1
 sudo "$lab_python" scripts/lab/credential_proxy.py > "$results_dir/proxy.json" || failed=1

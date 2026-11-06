@@ -9,7 +9,7 @@ def test_start_reads_environment_name_from_file(monkeypatch, tmp_path, capsys):
     path = tmp_path / "arbitrary filename.yaml"
     path.write_text(
         "name: example-codex\nimage: codex\n"
-        "mounts:\n  - project: example\n    target: /workspace\n"
+        "mounts:\n  - source: example\n    target: /workspace\n"
         "network:\n  allow:\n    - host: api.example.com\n      port: 443\n"
     )
     requests = []
@@ -26,7 +26,7 @@ def test_start_reads_environment_name_from_file(monkeypatch, tmp_path, capsys):
     assert len(requests) == 1
     assert requests[0]["action"] == "start"
     assert requests[0]["config"]["name"] == "example-codex"
-    assert requests[0]["config"]["mounts"][0]["project"] == "example"
+    assert requests[0]["config"]["mounts"][0]["source"] == "example"
     assert requests[0]["config"]["network"]["allow"] == ({"host": "api.example.com", "port": 443},)
     assert "running" in capsys.readouterr().out
 
@@ -47,7 +47,7 @@ def test_alias_only_reads_host_source(monkeypatch, tmp_path, capsys):
     data = {
         "name": "alias-test",
         "image": "codex",
-        "mounts": [{"project": "test", "target": "/workspace"}],
+        "mounts": [{"source": "test", "target": "/workspace"}],
         "network": {"allow": [{"host": "api.example.com", "port": 443}]},
         "credentials": [
             {

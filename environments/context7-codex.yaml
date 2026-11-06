@@ -1,5 +1,5 @@
-# Copy outside agent-writable projects, e.g. ~/.config/agentbox/environments/.
-# Change mounts[].project to a project registered with abx project add.
+# Copy outside agent-writable mounts, e.g. ~/.config/agentbox/environments/.
+# Change mounts[].source to a mount registered with abx mount add.
 # Host: export context7_api_key with the raw API key (without Bearer).
 # Agent: CONTEXT7_TOKEN gets a generated placeholder, or is empty if the source is missing/empty.
 # Codex MCP: --bearer-token-env-var CONTEXT7_TOKEN
@@ -8,7 +8,7 @@ image: codex
 workdir: /workspace
 command: ["codex"]
 mounts:
-  - project: example
+  - source: example
     target: /workspace
     mode: rw
 network:

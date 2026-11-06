@@ -12,7 +12,7 @@ OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 
 | Kontroll | Resultat |
 | --- | --- |
-| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 218 bestått |
+| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 235 bestått |
 | Ruff lint/format, Bash-syntaks og gofmt | Bestått |
 | Go race og vet | Bestått, HTTP/1 og HTTP/2 |
 | govulncheck v1.9.0, Go 1.27.3 | Ingen sårbarheter som kan nås |
@@ -20,12 +20,13 @@ OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 | Dokumentasjon | CLI, skjema, lagring, proxybygg, installasjon og C4 kontrollert mot kode; lokale lenker og eksempler validert |
 | Wheel | Dockerfile-maler og Codex-launcher inkludert |
 | Installasjon og imagebygg i VM | Bestått; installerte filer sammenlignet med kilde |
-| Installert CLI og oppsett | 31 scenarier bestått, ingen skips |
+| Mounts/volumer | Katalog-ACL, ro/rw, profil/HOME-volumer, revoke/fix, samtykke, stoppede brukere og retry bestått |
+| Installert CLI og oppsett | 39 scenarier bestått, ingen skips |
 | Installert proxy | 24 kontroller bestått, ingen oppryddingsfeil |
-| Avinstallasjon | Bestått; annen rootful Docker-instans bevart |
+| Avinstallasjon | Bestått; annen rootful Docker-instans og kontrollvolum bevart |
 
-Installert kildehash: `b5c93cca1b27237fd2b5ce613749521daaa2e2c481a67a03e23ec66e3ee75b94`.
-Test-/skripthash: `3b41e7fd95d868b8a231dbd68fcad6b247fada819e27328911691af7b6be5838`.
+Installert kildehash: `d674e10184c5b6a679c2b323882371a0c6f27fb9a2a7f251c4cbe032b123b5e6`.
+Test-/skripthash: `fd30bd13feb02e5ee2bbbab8efb69ce4d54f47eee56a86ed1086426b098289a0`.
 Hashene beregnes av labskriptets plattformkontroll.
 
 Lokale kontroller bruker `scripts/check.sh`; laben bruker `scripts/lab/check.sh`
@@ -44,22 +45,29 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
   kjørende og stoppet bruk, editorens inn-/utdata og exitkode, mounts,
   read-only, ACL/tilbakekalling, socketvern, ressursgrenser og exec-logger.
 - Ikke-persistent miljø: start i bakgrunnen, shell med exitkode 0/17, nytt
-  container-ID og rent hjem ved neste start, bevarte prosjektfiler og stop-fjerning.
+  container-ID og rent hjem ved neste start, bevarte filer i katalogmounts og stop-fjerning.
   Konkurrerende shell avvises; start og proxy apply beholder shell-reservasjonen.
   Lokale prøver dekker ventende SIGINT etter reservasjon og valgt agent-ID
   ved samtidig erstatning av et vedvarende miljø.
 - Midlertidig kjøring: exitkode 0/17, stdout/stderr, terminalstørrelse og
   innlesing, Ctrl-C gjennom PTY og signal direkte til CLI for run og ikke-persistent shell, frigitt lås,
-  full ressursfjerning og bevarte prosjektfiler. Lokale feilprøver dekker
+  full ressursfjerning og bevarte filer i katalogmounts. Lokale feilprøver dekker
   delvis oppstart, oppryddingsfeil og gjenskapt miljø med samme navn.
 - Utskrift: mennesketabell, JSON-parserfeil/hjelp, konfigurasjonsfeil og
   kommandofeil med exitkode i sluttresultatet. Installert stdin/stdout/stderr
   med 200 kB i begge retninger, tidlig stdin-stenging, delt/ugyldig UTF-8,
   editor med input/exitstatus og Ctrl-C gjennom sudo med full opprydding.
   Lokale prosesser dekker ventende input og ugyldig/ufullstendig protokoll.
-- Livssyklus: containerlag ved stopp/start og daemonrestart, prosjektfiler
+- Mounts: navngitt profilvolum gjennom remove/run/imagebytte, eksplisitt HOME i
+  ikke-persistent miljø, ro/rw, revoke med aktive brukere og åpent håndtak,
+  fix uten reaktivering og sletting med stoppede volumbrukere. Katalog-remove
+  bevarer data, eierskap og operatørtilgang; symlinkmål/andre ACL-er beholdes.
+  Manglende/fremmede volumer, delvis katalogrydding og faktisk retry etter
+  manglende traversering er prøvd. Lokale avbruddsprøver dekker ACL-pass,
+  forget, delvis miljøfjerning og volumsletting før registercommit.
+- Livssyklus: containerlag ved stopp/start og daemonrestart, filer i katalogmounts
   ved remove, samt eierskap/ACL ved avinstallasjon. Nestede mounts og
-  beskyttede filer utenfor prosjektet inngår i prøvene.
+  beskyttede filer utenfor mountet inngår i prøvene.
 - Proxy: eksakt tokenutskifting, aliaser, aktive/tomme regler, flere miljøer,
   HTTP/1 og HTTP/2, auth-headere/trailere, Host/SNI, upstream-sertifikater,
   DNS-pinning, private adresser, direkte tilgang og proxybortfall.
@@ -78,7 +86,7 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
   nettverksendringen. H1-headergrensen kontrolleres etter parsing, med
   ressursgrenser som vern mot resterende tjenestenektrisiko.
 - Codex-prøven viser klientintegrasjon. Codex sine OAuth-data og hemmeligheter
-  i prosjektfiler omfattes ikke av proxyens tokenbeskyttelse. En tillatt tjeneste
+  i filer i katalogmounts omfattes ikke av proxyens tokenbeskyttelse. En tillatt tjeneste
   kan returnere en ekte nøkkel i responsen; svar skannes ikke etter hemmeligheter.
 
 OpenCode- og Claude Code-malene er bygget, og `--version` virker i Agentbox-

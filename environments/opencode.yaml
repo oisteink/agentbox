@@ -1,5 +1,5 @@
-# Copy outside agent-writable projects, e.g. ~/.config/agentbox/environments/.
-# Register project "example" and build image "opencode" from its matching template.
+# Copy outside agent-writable mounts, e.g. ~/.config/agentbox/environments/.
+# Register mount "example" and build image "opencode" from its matching template.
 # Export ANTHROPIC_API_KEY on the host before abx start; never put the key here.
 # API-key example; subscription login needs a separate network policy.
 name: example-opencode
@@ -7,7 +7,7 @@ image: opencode
 workdir: /workspace
 command: ["opencode"]
 mounts:
-  - project: example
+  - source: example
     target: /workspace
     mode: rw
 network:

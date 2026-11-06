@@ -1,5 +1,5 @@
-# Copy outside agent-writable projects, e.g. ~/.config/agentbox/environments/.
-# Register project "example" and build image "codex" from its matching template.
+# Copy outside agent-writable mounts, e.g. ~/.config/agentbox/environments/.
+# Register mount "example" and build image "codex" from its matching template.
 # Export OPENAI_API_KEY on the host before abx start; never put the key here.
 # API-key example; subscription login needs a separate network policy.
 name: example-codex
@@ -7,7 +7,7 @@ image: codex
 workdir: /workspace
 command: ["codex"]
 mounts:
-  - project: example
+  - source: example
     target: /workspace
     mode: rw
 network:

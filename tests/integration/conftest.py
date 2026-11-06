@@ -31,7 +31,9 @@ def cli(*arguments, check=True, **kwargs):
         frames = [json.loads(line) for line in result.stdout.splitlines()]
         final = frames[-1]
         assert final["type"] == "result", frames
-        result.stdout = json.dumps(final.get("data"))
+        result.stdout = json.dumps(
+            final.get("data") if final["ok"] else final["error"].get("details")
+        )
         result.stderr += "".join(
             frame["data"] for frame in frames[:-1] if frame["type"] == "output"
         )
@@ -43,11 +45,26 @@ def cli(*arguments, check=True, **kwargs):
     return result
 
 
+def machine(*args, **kwargs):
+    result = subprocess.run(
+        ["/usr/local/bin/abx", "--json", *args],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        **kwargs,
+    )
+    assert result.returncode == 0 and result.stderr == "", result
+    frames = [json.loads(line) for line in result.stdout.splitlines()]
+    assert sum(frame["type"] == "result" for frame in frames) == 1
+    assert frames[-1]["type"] == "result"
+    return frames
+
+
 class Lab:
     def __init__(self, root):
         self.root = root
         self.suffix = uuid.uuid4().hex[:8]
-        self.projects = {}
+        self.mounts = {}
         self.environments = {}
         self.images = {}
 
@@ -59,22 +76,29 @@ class Lab:
         cli("image", "new", name)
         return name, path
 
-    def project(self, label="project"):
+    def mount(self, label="mount"):
         name = f"{label}-{self.suffix}"
         path = self.root / name
         path.mkdir()
-        self.projects[name] = path  # Track before a command can partially succeed.
-        result = json.loads(cli("project", "add", name, "--path", str(path)).stdout)
+        self.mounts[name] = path  # Track before a command can partially succeed.
+        result = json.loads(cli("mount", "add", name, str(path)).stdout)
         assert result["status"] == "active"
         return name, path
 
-    def configuration(self, project, *, image="smoke", **overrides):
+    def volume(self, label="volume"):
+        name = f"{label}-{self.suffix}"
+        self.mounts[name] = None
+        result = json.loads(cli("mount", "add", name, "--volume").stdout)
+        assert result["type"] == "volume" and result["status"] == "active"
+        return name
+
+    def configuration(self, mount, *, image="smoke", **overrides):
         name = f"env-{len(self.environments)}-{self.suffix}"
-        path = self.root / f"{name}.yaml"  # Outside the shared project.
+        path = self.root / f"{name}.yaml"  # Outside the shared mount.
         config = {
             "name": name,
             "image": image,
-            "mounts": [{"project": project, "target": "/workspace"}],
+            "mounts": [{"source": mount, "target": "/workspace"}],
             "network": {"allow": []},
             "resources": {"cpus": 0.5, "memory": "256m", "pids": 64},
         } | overrides
@@ -82,41 +106,44 @@ class Lab:
         self.environments[name] = path
         return name, path
 
-    def start(self, project, *, image="smoke", **overrides):
-        name, path = self.configuration(project, image=image, **overrides)
+    def start(self, mount, *, image="smoke", **overrides):
+        name, path = self.configuration(mount, image=image, **overrides)
         assert json.loads(cli("start", str(path)).stdout)["status"] == "running"
         return name
 
     def state(self, name):
         return json.loads(cli("status").stdout)[name]
 
+    def docker(self, *arguments, check=True):
+        uid = pwd.getpwnam("agentbox").pw_uid
+        return subprocess.run(
+            [
+                "sudo",
+                "-u",
+                "agentbox",
+                "env",
+                "-i",
+                "PATH=/usr/bin:/bin",
+                "HOME=/var/lib/agentbox",
+                f"XDG_RUNTIME_DIR=/run/user/{uid}",
+                "docker",
+                "--host",
+                f"unix:///run/user/{uid}/docker.sock",
+                *arguments,
+            ],
+            check=check,
+            text=True,
+            capture_output=True,
+            timeout=120,
+        )
+
     def assert_removed(self, name):
         assert name not in json.loads(cli("status").stdout), f"State retained for {name}"
-        uid = pwd.getpwnam("agentbox").pw_uid
         for kind in ("container", "network"):
             arguments = [kind, "ls", "-q", "--filter", f"label=agentbox.environment={name}"]
             if kind == "container":
                 arguments.append("-a")
-            remaining = subprocess.run(
-                [
-                    "sudo",
-                    "-u",
-                    "agentbox",
-                    "env",
-                    "-i",
-                    "PATH=/usr/bin:/bin",
-                    "HOME=/var/lib/agentbox",
-                    f"XDG_RUNTIME_DIR=/run/user/{uid}",
-                    "docker",
-                    "--host",
-                    f"unix:///run/user/{uid}/docker.sock",
-                    *arguments,
-                ],
-                check=True,
-                text=True,
-                capture_output=True,
-                timeout=30,
-            )
+            remaining = self.docker(*arguments)
             assert not remaining.stdout.strip(), f"Leaked {kind} for {name}: {remaining.stdout}"
 
     def cleanup(self):
@@ -131,18 +158,18 @@ class Lab:
             except (AssertionError, OSError, subprocess.SubprocessError, ValueError) as exc:
                 errors.append(f"remove {name}: {exc}")
         try:
-            registered = json.loads(cli("project", "list").stdout)
-            for name in reversed(self.projects):
-                if name not in registered or registered[name]["status"] == "revoked":
+            registered = json.loads(cli("mount", "list").stdout)
+            for name in reversed(self.mounts):
+                if name not in registered:
                     continue
                 try:
-                    result = cli("project", "revoke", name, check=False)
+                    result = cli("mount", "remove", name, "--yes", check=False)
                     if result.returncode:
-                        errors.append(f"revoke {name}: {result.stderr}")
+                        errors.append(f"remove mount {name}: {result.stderr}")
                 except (OSError, subprocess.SubprocessError) as exc:
-                    errors.append(f"revoke {name}: {exc}")
+                    errors.append(f"remove mount {name}: {exc}")
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
-            errors.append(f"list projects: {exc}")
+            errors.append(f"list mounts: {exc}")
         for name, path in self.images.items():
             try:
                 details = json.loads(cli("image", "inspect", name).stdout)

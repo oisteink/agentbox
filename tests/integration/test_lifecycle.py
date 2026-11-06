@@ -22,20 +22,20 @@ def python(env, source, *arguments):
     [("opencode", "opencode", "1.19.5"), ("claude-code", "claude", "2.1.316")],
 )
 def test_example_agent_version_in_isolation(lab, image, tool, version):
-    project, _ = lab.project()
-    env = lab.start(project, image=image, resources={"cpus": 1, "memory": "1g", "pids": 128})
+    mount, _ = lab.mount()
+    env = lab.start(mount, image=image, resources={"cpus": 1, "memory": "1g", "pids": 128})
     assert version in cli("exec", env, "--", tool, "--version").stdout
 
 
 def test_two_images_and_independent_environments(lab):
-    first, first_path = lab.project("first")
-    second, second_path = lab.project("second")
+    first, first_path = lab.mount("first")
+    second, second_path = lab.mount("second")
     (second_path / "marker").write_text("second environment")
     env1 = lab.start(first, image="codex")
     env2 = lab.start(second)
     assert cli("exec", env1, "--", "codex", "--version").stdout.strip() == "codex-cli 0.166.0"
-    # Re-registering an unchanged, in-use project must be harmless.
-    result = json.loads(cli("project", "add", first, "--path", str(first_path)).stdout)
+    # Re-registering an unchanged, in-use mount must be harmless.
+    result = json.loads(cli("mount", "add", first, str(first_path)).stdout)
     assert result["status"] == "active"
     cli("stop", env1)
     cli("remove", env1)
@@ -53,9 +53,9 @@ def test_local_image_build_context_and_use_guard(lab):
     assert json.loads(cli("image", "ls").stdout)[name]["status"] == "unbuilt"
 
     first = json.loads(cli("image", "build", name, timeout=900).stdout)["id"]
-    project, path = lab.project()
-    (path / "keep").write_text("project content")
-    env = lab.start(project, image=name)
+    mount, path = lab.mount()
+    (path / "keep").write_text("mount content")
+    env = lab.start(mount, image=name)
     assert cli("exec", env, "--", "cat", "/recipe/marker").stdout == "first"
     cli("exec", env, "--", "test", "!", "-e", "/recipe/ignored")
     for stopped in (False, True):
@@ -69,11 +69,11 @@ def test_local_image_build_context_and_use_guard(lab):
     assert blocked_proxy.returncode != 0 and "Image is in use" in blocked_proxy.stderr
     cli("remove", env)
     lab.assert_removed(env)
-    assert (path / "keep").read_text() == "project content"
+    assert (path / "keep").read_text() == "mount content"
     (recipe / "marker").write_text("second")
     second = json.loads(cli("image", "build", name, timeout=900).stdout)["id"]
     assert first != second
-    env = lab.start(project, image=name)
+    env = lab.start(mount, image=name)
     assert cli("exec", env, "--", "cat", "/recipe/marker").stdout == "second"
     cli("remove", env)
     lab.assert_removed(env)
@@ -110,8 +110,8 @@ def test_edit_image_uses_operator_editor_and_returns_status(lab):
 
 
 def test_exec_exit_status_and_configured_shell(lab):
-    project, _ = lab.project()
-    env = lab.start(project, command=["python3", "-c", "print('configured-shell')"])
+    mount, _ = lab.mount()
+    env = lab.start(mount, command=["python3", "-c", "print('configured-shell')"])
     assert cli("shell", env).stdout == "configured-shell\n"
     result = cli(
         "exec",
@@ -130,8 +130,8 @@ def test_exec_exit_status_and_configured_shell(lab):
 
 
 def test_terminal_reads_input_and_preserves_size(lab):
-    project, _ = lab.project()
-    env = lab.start(project)
+    mount, _ = lab.mount()
+    env = lab.start(mount)
     program = (
         "import os; assert os.isatty(0) and os.isatty(1); "
         "print('size=%sx%s' % tuple(os.get_terminal_size(1)), flush=True); "
@@ -150,12 +150,12 @@ def test_terminal_reads_input_and_preserves_size(lab):
     assert "reply:tupni-rotarepo" in result.stdout  # Cannot be satisfied by terminal echo.
 
 
-def test_project_file_operations_and_remove_preserve_code(lab):
-    project, path = lab.project()
+def test_mount_file_operations_and_remove_preserve_code(lab):
+    mount, path = lab.mount()
     (path / "from-developer").write_text("developer")
     (path / "executable").write_text("#!/bin/sh\nprintf executable")
     (path / "executable").chmod(0o750)
-    env = lab.start(project)
+    env = lab.start(mount)
     cli(
         "exec",
         env,
@@ -181,28 +181,28 @@ def test_project_file_operations_and_remove_preserve_code(lab):
     lab.assert_removed(env)
     assert (path / "from-agent").read_text() == "replaced-by-developer"
     assert (path / "executable").stat().st_mode & 0o111
-    assert json.loads(cli("project", "list").stdout)[project]["status"] == "active"
+    assert json.loads(cli("mount", "list").stdout)[mount]["status"] == "active"
 
 
 def test_mount_visibility_and_readonly(lab):
-    project, path = lab.project()
-    readonly, readonly_path = lab.project("readonly")
-    (path / "visible").write_text("selected project")
+    mount, path = lab.mount()
+    readonly, readonly_path = lab.mount("readonly")
+    (path / "visible").write_text("selected mount")
     (readonly_path / "file").write_text("unchanged")
     hidden = lab.root / "hidden"
     hidden.mkdir()
     (hidden / "private").write_text("not shared")
     env = lab.start(
-        project,
+        mount,
         mounts=[
-            {"project": project, "target": "/workspace"},
-            {"project": readonly, "target": "/readonly", "mode": "ro"},
+            {"source": mount, "target": "/workspace"},
+            {"source": readonly, "target": "/readonly", "mode": "ro"},
         ],
     )
     result = python(
         env,
         "import errno, pathlib, sys; "
-        "assert pathlib.Path('/workspace/visible').read_text() == 'selected project'; "
+        "assert pathlib.Path('/workspace/visible').read_text() == 'selected mount'; "
         "assert not pathlib.Path(sys.argv[1]).exists(); "
         "assert pathlib.Path('/readonly/file').read_text() == 'unchanged'; "
         "\ntry: pathlib.Path('/readonly/file').write_text('bad')"
@@ -214,22 +214,24 @@ def test_mount_visibility_and_readonly(lab):
     assert (readonly_path / "file").read_text() == "unchanged"
 
 
-def test_acl_repair_and_revocation_leave_other_project_working(lab):
-    project, path = lab.project()
-    other, other_path = lab.project("other")
-    (other_path / "marker").write_text("other project")
+def test_acl_repair_and_revocation_leave_other_mount_working(lab):
+    mount, path = lab.mount()
+    other, other_path = lab.mount("other")
+    (other_path / "marker").write_text("other mount")
     env = lab.start(
-        project,
+        mount,
         mounts=[
-            {"project": project, "target": "/workspace"},
-            {"project": other, "target": "/readonly", "mode": "ro"},
+            {"source": mount, "target": "/workspace"},
+            {"source": other, "target": "/readonly", "mode": "ro"},
         ],
     )
-    blocked = cli("project", "revoke", other, check=False)
-    assert blocked.returncode == 2
-    assert f"Stop every environment using this project first: {env}" in blocked.stderr
-    assert json.loads(cli("project", "list").stdout)[other]["status"] == "active"
-    assert cli("exec", env, "--", "cat", "/readonly/marker").stdout == "other project"
+    revoked = cli("mount", "revoke", other)
+    assert env in revoked.stderr and "open file handles" in revoked.stderr
+    assert json.loads(cli("mount", "list").stdout)[other]["status"] == "revoked"
+    cli("stop", env)
+    cli("mount", "add", other, str(other_path))
+    cli("start", str(lab.environments[env]))
+    assert cli("exec", env, "--", "cat", "/readonly/marker").stdout == "other mount"
     cli(
         "exec",
         env,
@@ -241,16 +243,21 @@ def test_acl_repair_and_revocation_leave_other_project_working(lab):
     with pytest.raises(PermissionError):
         (path / "private").read_text()
     assert (
-        "private" in json.loads(cli("project", "check", project).stdout)["operator_access_issues"]
+        "private"
+        in json.loads(cli("mount", "check", mount, check=False).stdout)["operator_access_issues"]
     )
     cli("stop", env)
-    cli("project", "repair", project)
+    own_readonly = path / "operator-readonly"
+    own_readonly.write_text("readonly")
+    own_readonly.chmod(0o400)
+    cli("mount", "check", mount, "--fix")
+    own_readonly.write_text("owner access repaired")
     assert (path / "private").read_text() == "retained"
-    checked = json.loads(cli("project", "check", project).stdout)
+    checked = json.loads(cli("mount", "check", mount).stdout)
     assert not checked["operator_access_issues"] and not checked["service_access_issues"]
     other_env = lab.start(other)
     cli("remove", env)
-    assert json.loads(cli("project", "revoke", project).stdout)["status"] == "revoked"
+    assert json.loads(cli("mount", "revoke", mount).stdout)["status"] == "revoked"
     # Observe traversal as the service identity, even though it owns this file.
     denied = subprocess.run(
         [
@@ -271,13 +278,13 @@ def test_acl_repair_and_revocation_leave_other_project_working(lab):
     assert denied.returncode == 0, denied.stderr
     assert denied.stdout == "access-revoked\n"
     assert (path / "private").read_text() == "retained"
-    assert cli("exec", other_env, "--", "cat", "/workspace/marker").stdout == "other project"
+    assert cli("exec", other_env, "--", "cat", "/workspace/marker").stdout == "other mount"
 
 
 def test_stop_start_preserves_container_and_home(lab):
-    project, path = lab.project()
-    (path / "code").write_text("project survives")
-    env = lab.start(project)
+    mount, path = lab.mount()
+    (path / "code").write_text("mount survives")
+    env = lab.start(mount)
     before = lab.state(env)["resources"]
     cli("exec", env, "--", "sh", "-c", "printf home-survives > /home/agent/marker")
     cli("start", str(lab.environments[env]))
@@ -288,12 +295,12 @@ def test_stop_start_preserves_container_and_home(lab):
     cli("start", str(lab.environments[env]))
     assert lab.state(env)["resources"]["agent"] == before["agent"]
     assert cli("exec", env, "--", "cat", "/home/agent/marker").stdout == "home-survives"
-    assert cli("exec", env, "--", "cat", "/workspace/code").stdout == "project survives"
+    assert cli("exec", env, "--", "cat", "/workspace/code").stdout == "mount survives"
 
 
 def test_changed_profile_is_rejected_without_losing_home(lab):
-    project, _ = lab.project()
-    env = lab.start(project)
+    mount, _ = lab.mount()
+    env = lab.start(mount)
     before = lab.state(env)["resources"]["agent"]
     cli("exec", env, "--", "sh", "-c", "printf retained > /home/agent/marker")
     path = lab.environments[env]
@@ -311,8 +318,8 @@ def test_changed_profile_is_rejected_without_losing_home(lab):
 
 
 def test_socket_capability_and_cgroup_enforcement(lab):
-    project, _ = lab.project()
-    env = lab.start(project)
+    mount, _ = lab.mount()
+    env = lab.start(mount)
     result = python(
         env,
         "import asyncio, errno, pathlib, socket; "
@@ -362,8 +369,8 @@ finally:
 
 
 def test_environment_network_isolation(lab):
-    first, _ = lab.project("first")
-    second, path = lab.project("second")
+    first, _ = lab.mount("first")
+    second, path = lab.mount("second")
     (path / "marker").write_text("controlled-service")
     env1, env2 = lab.start(first), lab.start(second)
     cli("exec", env2, "--", "sh", "-c", "python3 -m http.server 18482 >/tmp/http.log 2>&1 &")
@@ -404,8 +411,8 @@ def test_environment_network_isolation(lab):
 
 
 def test_daemon_restart_preserves_home(lab):
-    project, _ = lab.project()
-    env = lab.start(project)
+    mount, _ = lab.mount()
+    env = lab.start(mount)
     before = lab.state(env)["resources"]["agent"]
     cli("exec", env, "--", "sh", "-c", "printf retained > /home/agent/marker")
     uid = pwd.getpwnam("agentbox").pw_uid

@@ -1,6 +1,6 @@
 # Arkitekturvalg for Agentbox
 
-Agentbox bruker en felles tjenestebruker, prosjekt-ACL-er og en proxy per
+Agentbox bruker en felles tjenestebruker, katalog-ACL-er og en proxy per
 miljø. Valgene under forklarer hvordan isoleringen håndheves og hvilke
 begrensninger den gir. Prøvegrunnlaget finnes i [teststatus](test-results.md),
 og produktkontrakten i [spesifikasjonen](specification.md).
@@ -31,7 +31,7 @@ Eksisterende image beholdes; `proxy build` brukes til ombygging.
 CLI-en pakker konteksten som tar uten å følge lenker og sender den etter en
 JSON-header. Kontrollhjelperen autentiserer først og mellomlagrer i private,
 midlertidige filer. Ingen generell tilgang til utviklerens hjem eller nye
-prosjekt-ACL-er trengs. Utpakking bruker Pythons datafilter; lenker ut av
+katalog-ACL-er trengs. Utpakking bruker Pythons datafilter; lenker ut av
 konteksten og spesialfiler avvises. Docker bygger den midlertidige katalogen,
 slik at Docker selv behandler .dockerignore. BuildKits upload-kontekst
 filtrerer ikke ignore-reglene. Hele konteksten overføres til kontrollsiden
@@ -57,28 +57,43 @@ Kildegrunnlag: [Docker-byggkontekst](https://docs.docker.com/build/concepts/cont
 [Buildx-ruting](https://github.com/docker/buildx/blob/master/build/opt.go) og
 [BuildKit-kontekst](https://github.com/moby/buildkit/blob/master/frontend/dockerui/config.go).
 
-## Prosjektroten som grense for tilbakekalling
+## Katalogroten som grense for tilbakekalling
 
-Prosjektroten må eies av utvikleren. Registrering gir `agentbox` tilgang til
+Katalogroten må eies av utvikleren. Registrering gir `agentbox` tilgang til
 innholdet; tilbakekalling legger `user:agentbox:---` på roten. En navngitt
 bruker-ACL prioriteres foran gruppe- og andre-rettigheter. Prøven bekrefter at
 denne sperren blokkerer filtilgang også når `agentbox` eier filen under roten.
 
-Alle berørte containere må være stoppet først. Overlappende registreringer
-avvises, slik at en separat registrert undermappe ikke krever tilgang
-gjennom en tilbakekalt rot. Delte foreldrekataloger mellom søskenprosjekter
-håndteres med referanser i journalen.
+Tilbakekalling varsler om aktive brukere og åpne håndtak, og stopper ingen
+miljøer. En registreringssperre hindrer nye monteringer; katalogroten får
+også deny. Flytting av innhold utenfor den registrerte roten er en betrodd
+vertsoperasjon og må vurderes separat.
 
-Innholdets ACL-er beholdes ved tilbakekalling, og eierskap overføres ikke.
-Garantien gjelder tilgangen gjennom den registrerte roten; hardlenker,
-filflytting eller andre kopier utenfor roten må ikke brukes som en alternativ
-tilgangsvei. Eksisterende hardlenker avvises før tildeling. Manuelle flyttinger
-av prosjektinnhold på verten er en betrodd operasjon og krever ny vurdering.
+Navngitte local-volumer er eksplisitte, merkede kilder. De bruker samme
+source-navnerom som kataloger, uten en generell driver-/lagringsabstraksjon.
+Volume-nocopy gir et tomt nytt volum; ingen utilsiktet kopiering fra imaget.
+Siden stoppede containere fortsatt refererer til volumet, må volum-remove
+fjerne deres miljøer og containerlag. Konsekvensen krever navngitt samtykke
+bundet til registrering og ressurs-ID-er. Kildebrukere beregnes fra faktisk
+Docker-metadata under kontrollåsen, og fremmede containere avvises.
 
-Når en ACL-maske må utvides for samarbeid, bevares andre brukeres og gruppers
-effektive rettigheter. Tidligere maskerte biter kan trimmes fra rå ACL-oppføringer.
-Reparasjon kjøres som henholdsvis utvikleren og tjenestebrukeren for filer de
-selv eier. Ingen rekursiv root-operasjon eller `chown` brukes i daglig drift.
+Katalog-remove deler ACL-arbeidet mellom fileierne og krever komplett inventar
+før registeret glemmes. Operatørjournalen lagres før siste kontroll-RPC.
+Removing-tilstanden sperrer gjenåpning mens feil rettes eller et avbrudd prøves
+igjen. Traverserings-ACL-er gjenopprettes fra urørt snapshot; ved manuelle
+endringer fjernes bare serviceoppføringer, uten å overskrive andre endringer.
+
+Eierskifte krever CAP_CHOWN. Vanlig remove beholder derfor eierskap og
+operatør-ACL på agentbox-eide filer. Tjenestebrukerens eiertilgang kan bestå,
+og etter avregistrering inngår filene ikke i uninstall sin eierskapsrydding.
+Dette oppgis i fjerningsresultatet. En ny root-hjelper ville utvide
+privilegiegrensen; kopiering/erstatning ville endre inoder og filmetadata.
+Begge unngås. Administratorstyrt uninstall overfører bare registrerte kataloger.
+
+Grunnlag: [Docker-volumer](https://docs.docker.com/engine/storage/volumes/),
+[volumfjerning](https://docs.docker.com/reference/cli/docker/volume/rm/),
+[chown](https://man7.org/linux/man-pages/man2/chown.2.html) og
+[POSIX ACL](https://man7.org/linux/man-pages/man5/acl.5.html).
 
 ## Unix-sockets og seccomp
 
@@ -128,11 +143,12 @@ tilgangslogg viser bare destinasjon og resultat. Agentens egne utdata streames
 og lagres i private, roterte logger; de kan inneholde det agenten skriver.
 
 Med `persistent: true` bevarer stopp og gjenopptak med uendret konfigurasjon
-containerlaget, verktøyoppsett og innlogging. Separat profilvolum er ikke implementert.
+containerlaget, verktøyoppsett og innlogging. Profiler i eksplisitte katalog-/volummounts
+lever uavhengig av containerlaget.
 Endret agentprofil eller vertsadresse krever eksplisitt fjerning og ny
 opprettelse. Nettverk/tokenregler aktiveres med proxy apply; gjenopptak av
 stoppet miljø validerer og fastlåser DNS på nytt.
-Fjerning sletter laget og miljøets logger. Prosjektfiler, registreringer og ACL-er består til egne
+Fjerning sletter laget og miljøets logger. Filer i katalogmounts, registreringer og ACL-er består til egne
 operasjoner endrer dem. Kjøremiljøer gjenopptas ikke automatisk etter vertsreboot.
 
 ## Midlertidige miljøer
@@ -202,5 +218,5 @@ dekningsprosent er ikke leveransemål. Kravdekning og åpne hull vedlikeholdes i
 [teststrategien](testing.md); nye observasjoner føres i [teststatus](test-results.md).
 
 Skannere hopper over kjente nestede mountpunkter før de åpnes. Tjenestebrukeren
-skal ikke trenge lesetilgang til en mappe utenfor prosjektets valgte filsystem
+skal ikke trenge lesetilgang til en mappe utenfor den valgte katalogens filsystem
 for å starte miljøet. Samme regel gjelder avinstallasjonens inspeksjon.

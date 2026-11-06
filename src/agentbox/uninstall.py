@@ -1,4 +1,4 @@
-"""Administrator-only uninstall with bounded project ownership and ACL cleanup."""
+"""Administrator-only uninstall with bounded mount ownership and ACL cleanup."""
 
 import argparse
 import ctypes
@@ -14,7 +14,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-from . import projects
+from . import mounts
 from .errors import AgentboxError
 from .settings import load_settings
 
@@ -113,15 +113,6 @@ def state_lock(directory, uid, dry_run=False):
         os.close(parent)
 
 
-def remove_service_acl(original, uid):
-    """Remove only the retiring identity; retain masks and all other entries."""
-    return "".join(
-        line + "\n"
-        for line in original.splitlines()
-        if not line.startswith((f"user:{uid}:", f"default:user:{uid}:"))
-    )
-
-
 def transfer_owner(fd, uid, gid):
     # AT_EMPTY_PATH works with O_PATH descriptors, including symlinks themselves.
     library = ctypes.CDLL(None, use_errno=True)
@@ -134,7 +125,7 @@ def transfer_owner(fd, uid, gid):
 
 def inspect_tree(root):
     """Pin each node's identity, skip nested mounts and never follow symlinks."""
-    nested = projects._mounts() - {str(root)}
+    nested = mounts._mounts() - {str(root)}
     nodes = []
 
     def walk(fd, relative):
@@ -181,7 +172,7 @@ def open_node(root, node):
     try:
         relative = Path(node["relative"])
         if relative.is_absolute() or ".." in relative.parts:
-            raise AgentboxError("Invalid project-relative path")
+            raise AgentboxError("Invalid mount-relative path")
         for index, part in enumerate(relative.parts):
             flags = os.O_PATH | os.O_NOFOLLOW
             if index < len(relative.parts) - 1:
@@ -191,31 +182,35 @@ def open_node(root, node):
             current = following
         meta = os.fstat(current)
         if (meta.st_dev, meta.st_ino, meta.st_uid) != (node["device"], node["inode"], node["uid"]):
-            raise AgentboxError("Project changed during uninstall; rerun uninstall")
+            raise AgentboxError("Mount changed during uninstall; rerun uninstall")
         yield current
     finally:
         os.close(current)
 
 
-def prepare_projects(entries, operator_uid, service_uid):
+def prepare_mounts(entries, operator_uid, service_uid):
     prepared = []
     for entry in entries.values():
+        if entry["type"] == "volume":
+            continue
+        if entry["type"] != "directory":
+            raise AgentboxError("Unknown registered mount type")
         try:
-            root = projects.validate_root(entry["path"], operator_uid)
+            root = mounts.validate_root(entry["path"], operator_uid)
         except FileNotFoundError:
             if entry.get("status") != "revoked":
-                raise AgentboxError(f"Registered project is missing: {entry['path']}") from None
-            print(f"Skipping removed, revoked project: {entry['path']}", flush=True)
+                raise AgentboxError(f"Registered mount is missing: {entry['path']}") from None
+            print(f"Skipping removed, revoked mount: {entry['path']}", flush=True)
             continue
-        if str(root) != entry["path"] or projects.identity(root) != entry["identity"]:
-            raise AgentboxError(f"Registered project root changed: {entry['path']}")
+        if str(root) != entry["path"] or mounts.identity(root) != entry["identity"]:
+            raise AgentboxError(f"Registered mount root changed: {entry['path']}")
         nodes = inspect_tree(root)
         for node in nodes:
             with open_node(root, node) as fd:
                 if node["symlink"]:
                     continue
-                acl = projects.read_acl(fd)
-                changed_acl = remove_service_acl(acl, service_uid)
+                acl = mounts.read_acl(fd)
+                changed_acl = mounts.remove_service_acl(acl, service_uid)
                 meta = os.fstat(fd)
                 if (
                     stat.S_ISREG(meta.st_mode)
@@ -229,15 +224,15 @@ def prepare_projects(entries, operator_uid, service_uid):
     return prepared
 
 
-def clean_projects(prepared, service_uid, operator_uid, operator_gid):
+def clean_mounts(prepared, service_uid, operator_uid, operator_gid):
     transferred = 0
     for root, nodes in prepared:
         for node in reversed(nodes):
             with open_node(root, node) as fd:
                 meta = os.fstat(fd)
                 if not node["symlink"]:
-                    before = projects.read_acl(fd)
-                    after = remove_service_acl(before, service_uid)
+                    before = mounts.read_acl(fd)
+                    after = mounts.remove_service_acl(before, service_uid)
                     if (
                         stat.S_ISREG(meta.st_mode)
                         and meta.st_nlink != 1
@@ -245,7 +240,7 @@ def clean_projects(prepared, service_uid, operator_uid, operator_gid):
                     ):
                         raise AgentboxError("Hard link appeared during uninstall")
                     if after != before:
-                        projects.write_acl(fd, after)
+                        mounts.write_acl(fd, after)
                 if meta.st_uid == service_uid:
                     transfer_owner(fd, operator_uid, operator_gid)
                     transferred += 1
@@ -266,13 +261,15 @@ def clean_parents(journal, roots, service_uid, operator_uid):
             identity = {"device": meta.st_dev, "inode": meta.st_ino, "uid": meta.st_uid}
             if meta.st_uid != operator_uid or identity != record["identity"]:
                 raise AgentboxError(f"Ancestor identity changed: {parent}")
-            current = projects.read_acl(fd)
+            current = mounts.read_acl(fd)
             after = record.get("after")
             # Restore our snapshot only when untouched; otherwise preserve manual edits.
             desired = (
-                record["before"] if current == after else remove_service_acl(current, service_uid)
+                record["before"]
+                if current == after
+                else mounts.remove_service_acl(current, service_uid)
             )
-            projects.write_acl(fd, remove_service_acl(desired, service_uid))
+            mounts.write_acl(fd, mounts.remove_service_acl(desired, service_uid))
         finally:
             os.close(fd)
 
@@ -334,29 +331,33 @@ def uninstall(settings, dry_run=False):
     ):
         data = read_json_at(HOME / "state", "state.json", service.pw_uid)
         journal = read_json_at(JOURNAL, "state.json", operator.pw_uid)
-        if (data and data.get("schema") != 1) or (journal and journal.get("schema") != 1):
+        if (data and data.get("schema") != 2) or (journal and journal.get("schema") != 2):
             raise AgentboxError("Unsupported or missing state; refusing destructive cleanup")
-        if journal.get("projects") and not data.get("projects"):
-            raise AgentboxError(
-                "Project registry is missing; refusing to lose ownership information"
-            )
-        entries = data.get("projects", {})
+        if journal.get("mounts") and not data.get("mounts"):
+            raise AgentboxError("Mount registry is missing; refusing to lose ownership information")
+        entries = data.get("mounts", {})
         environments = data.get("environments", {})
         print(
             f"Warning: all Agentbox environments will be stopped ({len(environments)} registered).",
             flush=True,
         )
-        print("Container homes, credentials, images and Agentbox data will be deleted.", flush=True)
         print(
-            f"Agentbox-owned project files will be transferred to {operator.pw_name}.", flush=True
+            "Container homes, credentials, volumes, images and Agentbox data will be deleted.",
+            flush=True,
         )
+        print(f"Agentbox-owned mount files will be transferred to {operator.pw_name}.", flush=True)
         if dry_run:
-            prepared = prepare_projects(entries, operator.pw_uid, service.pw_uid)
+            prepared = prepare_mounts(entries, operator.pw_uid, service.pw_uid)
             print(
                 json.dumps(
                     {
                         "dry_run": True,
-                        "projects": [str(root) for root, _ in prepared],
+                        "directories": [str(root) for root, _ in prepared],
+                        "volumes": [
+                            entry["volume"]
+                            for entry in entries.values()
+                            if entry["type"] == "volume"
+                        ],
                         "remove": [str(path) for path in (*FIXED_FILES, *FIXED_DIRECTORIES)],
                     },
                     indent=2,
@@ -364,17 +365,17 @@ def uninstall(settings, dry_run=False):
             )
             return
         stop_runtime(service.pw_uid)
-        prepared = prepare_projects(entries, operator.pw_uid, service.pw_uid)
-        transferred = clean_projects(prepared, service.pw_uid, operator.pw_uid, operator.pw_gid)
+        prepared = prepare_mounts(entries, operator.pw_uid, service.pw_uid)
+        transferred = clean_mounts(prepared, service.pw_uid, operator.pw_uid, operator.pw_gid)
         clean_parents(
             journal,
-            [Path(entry["path"]) for entry in entries.values()],
+            [Path(entry["path"]) for entry in entries.values() if entry["type"] == "directory"],
             service.pw_uid,
             operator.pw_uid,
         )
-        mounts = projects._mounts()
+        mountpoints = mounts._mounts()
         for path in FIXED_DIRECTORIES:
-            if any(Path(mount) == path or path in Path(mount).parents for mount in mounts):
+            if any(Path(mount) == path or path in Path(mount).parents for mount in mountpoints):
                 raise AgentboxError(f"Mount remains under {path}; refusing directory removal")
         # Recheck fixed directory identities before deletion; never follow top-level links.
         validate_installation(settings)
@@ -403,7 +404,7 @@ def uninstall(settings, dry_run=False):
             shutil.rmtree(path)
         run("/usr/bin/systemctl", "daemon-reload")
         print(
-            f"Agentbox removed. Transferred {transferred} project entries to {operator.pw_name}.",
+            f"Agentbox removed. Transferred {transferred} mount entries to {operator.pw_name}.",
             flush=True,
         )
 

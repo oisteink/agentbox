@@ -8,10 +8,11 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
-from . import config, images, policy, projects
+from . import config, images, mounts, policy
 from .errors import AgentboxError
 from .runtime import Docker, local_addresses
 from .state import Store, atomic_json
@@ -186,83 +187,316 @@ class Control:
         if directory.exists():
             shutil.rmtree(directory)
 
-    def project(self, data, action, request):
+    def mount_volume(self, data, name, entry, *, missing=False):
+        present = self.docker.run("volume", "ls", "--format", "{{.Name}}").stdout.splitlines()
+        if entry["volume"] not in present:
+            if missing:
+                return None
+            raise AgentboxError("Registered volume is missing", code="mount_unavailable")
+        details = self.docker.inspect("volume", entry["volume"])
+        labels = details.get("Labels") or {}
+        if (
+            details.get("Driver") != "local"
+            or details.get("Options")
+            or labels.get("agentbox.installation") != data["installation"]
+            or labels.get("agentbox.mount") != name
+            or labels.get("agentbox.registration") != entry["registration"]
+        ):
+            raise AgentboxError("Volume identity or driver changed", code="mount_identity_changed")
+        return details
+
+    def mount_users(self, data, entry, *, include_stopped=False, strict=True):
+        users = {}
+        for identifier in self.docker.run("container", "ls", "-aq", "--no-trunc").stdout.split():
+            details = self.docker.inspect("container", identifier)
+            used = any(
+                (item.get("Type") == "volume" and item.get("Name") == entry.get("volume"))
+                if entry["type"] == "volume"
+                else (item.get("Type") == "bind" and item.get("Source") == entry["path"])
+                for item in details.get("Mounts", [])
+            )
+            if not used:
+                continue
+            labels = details["Config"].get("Labels") or {}
+            name = labels.get("agentbox.environment")
+            if labels.get("agentbox.installation") != data["installation"] or not name:
+                if strict:
+                    raise AgentboxError(
+                        "Mount is referenced by an unmanaged container", code="mount_in_use"
+                    )
+                if details["State"]["Running"]:
+                    users[details.get("Name", identifier).lstrip("/")] = {}
+                continue
+            config.name(name)
+            running = details["State"]["Running"]
+            environment = data["environments"].get(name)
+            remove = entry["type"] == "volume" or (
+                environment is not None and not environment["config"].get("persistent", True)
+            )
+            if not running and not include_stopped:
+                continue
+            users[name] = {
+                "operation": "remove" if remove else "stop",
+                "containers": sorted(self.owned(data, name, "container")),
+                "networks": sorted(self.owned(data, name, "network")),
+            }
+        return users
+
+    def remove_mount(self, data, name, entry, request):
+        users = self.mount_users(data, entry, include_stopped=entry["type"] == "volume")
+        # A previous attempt may have removed the source-using agent before
+        # failing on its proxy/network. Keep those original consequences bound
+        # to their resource IDs; never forget unfinished environment cleanup.
+        for environment, pending in entry.get("removal_users", {}).items():
+            containers = sorted(self.owned(data, environment, "container"))
+            networks = sorted(self.owned(data, environment, "network"))
+            current = data["environments"].get(environment)
+            if (
+                not set(containers).issubset(pending["containers"])
+                or not set(networks).issubset(pending["networks"])
+                or (current and not any(m["source"] == name for m in current["config"]["mounts"]))
+            ):
+                raise AgentboxError(
+                    "Environment resources changed during mount cleanup",
+                    code="mount_cleanup_changed",
+                )
+            if containers or networks or (current and pending["operation"] == "remove"):
+                users[environment] = pending | {"containers": containers, "networks": networks}
+        approval = {
+            "registration": entry["registration"],
+            "type": entry["type"],
+            "identity": entry.get("identity"),
+            "path": entry.get("path"),
+            "volume": entry.get("volume"),
+            "environments": users,
+        }
+        if users and not request.get("yes") and request.get("approval") != approval:
+            actions = ", ".join(f"{value['operation']} {name}" for name, value in users.items())
+            raise AgentboxError(
+                f"Mount removal requires {actions}; remove deletes container layers",
+                code="confirmation_required",
+                details={"affected": sorted(users), "approval": approval},
+            )
+        if entry["type"] == "volume":
+            self.mount_volume(data, name, entry, missing=True)
+        entry["status"] = "removing"
+        entry["removal_users"] = json.loads(json.dumps(users))
+        self.save(data)
+        for environment, consequence in users.items():
+            if consequence["operation"] == "remove":
+                self.remove(data, environment)
+            else:
+                self.stop(data, environment)
+            del entry["removal_users"][environment]
+            self.save(data)
+        if entry["type"] == "volume":
+            if self.mount_volume(data, name, entry, missing=True) is not None:
+                self.docker.mutate("volume", "rm", entry["volume"])
+            del data["mounts"][name]
+            self.save(data)
+            return {"name": name, "type": "volume", "status": "removed", "data": "deleted"}
+        return entry
+
+    def mount(self, data, action, request):
         if action == "list":
-            return data["projects"]
+            return {
+                name: entry
+                | {
+                    "remove_effect": "delete volume and data"
+                    if entry["type"] == "volume"
+                    else "retain files and ownership"
+                }
+                for name, entry in data["mounts"].items()
+            }
         name = config.name(request["name"])
+        previous = data["mounts"].get(name)
+        if (
+            previous
+            and previous["status"] == "removing"
+            and action
+            not in (
+                "check",
+                "prepare-remove",
+                "prepare-clean",
+                "clean-owned",
+                "forget",
+            )
+        ):
+            raise AgentboxError(
+                "Mount removal is incomplete; retry mount remove", code="mount_removing"
+            )
+        if action == "add-volume":
+            if previous and previous["type"] != "volume":
+                raise AgentboxError(
+                    "Mount name is registered to a different source", code="mount_conflict"
+                )
+            entry = previous or {
+                "type": "volume",
+                "volume": "agentbox-mount-" + name,
+                "registration": uuid.uuid4().hex,
+                "status": "adding",
+            }
+            if previous:
+                self.mount_volume(data, name, entry, missing=entry["status"] == "adding")
+            elif (
+                entry["volume"]
+                in self.docker.run("volume", "ls", "--format", "{{.Name}}").stdout.splitlines()
+            ):
+                raise AgentboxError("Docker volume name already exists", code="mount_conflict")
+            data["mounts"][name] = entry
+            self.save(data)
+            if self.mount_volume(data, name, entry, missing=True) is None:
+                self.docker.mutate(
+                    "volume",
+                    "create",
+                    "--driver",
+                    "local",
+                    "--label",
+                    f"agentbox.installation={data['installation']}",
+                    "--label",
+                    f"agentbox.mount={name}",
+                    "--label",
+                    f"agentbox.registration={entry['registration']}",
+                    entry["volume"],
+                )
+            self.mount_volume(data, name, entry)
+            entry["status"] = "active"
+            return entry | {"name": name}
         if action == "prepare":
             path = Path(request["path"])
             if not path.is_absolute() or ".." in path.parts:
-                raise AgentboxError("Invalid project path")
-            previous = data["projects"].get(name)
-            if previous and previous["path"] != str(path):
-                raise AgentboxError("Project name is already registered to a different path")
-            for other_name, other in data["projects"].items():
+                raise AgentboxError("Invalid mount path")
+            if previous and (
+                previous["type"] != "directory"
+                or previous["path"] != str(path)
+                or previous["identity"] != request["identity"]
+            ):
+                raise AgentboxError(
+                    "Mount name is registered to a different source", code="mount_conflict"
+                )
+            for other_name, other in data["mounts"].items():
+                if other["type"] != "directory":
+                    continue
                 other_path = Path(other["path"])
                 if other_name != name and (
                     path == other_path or path in other_path.parents or other_path in path.parents
                 ):
-                    raise AgentboxError("Overlapping project registrations are unsupported in MVP")
+                    raise AgentboxError("Overlapping mount registrations are unsupported")
             self.require_idle(data, name)
-            data["projects"][name] = {
+            entry = previous or {
+                "type": "directory",
                 "path": str(path),
                 "identity": request["identity"],
-                "status": "pending",
+                "registration": uuid.uuid4().hex,
             }
+            entry["status"] = "adding"
+            data["mounts"][name] = entry
             self.save(data)
-            return data["projects"][name]
-        entry = data["projects"].get(name)
+            return entry
+        entry = previous
         if not entry:
-            raise AgentboxError("Unknown project")
+            raise AgentboxError("Unknown mount", code="mount_not_found")
+        if action == "prepare-remove":
+            return self.remove_mount(data, name, entry, request)
+        if request.get("registration", entry["registration"]) != entry["registration"]:
+            raise AgentboxError("Mount registration changed", code="mount_identity_changed")
         if action == "check":
-            return dict(entry) | {
-                "service_access_issues": projects.access_issues(
-                    entry["path"], {self.settings["operator_uid"], self.settings["service_uid"]}
-                )
+            issues = []
+            if entry["status"] in ("adding", "removing"):
+                issues.append(f"Mount is {entry['status']}")
+            try:
+                if entry["type"] == "volume":
+                    self.mount_volume(data, name, entry)
+                else:
+                    if entry["status"] == "revoked":
+                        if os.access(entry["path"], os.X_OK):
+                            issues.append("Revoked mount root is accessible to the service user")
+                    elif mounts.identity(entry["path"]) != entry["identity"]:
+                        issues.append("Mount root identity changed")
+                    else:
+                        issues.extend(mounts.access_issues(entry["path"], self.mount_uids()))
+            except (OSError, AgentboxError) as exc:
+                issues.append(str(exc) if isinstance(exc, AgentboxError) else type(exc).__name__)
+            return entry | {"name": name, "service_access_issues": issues}
+        if action in ("prepare-revoke", "revoked"):
+            if action == "prepare-revoke":
+                active = self.mount_users(data, entry, strict=False)
+                entry["status"] = "revoked"
+                self.save(data)
+                return entry | {"active_users": sorted(active)}
+            if entry["type"] == "directory" and os.access(entry["path"], os.X_OK):
+                raise AgentboxError("Mount root still accessible; refusing to claim revocation")
+            return entry | {"name": name}
+        if entry["type"] != "directory":
+            raise AgentboxError("Operation requires a directory mount")
+        if action == "forget":
+            if (
+                entry["status"] != "removing"
+                or not entry.get("cleanup_inventory")
+                or request.get("inventory") != entry["cleanup_inventory"]
+            ):
+                raise AgentboxError("Mount cleanup is incomplete")
+            del data["mounts"][name]
+            return {
+                "name": name,
+                "type": "directory",
+                "status": "removed",
+                "data": "retained",
+                "ownership": "unchanged; operator ACL retained on agentbox-owned files",
+                "note": "Service owner access remains; unregistered files are outside uninstall cleanup",
             }
-        self.require_idle(data, name)
-        if action == "finish":
-            root = projects.validate_root(entry["path"], self.settings["operator_uid"])
-            if projects.identity(root) != entry["identity"]:
-                raise AgentboxError("Project root changed")
-            nodes = projects.scan(
-                root, {self.settings["operator_uid"], self.settings["service_uid"]}
-            )
-            projects.apply_owned(
+        root = mounts.validate_root(entry["path"], self.settings["operator_uid"])
+        if mounts.identity(root) != entry["identity"]:
+            raise AgentboxError("Mount root identity changed", code="mount_identity_changed")
+        if action in ("prepare-repair", "prepare-clean"):
+            if action == "prepare-repair":
+                if entry["status"] == "revoked":
+                    raise AgentboxError("Repair cannot reactivate a revoked mount")
+                self.require_idle(data, name)
+            elif entry["status"] != "removing":
+                raise AgentboxError("Mount is not being removed")
+            nodes = mounts.scan(root, self.mount_uids(), skip_inaccessible=True)
+            mounts.apply_owned(
                 root, nodes, self.settings["service_uid"], self.settings["operator_uid"]
             )
+            return entry
+        if action == "finish":
+            self.require_idle(data, name)
+            nodes = mounts.scan(root, self.mount_uids())
+            mounts.apply_owned(
+                root, nodes, self.settings["service_uid"], self.settings["operator_uid"]
+            )
+            issues = mounts.access_issues(root, self.mount_uids())
+            if issues:
+                raise AgentboxError(
+                    "Service access remains incomplete: " + "; ".join(issues),
+                    code="mount_check_failed",
+                )
             entry["status"] = "active"
-            return entry
-        if action in ("prepare-revoke", "prepare-repair"):
-            entry["status"] = "pending"
+            return entry | {"name": name}
+        if action == "clean-owned":
+            if entry["status"] != "removing":
+                raise AgentboxError("Mount is not being removed")
+            nodes = mounts.scan(root, self.mount_uids())
+            digest = mounts.inventory(nodes)
+            if request.get("inventory") != digest:
+                raise AgentboxError("Mount inventory changed during cleanup")
+            mounts.clean_owned(root, nodes, self.settings["service_uid"])
+            entry["cleanup_inventory"] = digest
             self.save(data)
-            if action == "prepare-repair":
-                root = projects.validate_root(entry["path"], self.settings["operator_uid"])
-                if projects.identity(root) != entry["identity"]:
-                    raise AgentboxError("Project root changed")
-                nodes = projects.scan(
-                    root,
-                    {self.settings["operator_uid"], self.settings["service_uid"]},
-                    skip_inaccessible=True,
-                )
-                projects.apply_owned(
-                    root, nodes, self.settings["service_uid"], self.settings["operator_uid"]
-                )
             return entry
-        if action == "revoked":
-            if os.access(entry["path"], os.X_OK):
-                raise AgentboxError("Project root still accessible; refusing to claim revocation")
-            entry["status"] = "revoked"
-            return entry
-        raise AgentboxError("Unknown project operation")
+        raise AgentboxError("Unknown mount operation")
 
-    def require_idle(self, data, project):
+    def mount_uids(self):
+        return {self.settings["operator_uid"], self.settings["service_uid"]}
+
+    def require_idle(self, data, mount):
         for name, environment in data["environments"].items():
-            if any(m["project"] == project for m in environment["config"]["mounts"]):
+            if any(m["source"] == mount for m in environment["config"]["mounts"]):
                 for identifier in self.owned(data, name, "container"):
                     if self.docker.inspect("container", identifier)["State"]["Running"]:
                         raise AgentboxError(
-                            f"Stop every environment using this project first: {name}"
+                            f"Stop every environment using this mount first: {name}"
                         )
 
     def subnets(self):
@@ -294,30 +528,36 @@ class Control:
         )
 
     def check_mounts(self, data, environment):
-        mounts = []
+        arguments = []
         for mount in environment.mounts:
-            project = data["projects"].get(mount.project)
-            if not project or project["status"] != "active":
-                raise AgentboxError(f"Project is not active: {mount.project}")
-            if projects.identity(project["path"]) != project["identity"]:
-                raise AgentboxError("Project root changed; register again")
-            projects.scan(
-                project["path"], {self.settings["operator_uid"], self.settings["service_uid"]}
-            )
-            root = Path(project["path"])
-            if (
-                environment.workdir == mount.target
-                or Path(mount.target) in Path(environment.workdir).parents
-            ):
-                relative = Path(environment.workdir).relative_to(mount.target)
-                workdir = (root / relative).resolve(strict=True)
-                if not workdir.is_relative_to(root) or not workdir.is_dir():
-                    raise AgentboxError("Working directory escapes the mounted project")
-            value = f"type=bind,src={root},dst={mount.target},bind-recursive=disabled,bind-propagation=rprivate"
+            entry = data["mounts"].get(mount.source)
+            if not entry or entry["status"] != "active":
+                raise AgentboxError(
+                    f"Mount is not active: {mount.source}", code="mount_unavailable"
+                )
+            if entry["type"] == "volume":
+                self.mount_volume(data, mount.source, entry)
+                value = f"type=volume,src={entry['volume']},dst={mount.target},volume-nocopy"
+            else:
+                if mounts.identity(entry["path"]) != entry["identity"]:
+                    raise AgentboxError(
+                        "Mount root identity changed", code="mount_identity_changed"
+                    )
+                mounts.scan(entry["path"], self.mount_uids())
+                root = Path(entry["path"])
+                if (
+                    environment.workdir == mount.target
+                    or Path(mount.target) in Path(environment.workdir).parents
+                ):
+                    relative = Path(environment.workdir).relative_to(mount.target)
+                    workdir = (root / relative).resolve(strict=True)
+                    if not workdir.is_relative_to(root) or not workdir.is_dir():
+                        raise AgentboxError("Working directory escapes the mounted directory")
+                value = f"type=bind,src={root},dst={mount.target},bind-recursive=disabled,bind-propagation=rprivate"
             if mount.mode == "ro":
                 value += ",readonly"
-            mounts.extend(["--mount", value])
-        return mounts
+            arguments.extend(["--mount", value])
+        return arguments
 
     def check_guard(self):
         guard = subprocess.run(
@@ -449,9 +689,7 @@ class Control:
         try:
             for key in set(normalized) - {"credentials", "allow"}:
                 if normalized[key] != entry["config"][key]:
-                    raise AgentboxError(
-                        "proxy apply cannot change image, projects or agent profile"
-                    )
+                    raise AgentboxError("proxy apply cannot change image, mounts or agent profile")
             policy.validate_placeholders(environment, entry.get("placeholders"))
             self.check_mounts(data, environment)
             owned = self.owned(data, name, "network")
@@ -691,8 +929,8 @@ class Control:
                     "state": str(self.store.root),
                     "host_addresses": local_addresses(),
                 }
-            if action == "project":
-                return self.project(data, request["operation"], request)
+            if action == "mount":
+                return self.mount(data, request["operation"], request)
             if action == "image":
                 operation = request.get("operation")
                 if operation == "ls":

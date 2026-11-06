@@ -1,6 +1,6 @@
 # Agentbox på C4 nivå 1 og 2
 
-Agentbox kjører kodeagenter med valgte prosjektmapper og kontrollert utgående
+Agentbox kjører kodeagenter med valgte vertskataloger og kontrollert utgående
 nettverkstilgang. C1 viser systemet og omgivelsene; C2 viser
 kjørbare deler, datalagre og forbindelsene mellom dem.
 
@@ -22,7 +22,7 @@ inngår ikke som et krav i produktarkitekturen.
 LAYOUT_LEFT_RIGHT()
 title Agentbox - C1 systemkontekst
 
-Person(developer, "Bruker", "Velger arbeidsmapper, agentverktøy og hvilke tjenester miljøene får bruke.")
+Person(developer, "Bruker", "Velger delte mapper, lagring, agentverktøy og hvilke tjenester miljøene får bruke.")
 System(agentbox, "Agentbox", "Kjører isolerte agentmiljøer med avgrenset filtilgang og kontrollert utgående trafikk.")
 System_Ext(workspace, "Vertens filsystem", "Arbeidsmapper som brukeren deler med ett eller flere agentmiljøer.")
 System_Ext(services, "Tjenester brukt av agentene", "Eksempelvis eksterne API-er, MCP-tjenester, modelltjenester, kodeverter og pakkeregistre.")
@@ -63,7 +63,7 @@ LAYOUT_TOP_DOWN()
 title Agentbox - C2 containere
 
 Person(developer, "Bruker", "Bruker personlig Linux-konto.")
-ContainerDb_Ext(projects, "Valgte prosjektmapper", "Vertens filsystem", "Eies av utvikleren. ACL gir agentbox tilgang; mounts velges per miljø.")
+ContainerDb_Ext(directories, "Valgte vertskataloger", "Vertens filsystem", "Eies av utvikleren. ACL gir agentbox tilgang; mounts velges per miljø.")
 System_Ext(services, "Tjenester brukt av agentene", "Eksterne API-er, MCP-tjenester, modelltjenester, kodeverter og pakkeregistre; tilgang velges per miljø.")
 System_Ext(registry, "Kilder for kjøremiljøer", "Images og byggeavhengigheter; tilgang fra betrodd kontrollside.")
 
@@ -71,31 +71,32 @@ System_Boundary(agentbox, "Agentbox") {
     Container(cli, "abx", "Python; utviklerens UID", "Validerer miljøfiler, håndterer imageoppskrifter og administrerer utviklerens ACL-endringer.")
     ContainerDb(recipes, "Miljøfiler og imageoppskrifter", "Utviklerens filer", "~/.config/agentbox; YAML og lokale Dockerfiles med byggkontekst.")
     ContainerDb(journal, "ACL-journal", "Private JSON-filer", "/var/lib/agentbox-operator; eies av utvikleren.")
-    Container(control, "Kontrollhjelper", "Python; agentbox UID", "Bygger images og administrerer prosjekter, miljøer, proxy og terminaler.")
-    Container(uninstall, "Avinstallering", "scripts/uninstall.sh; Bash / Python; root", "Kjøres fra repoet. Rydder ACL-er og overfører prosjektfiler til utvikleren før installasjonen fjernes. ")
+    Container(control, "Kontrollhjelper", "Python; agentbox UID", "Bygger images og administrerer mounts, miljøer, proxy og terminaler.")
+    Container(uninstall, "Avinstallering", "scripts/uninstall.sh; Bash / Python; root", "Kjøres fra repoet. Rydder ACL-er og overfører filer i katalogmounts til utvikleren før installasjonen fjernes. ")
     Container(watch, "Adressevakt", "Python / systemd; agentbox UID", "Stopper miljøer ved endrede vertsadresser.")
+    ContainerDb(volumes, "Navngitte Docker-volumer", "Rootless Docker-lagring", "Registrerte, delbare kilder. Beholdes ved miljøfjerning; mount remove sletter volum og data.")
     ContainerDb(state, "Kontrolltilstand og policy", "Private filer; agentbox UID", "/var/lib/agentbox/state; miljøregister, proxyregler, miljø-CA og logger.")
     Container(docker, "Rootless Docker-instans", "Docker Engine / RootlessKit", "Egen daemon som agentbox; administrerer containere, nettverk og images.")
 
     Boundary(environment, "Arbeidsmiljø - ett av flere", "Agent og proxy per miljø") {
         Container(agent, "Kodeagent og utviklingsverktøy", "Docker; UID 0 i containeren", "Upålitelig agentkode i valgt lokalt image. Lukket nettverk, valgte mounts og streng seccomp.")
         Container(proxy, "Utgående proxy", "Docker / Go; UID 10001", "Betrodd proxy med ett grensesnitt internt og ett eksternt. Eksakte destinasjoner, pinnede IP-er og selektiv TLS-avlytting med tokenutskifting.")
-        ContainerDb(home, "Agentens hjem og innlogging", "Containerens skrivbare lag", "/home/agent; verktøyoppsett og innlogging. Vedvarende miljø bevarer ved stopp; midlertidig miljø slettes etter bruk.")
+        ContainerDb(home, "Hjem i containerlaget", "Containerens skrivbare lag", "/home/agent uten eget mount. Vedvarende miljø bevarer laget ved stopp; miljøfjerning sletter det.")
     }
 }
 
 Rel(developer, cli, "Administrerer og åpner terminaler", "Lokale kommandoer")
-Rel(developer, projects, "Redigerer", "Editor / filsystem")
+Rel(developer, directories, "Redigerer", "Editor / filsystem")
 Rel(cli, recipes, "Leser miljøfiler og Dockerfiles; lager imageoppskrifter", "Filsystem")
 Rel(cli, journal, "Registrerer og avstemmer ACL-endringer", "Filsystem")
-Rel(cli, projects, "Tildeler og tilbakekaller tilgang som fileier", "POSIX ACL")
+Rel(cli, directories, "Tildeler og tilbakekaller tilgang som fileier", "POSIX ACL")
 Rel(cli, control, "Sender operasjoner og eksplisitt refererte tokens", "Avgrenset sudo; JSON-header og input på stdin")
 Rel(control, cli, "Returnerer resultater og innrammede programutdata", "JSON Lines på stdout")
 Rel(developer, uninstall, "Kjører avinstallasjon eller forhåndsvisning fra repoet", "sudo scripts/uninstall.sh")
-Rel(uninstall, projects, "Overfører agentbox-eide filer og rydder ACL-er", "Avgrenset filsystemtilgang; ingen symlinkfølging")
+Rel(uninstall, directories, "Overfører agentbox-eide filer og rydder ACL-er", "Avgrenset filsystemtilgang; ingen symlinkfølging")
 Rel(uninstall, state, "Leser registeret før filrydding og sletting", "Privat tilstand og operasjonslås")
 Rel(uninstall, journal, "Avstemmer og rydder foreldrenes ACL-er", "Privat journal og lås")
-Rel(control, projects, "Reparerer ACL på filer eid av agentbox", "POSIX ACL")
+Rel(control, directories, "Reparerer ACL på filer eid av agentbox", "POSIX ACL")
 Rel(control, state, "Lagrer tilstand, policy og agentutdata", "Filsystem")
 Rel(watch, state, "Leser miljøer og oppdaterer status", "Filsystem og felles lås")
 Rel(control, docker, "Styrer containere; gir kun proxyen tokenmiljø", "Docker CLI; fast Unix-socket")
@@ -103,7 +104,10 @@ Rel(watch, docker, "Stopper berørte containere", "Docker CLI; samme socket")
 Rel(docker, agent, "Oppretter og styrer livssyklus", "Docker runtime")
 Rel(docker, proxy, "Oppretter og styrer livssyklus", "Docker runtime")
 Rel(docker, registry, "Henter baseimages og bygger", "Betrodd kontrolltrafikk")
-Rel(agent, projects, "Leser og endrer valgte mapper", "Eksplisitte bind mounts; rw eller ro")
+Rel(agent, directories, "Leser og endrer valgte mapper", "Eksplisitte bind mounts; rw eller ro")
+Rel(docker, volumes, "Forvalter registrerte lokale volumer", "Docker storage")
+Rel(agent, volumes, "Leser og endrer varige data/profiler", "Navngitte volummounts; rw/ro; nocopy")
+Rel(uninstall, volumes, "Sletter med dedikert Docker-home", "Filsystem etter prosessstopp")
 Rel(agent, home, "Lagrer profil og innlogging", "Filsystem i containerlaget")
 Rel(agent, proxy, "Sender utgående forespørsler", "HTTP / CONNECT via lukket nettverk")
 Rel(proxy, state, "Leser policy og miljøets private CA", "Read-only bind mounts")
@@ -128,15 +132,16 @@ SHOW_LEGEND()
 - Proxyen leser policy og nødvendig privat CA fra skrivebeskyttede mounts;
   ekte tokens tilføres bare proxyens miljø. Kontrollhjelperen gjør navneoppløsning
   og adressevalidering før de fastlåste adressene tas i bruk.
-- Prosjektmapper ligger på verten og overlever fjerning av miljøet. Agentens
-  hjem ligger i containerlaget; separat profilvolum støttes ikke.
+- Vertskataloger og navngitte volumer overlever miljøfjerning. Volumer slettes
+  eksplisitt med mount remove. Hjem/profiler ligger i containerlaget med mindre
+  brukeren har valgt et eget katalog-/volummount.
   Midlertidige miljøer fra `run` fjernes når kommandoen avsluttes. Med
   `persistent: false` fjernes miljøet etter `shell` eller ved `stop`; neste
   `start` gir et nytt containerlag.
 - Rootless-containerne deler vertens kjerne. Ved et utbrudd med `agentbox`
-  sine rettigheter gjelder brukerens samlede vertstilgang, også til andre registrerte prosjekter.
+  sine rettigheter gjelder brukerens samlede vertstilgang, også til andre registrerte mounts.
   Agentens UID 0 mappes til tjenestebrukeren på verten; proxyen bruker en egen
-  containerbruker og får ikke prosjektmapper montert inn.
+  containerbruker og får ikke vertskataloger montert inn.
 
 ## Sekvens: fra miljøvariabel til ekte API-nøkkel
 

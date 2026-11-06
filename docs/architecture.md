@@ -1,7 +1,7 @@
 # Arkitektur for Agentbox
 
 Agentbox kjører agentmiljøer i en egen rootless Docker-instans med eksplisitt
-tilgang til prosjektmapper og utgående trafikk via Go-proxyen. Dette dokumentet
+tilgang til vertskataloger og utgående trafikk via Go-proxyen. Dette dokumentet
 beskriver implementasjonen. Se [C1 og C2](architecture-c4.md) for diagrammer,
 [implementasjonsvalg](decisions.md) for begrunnelser og
 [teststatus](test-results.md) for verifikasjon og gjenstående arbeid.
@@ -29,15 +29,15 @@ og private kontrollfiler eksponeres ikke for agenten. Miljøets offentlige
 CA-katalog er et skrivebeskyttet unntak. Andre Docker-instansers konfigurasjon
 endres ikke.
 
-## Tilgang til prosjektmapper
+## Tilgang til vertskataloger
 
-Eksisterende prosjektmapper registreres og monteres direkte, uten flytting
-eller kopiering. Ett miljø kan montere flere prosjekter som `rw` eller `ro`;
+Eksisterende vertskataloger registreres og monteres direkte, uten flytting
+eller kopiering. Ett miljø kan montere flere mounts som `rw` eller `ro`;
 flere miljøer kan kjøre samtidig. Endringer i montert kode lagres på verten.
 
 ACL-er gir tjenestebrukeren nødvendig traversering av foreldrekataloger og
-tilgang til prosjektinnholdet. Foreldrene trenger ikke listetilgang.
-Prosjektroten må eies av utvikleren. Overlappende registreringer, hardlenkede
+tilgang til kataloginnholdet. Foreldrene trenger ikke listetilgang.
+Katalogroten må eies av utvikleren. Overlappende registreringer, hardlenkede
 filer og spesialfiler avvises; symlinker i innholdet og nestede mounts utelates
 fra rekursiv ACL-behandling.
 
@@ -48,9 +48,22 @@ fra rekursiv ACL-behandling.
 
 Agentens UID 0 mappes til `agentbox` på verten. ACL-er tillater samarbeid med
 utvikleren; restriktive filmoduser kan kreve eksplisitt reparasjon.
-Reparasjon og tilbakekalling krever at alle berørte miljøer er stoppet.
-Tilbakekalling sperrer tilgang gjennom prosjektroten uten å slette innhold,
-endre eierskap eller fjerne innholdets ACL-er.
+Katalogtildeling krever stoppede brukere. Tilbakekalling lagrer nektet
+registrering og en deny-ACL på roten; kjørende brukere navngis og varsles om
+at eksisterende monteringer og åpne håndtak kan beholde tilgang.
+
+Navngitte Docker-volumer er en annen kildetype i samme mount-register.
+Installasjons-/registreringsetiketter og local-driver uten options valideres.
+Miljøer bruker volume-nocopy og per-mount ro/rw. Volumer lever utenfor
+containerlaget og kan deles mellom miljøer; bare eksplisitt mount remove
+sletter dem. HOME/profiler kan være egne mounts.
+
+Katalog-remove stopper samtykkede brukere og rydder service-ACL-er i to
+brukeravgrensede pass mot komplett inventar. Volum-remove fjerner refererende
+miljøer, også stoppede containere. Samtykke gjelder registrering og alle
+berørte ressurs-ID-er. Removing-tilstand og operatørjournal gjør retry mulig;
+registeret glemmes først når ryddingen er fullført. Ingen vanlig root-hjelper
+brukes; avregistrerte filer beholder eierskap og operatørtilgang.
 
 ## Nettverk og images
 
@@ -79,7 +92,7 @@ også stoppede. Se [imagevalgene](decisions.md#lokale-imageoppskrifter).
 ## Livssyklus og sikkerhetsgrense
 
 `scripts/uninstall.sh` kjøres fra repoet som administrator. Det stopper tjenestebrukerens
-prosesser, overfører eierskap i registrerte prosjekter og fjerner installasjonen.
+prosesser, overfører eierskap i registrerte mounts og fjerner installasjonen.
 Skriptet bruker systemets Python uavhengig av den installerte CLI-en.
 Vanlige kontrolloperasjoner får ikke denne root-tilgangen. Se
 [avinstallasjon](installation.md#avinstallasjon) for omfang og filrydding.
@@ -89,9 +102,8 @@ verktøyoppsett og innlogging. Med `false` fjerner både avsluttet `shell` og
 `stop` miljøet; neste `start` oppretter en ny container fra imaget.
 Et bevart miljø kan startes igjen med uendret konfigurasjon. Nettverk/tokenregler aktiveres med `proxy apply` uten å
 slette hjemmet. Endret agentprofil eller vertsadresse krever `remove` og ny
-`start`; hjem og innlogging slettes da, mens monterte prosjektfiler består.
-Separat profilvolum og automatisk oppstart av miljøer etter vertsreboot er
-ikke implementert.
+`start`; umontert hjem og innlogging slettes da, mens katalog- og volummounts består.
+Data i eksplisitte mounts består. Miljøer startes ikke automatisk etter vertsreboot.
 
 Agenten kjører med droppede capabilities, `no-new-privileges`, ressursgrenser
 og en strengere Moby-seccomp-profil som blant annet blokkerer nye Unix-sockets.
@@ -99,8 +111,8 @@ Dette begrenser kompatibilitet med verktøy som trenger slike sockets.
 
 Mountene avgrenser normal filtilgang. Rootless-containerne deler vertens
 kjerne. Ved utbrudd med tjenestebrukerens rettigheter gjelder all tilgang
-`agentbox` har, inkludert andre registrerte prosjekter og allment lesbare filer.
-Felles daemonbruker gir ikke separat vertsisolering mellom prosjektene.
+`agentbox` har, inkludert andre registrerte mounts og allment lesbare filer.
+Felles daemonbruker gir ikke separat vertsisolering mellom miljøene.
 
 Midlertidig kjøring med `run` bruker samme opprettelse og terminalkjøring som
 `start`/`exec`. `shell` med `persistent: false` deler den samme identitetsbundne
@@ -152,7 +164,7 @@ og delt kilde entydige selv når kildenavnene har en annen sorteringsrekkefølge
 Konfigurasjonen autoriserer lesing av operatørens navngitte miljøvariabler.
 En agent som kan endre YAML-filen, kan forsøke å dele andre vertsvariabler.
 Hold derfor miljøfiler utenfor agentens skrivbare mounts og les credentials
-før start/apply. Proxyen monterer ikke prosjekter eller Docker-socket.
+før start/apply. Proxyen monterer ikke mounts eller Docker-socket.
 
 Agenten får bare offentlig CA/bundle. Privat CA og ekte tokens tilhører den
 betrodde kontroll-/proxysiden. Original CA-nøkkel ligger privat; read-only
@@ -164,5 +176,5 @@ En godkjent upstream kan reflektere en ekte nøkkel i responsen. Responsen
 skannes ikke etter hemmeligheter. Tunnelerte CDN-domener kan tillate domain
 fronting; en tillatt tjeneste er del av tillitsvurderingen. Plassholdere som
 videresendes i URL/body eller vanlige tunneler gir ingen tilgang utenfor
-miljøets proxy. Verktøyenes egne innloggingsdata og hemmeligheter i prosjektfiler
+miljøets proxy. Verktøyenes egne innloggingsdata og hemmeligheter i filer i katalogmounts
 omfattes ikke av denne nøkkelskjermingen.

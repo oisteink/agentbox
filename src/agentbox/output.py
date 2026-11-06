@@ -47,17 +47,24 @@ def human(data, *, table=False):
         print(data, end="" if data.endswith("\n") else "\n")
     elif table and isinstance(data, dict):
         last = "IMAGE" if table == "status" else "PATH"
-        rows = [["NAME", "STATUS", last]]
+        rows = (
+            [["NAME", "TYPE", "STATUS", "PATH"]] if table == "mount" else [["NAME", "STATUS", last]]
+        )
         for name, entry in data.items():
             value = (
                 entry.get("config", {}).get("image", "—")
                 if table == "status"
                 else entry.get("path", "—")
             )
-            rows.append([name, str(entry.get("status", "—")), str(value)])
-        widths = [max(len(row[i]) for row in rows) for i in range(3)]
+            row = [name, str(entry.get("status", "—")), str(value)]
+            if table == "mount":
+                row.insert(1, entry["type"])
+            rows.append(row)
+        widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
         for row in rows:
             print("  ".join(value.ljust(width) for value, width in zip(row, widths)).rstrip())
+        if table == "mount":
+            print("Remove keeps directory files; volume removal deletes data.")
     elif isinstance(data, dict | list):
 
         def fields(value, indent=0):

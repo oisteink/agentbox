@@ -2,9 +2,9 @@ import os
 
 import pytest
 
-from agentbox import projects, uninstall
+from agentbox import mounts, uninstall
 from agentbox.errors import AgentboxError
-from agentbox.projects import grant_acl, named_acl, scan
+from agentbox.mounts import grant_acl, named_acl, scan
 
 
 def test_regular_files_do_not_gain_execute():
@@ -37,35 +37,35 @@ def test_traversal_sets_an_effective_mask():
 
 
 def test_hardlink_rejected_before_any_changes(tmp_path):
-    project = tmp_path / "project"
-    project.mkdir()
+    mount = tmp_path / "mount"
+    mount.mkdir()
     original = tmp_path / "outside"
     original.write_text("unchanged")
     original.chmod(0o640)
-    (project / "inside").hardlink_to(original)
+    (mount / "inside").hardlink_to(original)
     before = original.stat()
     with pytest.raises(AgentboxError, match="Hard-linked"):
-        scan(project, {os.getuid()})
+        scan(mount, {os.getuid()})
     assert original.stat().st_mode == before.st_mode
     assert original.read_text() == "unchanged"
 
 
-def test_project_symlink_is_not_followed(tmp_path):
-    project = tmp_path / "project"
-    project.mkdir()
-    (project / "outside").symlink_to(tmp_path)
-    nodes = scan(project, {os.getuid()})
+def test_mount_symlink_is_not_followed(tmp_path):
+    mount = tmp_path / "mount"
+    mount.mkdir()
+    (mount / "outside").symlink_to(tmp_path)
+    nodes = scan(mount, {os.getuid()})
     assert len(nodes) == 1
 
 
-@pytest.mark.parametrize("scanner", ["project", "uninstall"])
+@pytest.mark.parametrize("scanner", ["mount", "uninstall"])
 def test_nested_mount_is_skipped_without_opening_it(tmp_path, monkeypatch, scanner):
-    root = tmp_path / "project"
+    root = tmp_path / "mount"
     root.mkdir()
     (root / "file").write_text("selected code")
     nested = root / "nested"
     nested.mkdir()
-    monkeypatch.setattr(projects, "_mounts", lambda: {str(nested)})
+    monkeypatch.setattr(mounts, "_mounts", lambda: {str(nested)})
     actual_open = os.open
 
     def inaccessible_mount(path, flags, *args, **kwargs):
@@ -74,6 +74,12 @@ def test_nested_mount_is_skipped_without_opening_it(tmp_path, monkeypatch, scann
             raise PermissionError("nested mount is not accessible to the service user")
         return actual_open(path, flags, *args, **kwargs)
 
-    monkeypatch.setattr(projects.os, "open", inaccessible_mount)
-    nodes = scan(root, {os.getuid()}) if scanner == "project" else uninstall.inspect_tree(root)
+    monkeypatch.setattr(mounts.os, "open", inaccessible_mount)
+    nodes = scan(root, {os.getuid()}) if scanner == "mount" else uninstall.inspect_tree(root)
     assert {node["relative"] for node in nodes} == {".", "file"}
+
+
+def test_repair_grants_owner_bits_without_relying_on_named_owner_entry():
+    result = grant_acl("user::r--\ngroup::---\nother::---\n", 1001, 1000, False)
+    assert "user::rw-\n" in result
+    assert "other::---\n" in result and "group::---\n" in result

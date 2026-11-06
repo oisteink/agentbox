@@ -21,7 +21,7 @@ _abx()
   fi
 
   if (( COMP_CWORD == 1 )); then
-    choices="doctor status image validate project proxy start run stop remove shell logs login-api-key exec completion --help --json --yes"
+    choices="doctor status image validate mount proxy start run stop remove shell logs login-api-key exec completion --help --json --yes"
   elif [[ "$action" == image ]]; then
     if (( COMP_CWORD == 2 )); then
       choices="ls new edit build inspect rm --help --json --yes"
@@ -58,18 +58,22 @@ _abx()
       done < <(abx completion --names configs 2>/dev/null)
     fi
     return
-  elif [[ "$prev" == --path ]]; then
-    compopt -o filenames
-    mapfile -t COMPREPLY < <(compgen -d -- "$cur")
-    return
-  elif [[ "$action" == project ]]; then
+  elif [[ "$action" == mount ]]; then
     if (( COMP_CWORD == 2 )); then
-      choices="add list check repair revoke --help --json --yes"
+      choices="add list check revoke remove --help --json --yes"
     else
       operation="${COMP_WORDS[2]}"
       start=3
-      [[ "$operation" == check || "$operation" == repair || "$operation" == revoke ]] && kind=projects
-      [[ "$operation" == add ]] && choices="--path --help --json --yes"
+      [[ "$operation" == check || "$operation" == remove || "$operation" == revoke ]] && kind=mounts
+      [[ "$operation" == check ]] && choices="--fix --help --json --yes"
+      if [[ "$operation" == add ]]; then
+        choices="--volume --help --json --yes"
+        if (( COMP_CWORD >= 4 )) && [[ "$cur" != -* && "${COMP_WORDS[3]}" != --* ]]; then
+          compopt -o filenames
+          mapfile -t COMPREPLY < <(compgen -d -- "$cur")
+          return
+        fi
+      fi
     fi
   else
     case "$action" in
@@ -81,11 +85,11 @@ _abx()
     esac
   fi
 
-  # Skip option values when locating the environment/project positional argument.
+  # Skip option values when locating the environment/mount positional argument.
   for (( i=start; i<COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
-      --key-file|--path) (( i++ )) ;;
-      --key-file=*|--path=*|--proxy|-h|--help|--json|--yes) ;;
+      --key-file) (( i++ )) ;;
+      --key-file=*|--volume|--fix|--proxy|-h|--help|--json|--yes) ;;
       --) break ;;
       *) positional=1 ;;
     esac

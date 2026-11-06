@@ -106,7 +106,7 @@ def profile(details):
     if details.get("Architecture") not in ("amd64", "arm64"):
         raise AgentboxError("Only 64-bit amd64 and arm64 image profiles are supported")
     if details["Config"].get("Volumes"):
-        raise AgentboxError("Image declares implicit VOLUME mounts; use explicit project mounts")
+        raise AgentboxError("Image declares implicit VOLUME mounts; use explicit mount mounts")
 
 
 def managed(docker, installation, name, *, required=True):

@@ -118,7 +118,7 @@ def target(value):
         "/lib64",
         "/tmp",
     ]
-    if value in ("/", "/home", "/home/agent") or any(
+    if value in ("/", "/home") or any(
         path == PurePosixPath(p) or PurePosixPath(p) in path.parents for p in reserved
     ):
         raise AgentboxError("Mount target overlaps a reserved container path")
@@ -127,7 +127,7 @@ def target(value):
 
 @dataclass(frozen=True)
 class Mount:
-    project: str
+    source: str
     target: str
     mode: str = "rw"
 
@@ -213,14 +213,14 @@ def parse(data):
     command = tuple(text(arg) for arg in command)
     mounts = data["mounts"]
     if not isinstance(mounts, list) or not 1 <= len(mounts) <= 32:
-        raise AgentboxError("Choose between 1 and 32 project mounts")
+        raise AgentboxError("Choose between 1 and 32 mount mounts")
     parsed_mounts = []
     for entry in mounts:
-        fields(entry, {"project", "target", "mode"}, {"project", "target"})
+        fields(entry, {"source", "target", "mode"}, {"source", "target"})
         mode = entry.get("mode", "rw")
         if mode not in ("rw", "ro"):
             raise AgentboxError("Mount mode must be rw or ro")
-        mount = Mount(name(entry["project"]), target(entry["target"]), mode)
+        mount = Mount(name(entry["source"]), target(entry["target"]), mode)
         current = PurePosixPath(mount.target)
         if any(
             current == PurePosixPath(old.target)
@@ -240,7 +240,7 @@ def parse(data):
         or ".." in workpath.parts
         or str(workpath) != workdir
     ):
-        raise AgentboxError("Working directory must be inside a mounted project")
+        raise AgentboxError("Working directory must be inside a registered mount")
     network = fields(data.get("network", {}), {"allow"})
     entries = network.get("allow", [])
     if not isinstance(entries, list) or len(entries) > 128:

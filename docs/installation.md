@@ -67,7 +67,7 @@ Installeren bevarer adressevalget ved reinstallasjon.
 med status `built` etter `abx image build codex`. `abx status` kan vise `{}`
 før første miljø er opprettet.
 
-Fortsett med [prosjektregistrering og første miljø](usage.md).
+Fortsett med [mount-registrering og første miljø](usage.md).
 Versjonsmatrise og skillet mellom labprøver og manuell Debian-utprøving står i
 [teststatus](test-results.md).
 
@@ -88,25 +88,26 @@ sudo scripts/uninstall.sh
 
 Skriptet bruker systemets Python og trenger ikke den installerte CLI-en.
 Det varsler om at
-miljøene stoppes og at containerhjem, innlogging og images slettes. Deretter:
+miljøene stoppes og at containerhjem, innlogging, volumer og images slettes. Deretter:
 
 1. Stoppes den dedikerte brukerinstansen, Docker og øvrige agentbox-prosesser.
 2. Overføres agentbox-eide filer, kataloger og selve symlinkene i registrerte
-   prosjekter til utviklerens UID og primærgruppe. Dette omfatter også
-   tilbakekalte prosjekter som fortsatt finnes i registeret.
+   katalogmounts til utviklerens UID og primærgruppe. Dette omfatter også
+   tilbakekalte katalogmounts som fortsatt finnes i registeret.
 3. Fjernes tjenestebrukerens tilgangs- og standard-ACL-er. Andre ACL-oppføringer
    og masker beholdes. Foreldrenes opprinnelige ACL gjenopprettes når den ikke
    er endret manuelt; ellers fjernes bare tjenestebrukerens oppføring.
 4. Fjernes tjenestebrukeren, dens egne UID/GID-områder, udelte gruppe,
    systemd-oppsett, sudo-regel, programmer, completion og Agentbox sine data.
 
-Prosjektinnhold, miljøfiler og lokale Dockerfile-oppskrifter utenfor
-installasjonen beholdes. Bygde images i Agentbox-daemonen slettes. Andre
+Kataloginnhold, miljøfiler og lokale Dockerfile-oppskrifter utenfor
+installasjonen beholdes. Navngitte volumer og bygde images i Agentbox-daemonen slettes.
+Kataloger som er avregistrert med mount remove inngår ikke i eierskapsryddingen. Andre
 Docker-instansers brukere, konfigurasjon og data berøres ikke. Docker-pakkene
 avinstalleres ikke.
 
 Filryddingen følger ikke symlinker og krysser ikke nestede mounts.
-Endret prosjektrot, manglende aktiv prosjektmappe eller berørte hardlenker gir
+Endret katalogrot, manglende aktiv vertskatalog eller berørte hardlenker gir
 feil før brukeren og installasjonsdataene slettes. Rett årsaken og kjør
 `sudo scripts/uninstall.sh` igjen. Miljøene kan allerede være stoppet ved en slik feil.
-Slettede tilbakekalte prosjekter hoppes over.
+Slettede tilbakekalte mounts hoppes over.

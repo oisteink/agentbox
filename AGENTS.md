@@ -6,7 +6,9 @@ Agentbox kjører kodeagenter i en egen rootless Docker-instans som Linux-brukere
 `agentbox`, med hjem `/var/lib/agentbox`. Hvert miljø har en agentcontainer på
 et lukket nettverk og en Go-proxy med eksplisitt tillatte domene/port-par.
 Agentimages bygges fra lokale Dockerfiles; imagevalg er adskilt fra isoleringen.
-Eksisterende prosjektmapper monteres direkte med ACL-basert tilgang.
+Registrerte mounts er vertskataloger med ACL-basert tilgang eller navngitte
+Docker-volumer. Miljøfiler bruker mounts[].source. Mount check --fix deler
+reparasjon med registrering; tilbakekalling skal respekteres.
 Worktree-støtte er utsatt.
 
 Debian er minste målplattform. Ubuntu kan brukes i laben, med separat
@@ -56,7 +58,7 @@ opprettes med `abx image new NAVN` (eventuelt `--template codex`) og bygges
 med `abx image build NAVN`. Oppskrifter ligger under `~/.config/agentbox/images/`.
 Bygging av images i bruk av eksisterende containere, også stoppede, avvises.
 `abx run MILJØFIL` kjører kommandoen midlertidig i terminalen og fjerner
-miljøet ved avslutning; prosjektmounts beholdes. Med `persistent: false`
+miljøet ved avslutning; katalogmounts beholdes. Med `persistent: false`
 klargjør start i bakgrunnen; shell og stop fjerner miljøet.
 `scripts/lab/check.sh` installerer og bygger aktuell kilde inne i laben og
 kjører livssyklus/proxy sekvensielt. `--uninstall` velger avinstallasjon sist.
@@ -67,7 +69,7 @@ Bruk fire mellomrom i Python, Ruff med 100 tegns linjelengde og to mellomrom
 i YAML. Bashskript skal ha eksplisitt feilhåndtering. Bruk `test_*.py` og
 `test_*` for tester; ingen dekningsprosent er konfigurert.
 Bruk generiske prosjektnavn, brukernavn og filstier i eksempler og testdata;
-ikke hent dem fra operatørens personlige prosjekter.
+ikke hent dem fra operatørens personlige mounts.
 Dokumentasjon beskriver gjeldende produkt, bruk og tekniske begrensninger.
 Ikke ta med utviklingshistorie, migrasjonsfortellinger eller før/nå-sammenligninger.
 Teststatus viser resultater og bevisomfang, ikke en arbeidsdagbok.

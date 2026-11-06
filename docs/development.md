@@ -60,5 +60,5 @@ kontrollinstans og kjører avinstallasjon etter livssyklus- og proxyprøvene:
 scripts/lab/vm.sh ssh 'cd /home/developer/agentbox-src && bash scripts/lab/check.sh --uninstall'
 ```
 
-Skriptet bruker midlertidige prosjekter og avinstallerer fra repoet med
+Skriptet bruker midlertidige mounts og avinstallerer fra repoet med
 `sudo scripts/uninstall.sh`. Det finnes ingen avinstallasjonskommando i CLI-en.

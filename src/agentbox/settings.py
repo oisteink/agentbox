@@ -1,4 +1,4 @@
-"""Administrator-owned installation settings, never read from project directories."""
+"""Administrator-owned installation settings, never read from mount directories."""
 
 import json
 import os

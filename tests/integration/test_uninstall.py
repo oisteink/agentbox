@@ -23,7 +23,7 @@ def run(*args, check=True):
     return subprocess.run(args, check=check, text=True, capture_output=True, timeout=180)
 
 
-def test_full_uninstall_keeps_projects_and_returns_ownership():
+def test_full_uninstall_keeps_mounts_and_returns_ownership():
     service_uid = pwd.getpwnam("agentbox").pw_uid
     operator_uid = os.getuid()
     token = uuid.uuid4().hex[:8]
@@ -39,7 +39,22 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
     outside.chmod(0o700)  # Skipping a nested mount must not require access to its root.
     mount = active / "nested"
     registered = []
+    volume_source = "uninstall-" + token
+    volume_name = "agentbox-mount-" + volume_source
+    rootful_volume = run(
+        "sudo", "docker", "--host", "unix:///var/run/docker.sock", "volume", "create", volume_name
+    ).stdout.strip()
+    rootful_before = run(
+        "sudo",
+        "docker",
+        "--host",
+        "unix:///var/run/docker.sock",
+        "volume",
+        "inspect",
+        rootful_volume,
+    ).stdout
     try:
+        run("abx", "mount", "add", volume_source, "--volume")
         protected = outside / "protected"
         protected.write_text("outside content")
         run("sudo", "chown", "root:root", str(protected))
@@ -47,7 +62,7 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
         (active / "developer-file").write_text("keep developer code")
         for name, path in ((active_name, active), (revoked_name, revoked)):
             registered.append(name)
-            run("abx", "project", "add", name, "--path", str(path))
+            run("abx", "mount", "add", name, str(path))
         # Simulate a file from an earlier, now revoked environment.
         run(
             "sudo",
@@ -59,7 +74,7 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
             "sh",
             str(revoked / "retained"),
         )
-        run("abx", "project", "revoke", revoked_name)
+        run("abx", "mount", "revoke", revoked_name)
         # Manual ancestor ACL edits must survive uninstall.
         run("setfacl", "-m", "u:65534:--x", str(parent))
         before_parent_acl = run("getfacl", "-cpn", str(parent)).stdout
@@ -72,7 +87,10 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
                     "name": env,
                     "image": "smoke",
                     "command": ["bash"],
-                    "mounts": [{"project": active_name, "target": "/workspace"}],
+                    "mounts": [
+                        {"source": active_name, "target": "/workspace"},
+                        {"source": volume_source, "target": "/home/agent/.config/tool"},
+                    ],
                     "network": {"allow": []},
                     "resources": {"cpus": 0.5, "memory": "256m", "pids": 64},
                 }
@@ -152,6 +170,19 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
             ).stdout.strip()
             == rootful_id
         )
+        assert (
+            run(
+                "sudo",
+                "docker",
+                "--host",
+                "unix:///var/run/docker.sock",
+                "volume",
+                "inspect",
+                rootful_volume,
+            ).stdout
+            == rootful_before
+        )
+
     finally:
         errors = []
 
@@ -167,14 +198,23 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
             cleanup("sudo", "umount", str(mount))
         if Path("/usr/local/bin/abx").exists():
             cleanup("abx", "remove", env)
-            listed = run("abx", "--json", "project", "list", check=False)
+            listed = run("abx", "--json", "mount", "list", check=False)
             if listed.returncode:
                 errors.append(listed.stderr)
             else:
                 entries = json.loads(listed.stdout)["data"]
                 for name in registered:
                     if name in entries and entries[name]["status"] != "revoked":
-                        cleanup("abx", "project", "revoke", name)
+                        cleanup("abx", "mount", "revoke", name)
+        cleanup(
+            "sudo",
+            "docker",
+            "--host",
+            "unix:///var/run/docker.sock",
+            "volume",
+            "rm",
+            rootful_volume,
+        )
         if errors:
             pytest.fail("Uninstall cleanup failed:\n" + "\n".join(errors))
         shutil.rmtree(parent)
