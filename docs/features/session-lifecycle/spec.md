@@ -251,6 +251,10 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   Mennesketekst blandes ikke inn i JSON-strømmen. Klienten kan reagere på
   kjente feilkategorier og styre egen timeout; dette innfører ikke et eget
   timeout-flagg i abx.
+- Vanlig kjøring velger interaktiv TTY automatisk når stdin og stdout er
+  terminaler. JSON-modus kjører uten TTY, men videresender fortsatt stdin
+  til kommandoen. Kommandoens stdout og stderr sendes som separate
+  JSON-hendelser. Interaktive agentgrensesnitt brukes gjennom vanlig modus.
 - Handlinger som krever bekreftelse spør brukeren i interaktiv menneskemodus.
   JSON-modus spør aldri interaktivt; uten samtykke returneres et strukturert
   resultat om at bekreftelse kreves, med hvilke miljøer som berøres.
@@ -271,8 +275,9 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   eksplisitt proxy apply som mulighet for nettverk/tokens underveis.
 - Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
   avklares i research/plan etter at CLI-gjennomgangen er ferdig.
-- Detaljskjema for JSON-hendelser og samspill med stdin/TTY ved start/exec/run
-  avklares i research/plan. JSON Lines med hendelser og sluttresultat er valgt.
+- Detaljskjema for JSON-hendelser avklares i research/plan. JSON Lines med
+  hendelser og sluttresultat, separat stdout/stderr og stdin uten TTY i
+  JSON-modus er valgt.
 - Mekanisme for å oppdage endret proxykode og ta nytt proxyimage i bruk ved
   oppgradering er ikke valgt. Den må håndtere at gamle proxycontainere finnes.
 - Mount remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding
