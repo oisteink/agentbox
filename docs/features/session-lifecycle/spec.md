@@ -45,6 +45,11 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   kommandoer/økter i samme container og til slutt fjernes med stop.
 - `abx run CONFIG` bruker alltid et nytt, separat midlertidig miljø og fjerner
   bare dette etter bruk. Et eksisterende miljø fra samme konfigurasjon berøres ikke.
+- Hver run-instans får et automatisk unikt navn, eksempelvis analyse-run-a1b2.
+  Navnet vises ved oppstart og i status mens instansen finnes, og kan brukes
+  med logs, stop og nødstopp. Flere run fra samme konfigurasjon kan kjøre
+  samtidig. Etter opprydding fjernes instansen fra status; den opprinnelige
+  miljøkonfigurasjonen og eventuelt vanlig miljø beholdes.
 - `abx remove NAVN` rydder både persistente og ikke-persistente miljøer, også
   kjørende. Allerede fjernede ressurser krever ingen handling.
 - Stopp/fjerning sletter ikke miljøkonfigurasjon, prosjektfiler eller
