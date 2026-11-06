@@ -147,6 +147,7 @@ beholdes. Se [midlertidig kjøring](docs/usage.md#midlertidig-kjøring).
 | [Utvikling](docs/development.md) | Lokale kontroller og disponibel testlab |
 | [Teststrategi](docs/testing.md) | Kravdekning, testansvar og regler for nye tester |
 | [Teststatus](docs/test-results.md) | Observerte resultater og testavgrensninger |
+| [Planlagt CLI](docs/features/session-lifecycle/spec.md) | Vedtatte krav til videre arbeid; ikke implementert |
 
 Full avinstallasjon gjøres med `sudo scripts/uninstall.sh`.
 Kommandoen stopper miljøene, overfører agentbox-eide prosjektfiler til deg og

@@ -1,5 +1,9 @@
 # Videre arbeid
 
+Vedtatte CLI-krav og oppfølgingsissues står i
+[planlagt CLI og livssyklus](features/session-lifecycle/spec.md#oppfølging).
+Disse er ikke implementert.
+
 Gjeldende testansvar og kravdekning står i [teststrategien](testing.md).
 De viktigste gjenstående verifikasjonene er:
 

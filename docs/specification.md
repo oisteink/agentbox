@@ -8,6 +8,9 @@ Dette er produktkontrakten for Agentbox. [Bruksveiledningen](usage.md)
 beskriver kommandoene, [arkitekturen](architecture.md) forklarer oppbygningen,
 og [teststatus](test-results.md) avgrenser hva som er verifisert.
 
+Planlagte endringer i CLI og livssyklus står i [egen kravspesifikasjon](features/session-lifecycle/spec.md)
+og er ikke del av kontrakten nedenfor.
+
 Kommandonavnet er `abx`, både ved pakkeinstallasjon og vertsinstallasjon.
 Hjelp, feilmeldinger og Bash-completion bruker dette navnet.
 

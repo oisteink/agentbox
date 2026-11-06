@@ -1,8 +1,8 @@
-# Delresearch: Bedrock-bearer-token
+# Bedrock-bearer-token: grunnlag og verifikasjonsbehov
 
 Status: dokumentasjon og lokal proxykode undersøkt 3. november 2026.
-Brukeren bekreftet at dette gjelder AWS_BEARER_TOKEN_BEDROCK for Amazon
-Bedrock. Ingen nye tester, modellkall eller kodeendringer er utført.
+Omfanget er AWS_BEARER_TOKEN_BEDROCK for Amazon Bedrock. Funnene bygger på
+dokumentasjon og kodelesing, uten nye tester eller modellkall.
 Øvrig research for CLI-/livssyklusendringene er ikke gjennomført.
 
 ## Grunnlag
@@ -41,8 +41,9 @@ Funnene viser dokumentert støtte i dagens upstream og en eksisterende
 utskiftingsmekanisme i Agentbox. Det er ikke bevis for ende-til-ende-støtte
 med våre pinnede Codex/OpenCode/Claude Code-versjoner. Klientens aksept av
 plassholder, proxy/CA, modellvalg, nødvendige destinasjoner og AWS-streaming
-må verifiseres senere, etter at brukerflyten er avklart.
+må verifiseres med de valgte klientversjonene før kompatibilitet kan påstås.
 
 login-api-key sender ekte nøkkel til codex login via stdin og går utenom
-proxybeskyttelsen. Brukeren har besluttet at kommandoen og kontrolloperasjonen
-skal fjernes. Beslutningen er tatt inn i spec; kodeendringen er ikke utført.
+proxybeskyttelsen. Kommandoen og kontrolloperasjonen
+skal fjernes etter [den planlagte kontrakten](spec.md#proxy-og-nødstopp).
+Dagens implementasjon har fortsatt denne innloggingsveien.

@@ -1,10 +1,27 @@
-# Kjøring og livssyklus
+# Planlagt CLI og livssyklus
 
-Status: brukeravklart kontrakt under videre gjennomgang av CLI-en.
-Dette beskriver ønsket oppførsel, ikke dagens implementasjon.
-Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
+Status: vedtatte krav for videre implementasjon.
+Dette dokumentet beskriver planlagt oppførsel. Dagens produktkontrakt står i
+[produktspesifikasjonen](../../specification.md), og faktisk verifikasjon i
+[teststatus](../../test-results.md). Merking som «foreslått» angir detaljer som
+fortsatt må fastsettes i research og plan.
 
-## Avklart
+## Oppfølging
+
+| Område | Oppgave |
+| --- | --- |
+| Samle start, exec og run med automatisk livssyklus | [#11](https://github.com/oisteink/agentbox/issues/11) |
+| Gjør proxyoppgradering og nødstopp pålitelige | [#12](https://github.com/oisteink/agentbox/issues/12) |
+| Erstatt prosjekter med mounts og Docker-volumer | [#13](https://github.com/oisteink/agentbox/issues/13) |
+| Utvid imagemaler og bygg ved behov | [#14](https://github.com/oisteink/agentbox/issues/14) |
+| Administrer miljøfiler, status og logger | [#15](https://github.com/oisteink/agentbox/issues/15) |
+| Gi CLI-en menneskeutskrift og strukturert JSON | [#16](https://github.com/oisteink/agentbox/issues/16) |
+| Samle diagnose og reparasjon i doctor | [#17](https://github.com/oisteink/agentbox/issues/17) |
+
+Felles utskriftskontrakt etableres tidlig. Livssyklus, nødstopp og container-
+erstatning samordnes; doctor gjenbruker operasjonene fra mounts og images.
+
+## Kjøring og persistens
 
 - Normal bruk starter nødvendige ressurser automatisk. Brukeren skal ikke
   henvises til en annen kommando når abx har informasjonen som trengs.
@@ -52,8 +69,11 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   miljøkonfigurasjonen og eventuelt vanlig miljø beholdes.
 - `abx remove NAVN` rydder både persistente og ikke-persistente miljøer, også
   kjørende. Allerede fjernede ressurser krever ingen handling.
-- Stopp/fjerning sletter ikke miljøkonfigurasjon, prosjektfiler eller
-  prosjektregistreringer. Fjerning av containerlaget sletter hjem/innlogging.
+- Stopp/fjerning sletter ikke miljøkonfigurasjon, filer i mounts eller
+  mount-registreringer. Fjerning av containerlaget sletter hjem/innlogging.
+
+## Miljøfiler, status og logger
+
 - `abx status` viser en tabell over alle konfigurerte miljøer, også dem som
   aldri er startet eller har fått containeren fjernet. Oversikten viser
   miljønavn, status (kjører/stoppet/ikke opprettet) og persistens.
@@ -65,6 +85,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx validate CONFIG` kontrollerer miljøfilen uten oppstart. Menneskemodus
   viser en kort bekreftelse eller konkrete feil; `--json` gir strukturert
   resultat eller feil etter den felles utskriftskontrakten.
+
+## Proxy og nødstopp
+
 - `abx proxy apply CONFIG` beholdes for eksplisitt oppdatering av nettverksregler
   og API-nøkler underveis. Proxyen erstattes; agentcontaineren og innloggingen
   beholdes.
@@ -78,23 +101,25 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   melder at nettet er stengt. Feil skal rapporteres, ikke presenteres som
   vellykket frakobling. Gjennomføring må fortsatt ivareta ressursidentitet og
   samtidige operasjoner; mekanismen er ikke valgt.
-- Miljøet skal også ha en nødbrems: tvungen stopp av agent og proxy uten å
-  vente på normal avslutning. `abx stop NAVN --force` er foreslått syntaks;
-  konkret flagg og oppryddings-/persistensdetaljer er ikke valgt.
+- `abx stop NAVN --force` er miljøets nødbrems: tvungen stopp av agent og
+  proxy uten å vente på normal avslutning. Detaljer for etterfølgende
+  opprydding og persistens må fastsettes.
 - Nødstopp trumfer aktive kjøringer, eventuell sesjonsregistrering og
   --keep-running. Den skal bryte proxytrafikk og tvinge berørte agentprosesser
   ned uten å vente på normal avslutning, aktive sesjoner eller felles
   operasjonslås. Tyngre opprydding må ikke forsinke selve stansen.
-- Brukerens eksempel med systemctl stop agentbox beskriver hva en person
-  i panikk kan forsøke, ikke et krav om agentbox.service. Ingen slik ny
-  tjeneste er ønsket. Nødstopp må være lett å finne og forstå; eventuell
-  global inngang avklares uten å innføre en tjeneste bare for dette navnet.
+- Nødstopp må være lett å finne og forstå. En global inngang avklares
+  uten å innføre en egen agentbox.service bare for tjenestenavnet.
   Global stopp skal avgrenses til Agentbox-miljøer og proxyer, uten å berøre
   andre Docker-instansers ressurser eller slette mountdata.
 - Nødstopp skal også hindre at pågående oppstarter eller avslutningslogikk
   gjenoppretter miljø/proxy etter stansen. Ny oppstart skal kreve en eksplisitt
   handling. Nødstopp må fungere uavhengig av vanlig CLI-kø; håndtering av
   en utilgjengelig Docker-daemon og bekreftelse av faktisk stans må avklares.
+- `abx proxy rotate-ca NAVN` beholdes. Den stopper miljøet og bytter dets
+  CA; neste oppstart bruker den nye CA-en. Agentcontaineren får offentlig
+  CA/bundle montert ro, mens privat CA-nøkkel bare er tilgjengelig på
+  kontroll-/proxysiden.
 - `abx proxy build` tas ut av bruker-CLI-en. Oppgradering skjer ved
   reinstallasjon; installeren skal bygge nytt proxyimage når proxykoden
   er endret og gjenbruke eksisterende image når den er uendret. Byggingen
@@ -102,6 +127,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - `abx login-api-key` fjernes, inkludert kontrolloperasjonen som sender ekte
   nøkkel til Codex. API-nøkler gis gjennom proxyens plassholder-/tokenbytte.
   Kontoinnlogging via nettleser/device-login håndteres av agentverktøyet.
+
+## Mounts og volumer
+
 - Registrerte vertskataloger kalles mounts. CLI-gruppen blir `abx mount`:
   add NAVN MAPPE, list, check, revoke og remove. En registrering
   godkjenner én katalog og administrerer dens identitet og filtilgang.
@@ -148,6 +176,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   vises hvilke miljøer som berøres og brukeren tilbys å stoppe dem og fullføre
   fjerningen. Ved avslag beholdes registreringen. Opprydding må lykkes før
   registreringen fjernes; feil beholder grunnlaget for nytt forsøk.
+
+## Diagnose og reparasjon
+
 - `abx doctor` beholdes som samlet diagnose av installasjon/runtime,
   registrerte mounts og deres rettigheter, samt images som mangler bygg.
   Uten --fix undersøker den og rapporterer funn uten å reparere.
@@ -156,6 +187,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   gjenbruke eksisterende felles kode, uten parallelle implementasjoner.
   Resultatet viser hva som er reparert og hvilke problemer som gjenstår.
   Gjeldende eierskaps-, bruks- og sikkerhetskontroller gjelder også via --fix.
+
+## Images og maler
+
 - `abx image new NAVN --template MAL` kan bruke både medfølgende maler
   (base, codex, opencode, claude-code) og lokale imageoppskrifter som mal.
   Oppskriften kopieres med Dockerfile, .dockerignore og hjelpeskript;
@@ -199,6 +233,9 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   men beholder den lokale Dockerfilen og resten av oppskriften for senere bygg.
   Fjerning avvises når containere bruker imaget, også stoppede containere.
   Dette er forskjellig fra bygging, som tillates når alle brukere er stoppet.
+
+## Completion og miljøredigering
+
 - `abx completion bash` beholdes for aktivering i et eksisterende skall.
   Installeren setter opp completion for nye Bash-skall med bash-completion.
   Forslag omfatter kommandoer, flagg, miljøer, mounts, images, imagemaler og
@@ -235,7 +272,7 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 
 ## Utskrift for mennesker og agenter
 
-Status: felles føring avklart; detaljformat avklares under kommandogjennomgangen.
+Felles kontrakt for alle kommandoer; konkrete JSON-felter fastsettes før implementasjon.
 
 - Standardutskrift er for mennesker: tabeller for oversikter, lesbare detaljer
   og konkrete feilmeldinger der det passer kommandoen.
@@ -260,8 +297,7 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   resultat om at bekreftelse kreves, med hvilke miljøer som berøres.
   --yes gir samtykke på forhånd. --force gjelder tvungen nødstopp og er ikke
   et synonym for --yes. Bekreftelseskrav følger øvrig JSON-feilkontrakt.
-- Føringen gjelder på tvers av CLI-en. Utskrift avklares organisk for hver
-  kommando; gjennomføringen samles etter at brukerflyten er ferdig diskutert.
+- Kommandoenes menneskeutskrift og JSON-data skal beskrive samme resultat.
 
 ## Åpent før implementasjon
 
@@ -274,7 +310,7 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
   avklart. Miljøkonfigurasjonsendringer gjelder ved neste oppstart, med
   eksplisitt proxy apply som mulighet for nettverk/tokens underveis.
 - Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
-  avklares i research/plan etter at CLI-gjennomgangen er ferdig.
+  avklares i research/plan.
 - Detaljskjema for JSON-hendelser avklares i research/plan. JSON Lines med
   hendelser og sluttresultat, separat stdout/stderr og stdin uten TTY i
   JSON-modus er valgt.
@@ -283,5 +319,3 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
 - Mount remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding
   frem til denne er fullført. Konkrete regler for oppryddingen avklares i
   research/plan; samtykke i JSON-modus håndteres med --yes som avklart over.
-- Brukeren vurderer å flytte videre oppfølging til issues. Ingen issues er
-  opprettet eller konkret inndeling avklart.
