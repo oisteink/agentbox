@@ -17,7 +17,7 @@ def temporary_control(tmp_path, monkeypatch):
     def verified(data):
         data["daemon_id"] = "daemon"
 
-    def start(data, payload, tokens):
+    def start(data, payload, tokens, **kwargs):
         entry = {"resources": {"agent": "original"}}
         data["environments"][payload["name"]] = entry
         control.save(data)
@@ -98,8 +98,8 @@ def test_run_cleans_partial_start_failure(temporary_control, monkeypatch):
     control, payload, removed = temporary_control
     original = control.start
 
-    def fail(data, payload, tokens):
-        original(data, payload, tokens)
+    def fail(data, payload, tokens, **kwargs):
+        original(data, payload, tokens, **kwargs)
         raise AgentboxError("start failed")
 
     monkeypatch.setattr(control, "start", fail)

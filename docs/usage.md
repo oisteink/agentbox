@@ -16,7 +16,7 @@ er kommandoargumenter. `--` skiller eksplisitt mellom abx og kommandoen.
 
 ```sh
 abx --json status
-abx image ls --json
+abx image list --json
 printf 'input' | abx --json exec example-codex -- cat
 ```
 
@@ -195,7 +195,7 @@ abx start example-codex
 abx shell example-codex
 ```
 
-`start`, `run`, `validate` og `proxy apply` finner kortnavn uten filending under
+`start`, `run`, `exec`, `validate` og `proxy apply` finner kortnavn uten filending under
 `~/.config/agentbox/environments/`, eller under
 `$XDG_CONFIG_HOME/agentbox/environments/` hvis denne variabelen er satt.
 Begge filendingene `.yaml` og `.yml` støttes. Finnes begge for samme kortnavn,
@@ -208,7 +208,7 @@ fil hvis den finnes, ellers samme filnavn i standardkatalogen.
 Miljønavnet hentes fra `name` i YAML-filen. Filnavnet velger du selv. `start`
 klargjør miljøet med en oppholdsprosess. `shell` kjører `command` fra miljøets
 lagrede konfigurasjon, som kan være Codex eller Bash. Du kan åpne Bash
-separat uten å endre konfigurasjonen:
+separat uten å endre konfigurasjonen; exec bygger og starter ved behov:
 
 ```sh
 abx exec example-codex -- bash
@@ -222,8 +222,13 @@ abx status
 abx stop example-codex
 ```
 
-Et stoppet miljø gjenopptas med samme `start`-kommando og miljøfil.
-Miljøene startes ikke automatisk etter vertsreboot.
+Et stoppet miljø gjenopptas med samme `start`-kommando og miljøfil. Ved endret
+image, konfigurasjon eller vertsadresse erstattes containerlaget; eksplisitte
+mounts beholdes. Kjørende miljøer beholder sitt oppsett med pending-beskjed.
+Exec bruker samme filoppslag som start, velger en konkret container og lar
+miljøet kjøre videre etter kommandoen. På allerede kjørende agent beholder
+exec proxyen stoppet hvis du har brukt proxy stop. Miljøene startes ikke
+automatisk etter vertsreboot.
 
 ## Miljø uten bevart containerlag
 
@@ -254,8 +259,8 @@ avsluttes, fjernes hele miljøet, inkludert eventuelle ekstra prosesser.
 
 Ved SIGKILL eller vertskrasj kan ressurser gjenstå. En allerede reservert
 shell-økt gjenbrukes ikke; fjern miljøet med `abx remove NAVN` og start på nytt.
-Endring av `persistent` for et eksisterende miljø krever også `remove` og ny
-`start`. Da slettes containerlaget; monterte filer i katalogmounts består.
+Endret `persistent` tas i bruk ved neste oppstart av stoppet miljø, med nytt
+containerlag og bevarte eksplisitte mounts.
 
 ## Midlertidig kjøring
 
@@ -427,10 +432,11 @@ Gjentatt `start` av et uendret, kjørende miljø bytter ikke token; bruk apply.
 Proxybytte beholder klientvariabelen og plassholderen. En ikke-tom nøkkel kan
 roteres, og en eksisterende klientvariabel kan kobles til en annen kilde,
 så lenge begge kilder gir ikke-tom verdi. Tom kan tilsvarende forbli tom.
-Et nytt klientnavn krever eksplisitt gjenskaping av agentcontaineren.
-Ved tom/ikke-tom overgang stopper apply eller gjenopptak gammel proxy og gir
-beskjed om gjenskaping. Agentens eksisterende miljø endres ikke. Dette gjelder
-også om kilden mangler når du starter et tidligere opprettet, stoppet miljø.
+Nye klientnavn og tom/ikke-tom overgang krever ny agentcontainer. Start av
+stoppet miljø erstatter containeren automatisk; eksplisitte mounts består.
+Proxy apply fjerner gammel proxy og avviser slik overgang på samme agent.
+Kjørende start/exec beholder oppsettet med pending-beskjed, uten å gjenåpne
+en stoppet proxy. Bruk proxy stop for umiddelbar lokal tilbakekalling.
 **`remove` sletter containerlaget; data i eksplisitte mounts beholdes.**
 Runtime-navn som `HOME`, `PATH`, proxy- og CA-variabler er reservert på
 klientsiden av et alias. Kilden på verten kan ha et annet navn.
@@ -521,7 +527,7 @@ JavaScript-miljø:
 abx image new js
 abx image edit js
 abx image build js
-abx image ls
+abx image list
 abx image inspect js
 ```
 
@@ -567,41 +573,70 @@ oppdateringssjekk med `DISABLE_AUTOUPDATER=1`.
 Malene og miljøfilene er utgangspunkt. Tilpass pakker, versjoner, kommando og
 nettverkspolicy til egen bruk. Prøveomfanget står i [teststatus](test-results.md).
 
-`edit NAVN` åpner Dockerfilen i `$VISUAL`, deretter `$EDITOR`, eller `editor`
-hvis ingen er satt. Editorargumenter støttes, for eksempel `VISUAL="code --wait"`.
-Editoren kjører som deg med oppskriftskatalogen som arbeidskatalog, og arver
-terminalen. Du kan også åpne `.dockerignore` og hjelpeskript derfra. Kommandoen
-returnerer editorens exitkode. Redigering er tillatt mens imaget brukes;
-bygging skjer først når du kjører `image build`.
+## Lokale maler, redigering og bygg
 
-Oppskriftene ligger under `~/.config/agentbox/images/`, eller
-`$XDG_CONFIG_HOME/agentbox/images/`. Hele katalogen er byggkontekst, slik at
-vanlig `COPY` og hjelpeskript fungerer. Symbolske lenker pakkes som lenker;
-lenker ut av konteksten og spesialfiler avvises. Hele konteksten overføres
-til en privat midlertidig katalog på kontrollsiden, mens Docker behandler
-`.dockerignore` under byggingen. Hold oppskrifter og kontekst utenfor agentens
-skrivbare mounts. Byggingen bruker kontrollsidens nettverkstilgang.
+```sh
+abx image new js
+abx image new default --template base
+abx image new task --template default
+abx image edit js
+abx image list
+abx image inspect js
+abx image build js
+abx image remove js
+```
 
-Velg `image: js` i miljøfilen. `ls` viser oppskrifter med status `unbuilt`
-eller `built`, tag, ID og containere. `inspect` viser også oppskriftsstien.
-Status forteller om et bygget image finnes; den sporer ikke endringer i
-Dockerfilen. Bygging skjer eksplisitt, uten automatisk pull ved miljøstart.
-Baseimages i `FROM` kan hentes fra registry som ved vanlig Docker-bygging.
+Uten `--template` brukes din lokale `default`, ellers medfølgende `base`.
+Du kan velge alle lokale oppskrifter som mal, også ubygde. Medfølgende
+base/codex/opencode/claude-code brukes når ingen lokal oppskrift har samme
+navn. Medfølgende filer ligger i pakkens templates-katalog, på verten under
+`/opt/agentbox/lib/agentbox/templates/`. Reinstallasjon gjenoppretter dem;
+dine filer under XDG/~/.config/agentbox/images beholdes.
 
-Bygg og `abx image rm js` avvises så lenge en eksisterende container bruker
-samme image-ID, også når containeren er stoppet. Fjern de berørte miljøene
-med `abx remove MILJØ` før ombygging. `remove` sletter containerlaget,
-inkludert hjem og innlogging; behold nødvendige arbeidsfiler i katalogmounts.
-`image rm` fjerner det bygde imagets tag og beholder oppskriften for senere bygg.
+New kopierer hele malens byggkontekst til en selvstendig katalog, inkludert
+`.dockerignore`, hjelpeskript, underkataloger og lenker som lenker. Den
+overskriver ikke eksisterende mål. Senere endringer i malen endrer ikke kopien.
 
-Images må være amd64 eller arm64, støtte UID 0 og ha `/bin/sh` og
-`sleep infinity`, samt støtte [CA-oppsettet](#api-tokens-i-proxyen).
-Deklarerte `VOLUME`-mounts avvises. Alle images bruker samme nettverks- og
-syscallbegrensninger; se [arkitekturvalg](decisions.md#lokale-imageoppskrifter).
+Edit åpner Dockerfilen i `$VISUAL`, deretter `$EDITOR`, ellers `editor`.
+Siterte argumenter støttes, eksempelvis `VISUAL="code --wait"`. Editoren
+arver vanlig terminal og miljø, med oppskriften som arbeidskatalog. Du kan
+redigere `.dockerignore` og hjelpeskript derfra. Etterpå vises om konteksten
+ble endret, også om editoren avsluttet med feil. JSON-resultatet har `changed`
+og `exit_code`. Edit starter ingen bygging.
+
+List viser `unbuilt`, `stale` eller `built`; inspect viser også ID, inputdigest
+og brukere. Sti, filbytes, modus og lenkemål inngår i endringskontrollen.
+Bare endret mtime/eier utløser ikke bygg. Hele overførte konteksten teller,
+også filer ekskludert av `.dockerignore`; slike endringer kan derfor gi ekstra
+bygg. Docker behandler selv ignore-reglene og vanlig COPY under byggingen.
+Lenker følges ikke ved overføring; utrygge lenker og spesialfiler avvises.
+Hold konteksten utenfor agentens skrivbare mounts. Hele konteksten går til en
+privat midlertidig katalog på kontrollsiden før Docker filtrerer den.
+
+Start, run og exec bygger ved behov. Image build kjører et eksplisitt Docker-
+bygg med vanlig cachebehandling. Velg en ny FROM-versjon når du vil endre base.
+Byggingen bruker kontrollsidens nettverk. Registryendring i uendret FROM-tag
+oppdages ikke som en lokal oppskriftsendring.
+
+Kjørende brukere sperrer bygg. Stoppede brukere tillater bygg; du trenger ikke
+fjerne miljøene først. Ved neste oppstart tas nytt image i bruk ved å erstatte
+stoppet container. Umonterte profiler og annet containerinnhold kan da forsvinne;
+bevar data i katalog-/volummounts. Et kjørende miljø beholdes med beskjed om at
+endringer venter til neste oppstart. `exec` åpner ikke en proxy som er stoppet
+på et allerede kjørende miljø.
+
+Remove fjerner bygget image/tag og beholder oppskriften. Både kjørende og
+stoppede brukere sperrer remove. Inspect viser hvem som bruker oppskriftens
+images, også når taggen er flyttet. Avledede images med egne referanser regnes
+ikke som brukere bare fordi de arver image-labels.
+
+Images må være amd64 eller arm64, støtte UID 0, `/bin/sh`, `sleep infinity`
+og [CA-oppsettet](#api-tokens-i-proxyen). Dockerfile-deklarert VOLUME avvises;
+velg registrerte mounts i miljøfilen. Alle agentimages bruker samme isolering.
 
 Proxyimaget er en intern komponent som installeren bygger når det mangler.
 `abx proxy build` bygger det på nytt fra installert kilde. Det vises ikke i
-`image ls` og har ingen brukeroppskrift. Alle containere med samme proxyimage-ID
+`image list` og har ingen brukeroppskrift. Alle containere med samme proxyimage-ID
 må fjernes før bygging; stopp alene frigjør ikke imaget. For hvert berørt miljø:
 
 ```sh
@@ -613,8 +648,10 @@ abx start example-codex
 ```
 
 `proxy stop` fjerner proxycontaineren og dens tokenmetadata, mens agentens
-containerlag beholdes. Neste `start` eller `proxy apply` oppretter proxyen på
-nytt. Eksporter nødvendige tokenvariabler før gjenopptak. Oppdatering av
+containerlag beholdes. Uendret eksplisitt start eller proxy apply kan opprette
+proxyen på nytt. Ved pending beholder start den eksisterende proxytilstanden.
+Exec på kjørende agent beholder trafikken blokkert. Eksporter nødvendige
+tokenvariabler før gjenopptak. Oppdatering av
 kontrollkoden gjøres med installeren etter at miljøene er stoppet.
 
 ## Tab-completion i Bash
@@ -625,8 +662,9 @@ source <(abx completion bash)
 
 Installeren legger inn completion for nye skall med `bash-completion` aktivert.
 Tab foreslår kommandoer, flagg, eksisterende miljønavn, registrerte mounts
-og lokale imageoppskrifter etter `image edit`, `build`, `inspect` og `rm`.
-Etter `start`, `run`, `validate` og `proxy apply` foreslås lagrede kortnavn og
+og lokale imageoppskrifter etter `image edit`, `build`, `inspect` og `remove`.
+Etter `--template` foreslås lokale og medfølgende maler.
+Etter `start`, `run`, `exec`, `validate` og `proxy apply` foreslås lagrede kortnavn og
 lokale filstier.
 Filstier fullføres også etter `--key-file`, og kataloger etter navnet i `mount add NAVN MAPPE`.
 Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.

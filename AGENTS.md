@@ -56,7 +56,10 @@ Installeren bygger proxyimaget når det mangler. `abx proxy build` bygger
 proxykomponenten eksplisitt. Agentimages
 opprettes med `abx image new NAVN` (eventuelt `--template codex`) og bygges
 med `abx image build NAVN`. Oppskrifter ligger under `~/.config/agentbox/images/`.
-Bygging av images i bruk av eksisterende containere, også stoppede, avvises.
+Image build sperres av kjørende brukere; image remove også av stoppede.
+Start/run/exec bygger ved endret/manglende input. Stoppet miljø erstattes ved
+nytt image/config, med bevarte mounts. Exec bruker CONFIG og valgt konkret
+agent-ID; på kjørende agent gjenåpner exec aldri en stoppet proxy.
 `abx run MILJØFIL` kjører kommandoen midlertidig i terminalen og fjerner
 miljøet ved avslutning; katalogmounts beholdes. Med `persistent: false`
 klargjør start i bakgrunnen; shell og stop fjerner miljøet.

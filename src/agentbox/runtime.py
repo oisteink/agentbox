@@ -39,6 +39,7 @@ class Docker:
         self.expected_id = None
         self.input_source = None
         self.output = None
+        self.ready = None
 
     def run(
         self,

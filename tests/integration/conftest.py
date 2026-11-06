@@ -94,7 +94,12 @@ class Lab:
 
     def configuration(self, mount, *, image="smoke", **overrides):
         name = f"env-{len(self.environments)}-{self.suffix}"
-        path = self.root / f"{name}.yaml"  # Outside the shared mount.
+        folder = (
+            Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+            / "agentbox/environments"
+        )
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        path = folder / f"{name}.yaml"  # Outside every shared mount.
         config = {
             "name": name,
             "image": image,
@@ -174,13 +179,15 @@ class Lab:
             try:
                 details = json.loads(cli("image", "inspect", name).stdout)
                 if details["id"]:
-                    cli("image", "rm", name)
+                    cli("image", "remove", name)
                 assert json.loads(cli("image", "inspect", name).stdout)["id"] is None
                 shutil.rmtree(path)
             except (AssertionError, OSError, subprocess.SubprocessError, ValueError) as exc:
                 errors.append(f"remove image {name}: {exc}")
         if errors:
             pytest.fail(f"Lab cleanup failed; files retained at {self.root}:\n" + "\n".join(errors))
+        for path in self.environments.values():
+            path.unlink(missing_ok=True)
         shutil.rmtree(self.root)
 
 

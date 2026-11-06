@@ -58,10 +58,24 @@ def test_proxy_image_installation_and_build_failure(lab):
     container = None
     try:
         container = docker("container", "create", "--network", "none", image)
+        bundled = Path("/opt/agentbox/lib/agentbox/templates/base/Dockerfile")
+        expected_template = (source / "src/agentbox/templates/base/Dockerfile").read_bytes()
+        user_recipe = Path.home() / ".config/agentbox/images/codex/Dockerfile"
+        expected_user = user_recipe.read_bytes()
+        subprocess.run(
+            ["sudo", "tee", str(bundled)],
+            input="INVALID_TEMPLATE\n",
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
         stale = Path("/opt/agentbox/lib/agentbox/stale_module.py")
         subprocess.run(["sudo", "touch", str(stale)], check=True, timeout=30)
         assert install(broken).returncode == 0
         assert not stale.exists()
+        assert bundled.read_bytes() == expected_template
+        assert user_recipe.read_bytes() == expected_user
         assert docker("image", "inspect", "--format", "{{.Id}}", image) == original
         docker("container", "rm", container)
         container = None

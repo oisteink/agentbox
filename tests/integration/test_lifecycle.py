@@ -50,36 +50,51 @@ def test_local_image_build_context_and_use_guard(lab):
     (recipe / ".dockerignore").write_text("ignored\n")
     (recipe / "marker").write_text("first")
     (recipe / "ignored").write_text("must not be copied")
-    assert json.loads(cli("image", "ls").stdout)[name]["status"] == "unbuilt"
-
-    first = json.loads(cli("image", "build", name, timeout=900).stdout)["id"]
+    assert json.loads(cli("image", "list").stdout)[name]["status"] == "unbuilt"
     mount, path = lab.mount()
+    volume = lab.volume()
     (path / "keep").write_text("mount content")
-    env = lab.start(mount, image=name)
+    env = lab.start(
+        mount,
+        image=name,
+        mounts=[
+            {"source": mount, "target": "/workspace"},
+            {"source": volume, "target": "/profile"},
+        ],
+    )
+    first = json.loads(cli("image", "inspect", name).stdout)["id"]
+    original = lab.state(env)["resources"]["agent"]
+    cli("exec", env, "--", "sh", "-c", "echo retained > /profile/data; touch /home/agent/layer")
     assert cli("exec", env, "--", "cat", "/recipe/marker").stdout == "first"
     cli("exec", env, "--", "test", "!", "-e", "/recipe/ignored")
-    for stopped in (False, True):
-        if stopped:
-            cli("stop", env)
-        for operation in ("build", "rm"):
-            blocked = cli("image", operation, name, check=False)
-            assert blocked.returncode != 0 and "Image is in use" in blocked.stderr
-        assert json.loads(cli("image", "inspect", name).stdout)["id"] == first
+    (recipe / "marker").write_text("second")
+    assert json.loads(cli("image", "list").stdout)[name]["status"] == "stale"
+    pending = cli("start", str(lab.environments[env]))
+    assert "next startup" in pending.stderr
+    assert lab.state(env)["resources"]["agent"] == original
+    assert cli("exec", env, "--", "cat", "/recipe/marker").stdout == "first"
+    for operation in ("build", "remove"):
+        blocked = cli("image", operation, name, check=False)
+        assert blocked.returncode != 0 and "Image is in use" in blocked.stderr
+    cli("stop", env)
     blocked_proxy = cli("proxy", "build", check=False)
     assert blocked_proxy.returncode != 0 and "Image is in use" in blocked_proxy.stderr
-    cli("remove", env)
-    lab.assert_removed(env)
-    assert (path / "keep").read_text() == "mount content"
-    (recipe / "marker").write_text("second")
     second = json.loads(cli("image", "build", name, timeout=900).stdout)["id"]
     assert first != second
-    env = lab.start(mount, image=name)
+    assert cli("image", "remove", name, check=False).returncode != 0
+    assert env in json.loads(cli("image", "inspect", name).stdout)["environments"]
+    cli("start", str(lab.environments[env]))
+    assert lab.state(env)["resources"]["agent"] != original
     assert cli("exec", env, "--", "cat", "/recipe/marker").stdout == "second"
+    assert cli("exec", env, "--", "cat", "/profile/data").stdout == "retained\n"
+    assert (path / "keep").read_text() == "mount content"
+    cli("exec", env, "--", "test", "!", "-e", "/home/agent/layer")
     cli("remove", env)
     lab.assert_removed(env)
-    cli("image", "rm", name)
+    cli("image", "remove", name)
     assert (recipe / "Dockerfile").is_file()
-    assert json.loads(cli("image", "ls").stdout)[name]["status"] == "unbuilt"
+    listed = json.loads(cli("image", "list").stdout)[name]
+    assert listed["status"] == "unbuilt" and "containers" not in listed
 
 
 def test_edit_image_uses_operator_editor_and_returns_status(lab):
@@ -298,23 +313,25 @@ def test_stop_start_preserves_container_and_home(lab):
     assert cli("exec", env, "--", "cat", "/workspace/code").stdout == "mount survives"
 
 
-def test_changed_profile_is_rejected_without_losing_home(lab):
-    mount, _ = lab.mount()
+def test_changed_profile_waits_for_restart_and_recreates_container(lab):
+    mount, path = lab.mount()
+    (path / "data").write_text("retained")
     env = lab.start(mount)
     before = lab.state(env)["resources"]["agent"]
     cli("exec", env, "--", "sh", "-c", "printf retained > /home/agent/marker")
-    path = lab.environments[env]
-    original = path.read_text()
-    modified = yaml.safe_load(original)
+    config = lab.environments[env]
+    modified = yaml.safe_load(config.read_text())
     modified["resources"]["pids"] = 128
-    path.write_text(yaml.safe_dump(modified))
-    rejected = cli("start", str(path), check=False)
-    assert rejected.returncode == 2
-    assert "Configuration changed" in rejected.stderr
+    config.write_text(yaml.safe_dump(modified))
+    assert "next startup" in cli("start", str(config)).stderr
     assert lab.state(env)["resources"]["agent"] == before
     assert cli("exec", env, "--", "cat", "/home/agent/marker").stdout == "retained"
-    path.write_text(original)
-    cli("start", str(path))
+    cli("stop", env)
+    cli("start", str(config))
+    assert lab.state(env)["resources"]["agent"] != before
+    cli("exec", env, "--", "test", "!", "-e", "/home/agent/marker")
+    assert cli("exec", env, "--", "cat", "/sys/fs/cgroup/pids.max").stdout == "128\n"
+    assert (path / "data").read_text() == "retained"
 
 
 def test_socket_capability_and_cgroup_enforcement(lab):

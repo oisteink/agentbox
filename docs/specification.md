@@ -113,8 +113,8 @@ Miljøfiler beholdes og kan brukes når kilden igjen er aktiv.
 ## Miljøkonfigurasjon
 
 `abx start FIL.yaml` leser miljønavnet fra `name` i miljøfilen.
-Kommandoer mot eksisterende miljøer, som `shell` og `stop`, bruker miljønavnet.
-`start`, `run`, `validate` og `proxy apply` støtter også kortnavn uten filending fra
+Kommandoer som `shell` og `stop` bruker miljønavnet; exec bruker miljøfil eller kortnavn.
+`start`, `run`, `exec`, `validate` og `proxy apply` støtter også kortnavn uten filending fra
 `~/.config/agentbox/environments/` (eller `$XDG_CONFIG_HOME/agentbox/environments/`).
 `.yaml` og `.yml` støttes. Hvis begge matcher, kreves eksplisitt filvalg.
 Lokale filer uten filending overstyrer ikke kortnavn; bruk eksplisitt sti for slike filer.
@@ -129,7 +129,7 @@ små bokstaver, tall og bindestrek, maksimalt 48 tegn.
 | `name` | Påkrevd unikt miljønavn; leses fra YAML-filen ved start |
 | `image` | Påkrevd lokalt oppskriftsnavn, for eksempel `codex` eller `js` |
 | `mounts` | 1 til 32 registrerte mounts, hvert med `source`, absolutt `target` og `mode` (`rw` som standard eller `ro`) |
-| `workdir` | Sti inne i et katalogmount; standard er første mountmål. Må finnes ved start |
+| `workdir` | Sti inne i valgt mount; standard er første mountmål. Undermapper i katalogmounts må finnes |
 | `persistent` | Boolsk, standard `true`. Med `false` fjerner `shell` miljøet etter kommandoen; `stop` fjerner det også |
 | `command` | 1 til 128 ikke-tomme argumenter; standard `["bash"]`. Kjøres av `shell` og `run`, uten shelltolking |
 | `network.allow` | Liste over eksakte `host`/`port`-par, maksimalt 128. Tom som standard |
@@ -150,44 +150,54 @@ Imagevalg endrer ikke ACL-, nettverks- eller isoleringsmekanismene.
 
 ### Lokale imageoppskrifter
 
-Alle agentimages har en lokal Dockerfile under `~/.config/agentbox/images/`
-(eller `$XDG_CONFIG_HOME/agentbox/images/`). `image new NAVN` lager en ny
-katalog med Dockerfile og .dockerignore uten overskriving. Standardmalen er
-et generelt Linux-miljø. Eksempelmaler finnes for Codex 0.166.0
-(`codex`), OpenCode 1.19.5 (`opencode`) og Claude Code 2.1.316 (`claude-code`).
-Malene følger programmet; det finnes ingen separat standardkatalog i /usr/share.
+Alle agentimages har lokale Dockerfiles under XDG/~/.config/agentbox/images.
+`image new NAVN` kopierer lokal default hvis den finnes, ellers medfølgende
+base. `--template MAL` velger en lokal oppskrift eller medfølgende base,
+codex, opencode eller claude-code; lokal mal vinner ved samme navn. Hele
+konteksten kopieres, med skjulte filer, underkataloger, modus og lenker som
+lenker. Kopien er selvstendig og eksisterende mål overskrives ikke.
+Medfølgende maler ligger i pakkens templates-katalog; vertsinstallasjonen
+bruker /opt/agentbox/lib/agentbox/templates og reinstallasjon gjenoppretter den.
+Brukerens oppskrifter erstattes ikke. Wheel inkluderer malenes .dockerignore.
 
-`image ls` lister lokale oppskrifter, også ubygde, med status og image-ID.
-`image edit NAVN` åpner Dockerfilen som utvikleren i VISUAL, deretter EDITOR,
-ellers Debian sin editor-kommando. Whitespace-only variabler er tomme.
-Siterte editorargumenter støttes uten shelltolking; terminal og miljø arves,
-oppskriftskatalogen er arbeidskatalog, og editorens exitkode returneres.
-Edit krever eksisterende oppskrift, men gjør ingen RPC eller bygging og
-kan brukes mens imaget er i bruk.
-`image inspect NAVN` viser sti, tag, ID og containere. `image build NAVN`
-bygger katalogen i Agentbox sin rootless-instans, med vanlig COPY og
-.dockerignore behandlet av Docker. Konteksten sendes uten generell ACL-tilgang
-til utviklerens hjem; lenker derefereres ikke. Kontrollsiden pakker ut i en
-privat midlertidig katalog med datafilter; lenker ut av konteksten og
-spesialfiler avvises. Katalog og overført arkiv slettes etter byggingen.
-Hele konteksten overføres til kontrollsiden, også filer builderen ignorerer.
+`image list` viser lokale/ubygde oppskrifter med built/stale/unbuilt-status.
+Ingen lang brukerliste vises. `image inspect NAVN` viser path, tag, ID, input-
+digest og berørte miljøer/containere. `image remove NAVN` fjerner bygget tag og
+beholder oppskriften; eksisterende brukere, også stoppede, sperrer fjerning.
 
-Start krever både lokal oppskrift og et image bygget av Agentbox for samme
-installasjon og navn. Dette gjelder også gjenopptak. Ingen automatisk bygg
-eller pull ved start. Registryimages kan brukes i Dockerfilens FROM.
+`image edit NAVN` bruker VISUAL, EDITOR eller editor, med siterte argumenter
+uten shelltolking. Editor arver vanlig terminal/miljø og bruker oppskriftens
+katalog. Resultatet viser changed/unchanged for hele konteksten og editorens
+exitstatus, også ved ikke-null status. Ingen bygg skjer direkte ved edit.
 
-Bygg og `image rm NAVN` avvises når en eksisterende container bruker eksakt
-samme image-ID, inkludert stoppede containere. Avledede images sperrer ikke.
-Operasjonene deler kontrollsidens lås med start og remove. `image rm`
-fjerner bygget tag, men beholder lokal oppskrift. Fjerning av miljøet
-sletter containerlaget; eksplisitte katalog-/volummounts beholdes.
+`image build NAVN` bygger i dedikert rootless Docker. Kjørende brukere sperrer
+bygg; stoppede brukere gjør det ikke. Brukssjekken følger konkrete container-
+referanser, også etter tagflytting, uten å klassifisere avledede images ut fra
+arvede image-labels. Kontrolloperasjonens lås dekker sjekk og bygg.
+
+Inputdigest beregnes fra mottatt tars sti/type/modus/lenkemål og filbytes, uten
+mtime/eier/padding. Samme funksjon brukes lokalt. Stamp lagres som imagelabel;
+ingen egen byggdatabase brukes. Hele overførte konteksten teller konservativt,
+også filer Docker ignorerer. Docker selv behandler .dockerignore fra katalogen.
+Lenker følges ikke ved pakking; datafilter avviser utpakking utenfor konteksten
+og spesialfiler. Arkiv og privat midlertidig katalog slettes etter bygg.
+
+Start, run og exec bygger ved manglende/endret input. Kontrollstart verifiserer
+riktig digest under lås før stoppet/nytt miljø brukes. Ved image-race klargjøres
+samme handling igjen, maksimalt tre forsøk. Kjørende miljø brukes uendret med
+beskjed om pending; proxy/policy beholdes også når proxyen er stoppet/mangler.
+Stoppet miljø erstattes ved endret image-ID, konfigurasjon, klientvariablenes
+tom/ikke-tom-tilstand eller vertsadresser, med bevarte mounts. Profil, mounts,
+DNS og tokenverdier valideres før det gamle containerlaget slettes.
+Registryimages kan brukes i Dockerfilens FROM; baseoppdateringer utløser ikke
+bygg uten endret lokal input eller eksplisitt image build.
 
 Installeren bygger den interne proxykomponenten hvis imaget mangler, med
 samme daemonverifikasjon og operasjonslås som kontrollverktøyet. Byggingen
 kjører som agentbox med rent miljø; feil gir mislykket installasjon.
 Eksisterende image beholdes, også når containere bruker det. `proxy build`
 bygger komponenten eksplisitt fra installert kilde og beholder brukssperren.
-Proxyen inngår ikke i image ls.
+Proxyen inngår ikke i image list.
 
 Agentens UID 0 mappes til tjenestebrukeren på verten. Den kjører med droppede
 capabilities, `no-new-privileges`, ressursgrenser og en revisjonslåst Moby-
@@ -239,7 +249,7 @@ velges eksplisitt for trafikk fra miljøet.
 | `start FIL.yaml` | Leser miljønavnet fra filen, validerer miljø og mounts, oppretter nettverk og proxy før agent; uendret kjørende miljø gjenbrukes |
 | `run FIL.yaml` | Kjører command én gang i terminalen i et nytt miljø; fjerner containere, nettverk og containerlag ved avslutning eller Ctrl-C; filer i katalogmounts beholdes |
 | `shell` | Kjører miljøets konfigurerte kommando; med `persistent: false` fjernes miljøet etterpå, også ved feil eller Ctrl-C |
-| `exec` | Kjører eksplisitt argumentliste i eksisterende miljø |
+| `exec CONFIG -- KOMMANDO` | Bygger/starter ved behov og kjører argumentlisten i valgt konkret agentcontainer; beholder kjørende proxytilstand |
 | `stop` | Med `persistent: true` stoppes agent og proxy og containerlaget beholdes; med `false` fjernes miljøet. Mount-registreringer beholdes |
 | `remove` | Fjerner miljøets containere, nettverk og logger; filer i katalogmounts og ACL-er beholdes |
 | `status` | Viser registrert miljøoppsett og observert containertilstand |
@@ -251,9 +261,9 @@ Med `persistent: true` beholdes containerens `/home/agent`, innlogging og
 installerte filer, også ved manuell gjenopptak etter daemonrestart. Automatisk oppstart av miljøer
 etter vertsreboot finnes ikke.
 
-Endret agentprofil eller vertsadresse krever eksplisitt `remove` og ny
-`start`. Da slettes containerlaget, inkludert innlogging og verktøyoppsett.
-Montert kode består. Nettverk/tokenregler endres med proxy apply uten å slette
+Endret image, profil, klientvariabeltilstand eller vertsadresse gir automatisk
+erstatning ved oppstart av stoppet miljø. Containerlaget slettes; data i
+katalog-/volummounts består. Nettverk/tokenregler endres med proxy apply uten å slette
 agentlaget. Gjenopptak av stoppet miljø og apply validerer DNS på nytt.
 
 `persistent: false` gir ingen bevart container mellom shell-økter. Start

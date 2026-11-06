@@ -65,12 +65,25 @@ def main():
             input=source,
         )
 
+    def probe_config(name):
+        # Execute against a valid snapshot of the running environment while
+        # other probes deliberately edit/reject the operator's candidate file.
+        state = json.loads(app("status").stdout)[name]["config"]
+        state["network"] = {"allow": state.pop("allow")}
+        path = base / ("exec-" + name + ".yaml")
+        path.write_text(yaml.safe_dump(state))
+        path.chmod(0o600)
+        os.chown(path, operator.pw_uid, operator.pw_gid)
+        return path
+
     def app(*args, token="synthetic-token-a", check=True):
         env = os.environ.copy()
         env.pop("FIXTURE_TOKEN", None)
         env.pop("EMPTY_TOKEN", None)
         if token is not None:
             env["FIXTURE_TOKEN"] = token
+        if args[0] == "exec":
+            args = ("exec", str(probe_config(args[1])), *args[2:])
         metadata = args[0] not in ("exec", "shell", "run", "logs", "completion")
         result = run(
             "runuser",
@@ -522,7 +535,7 @@ def main():
             "HOME=/home/developer",
             "/usr/local/bin/abx",
             "exec",
-            first,
+            str(probe_config(first)),
             "--",
             "curl",
             "--fail",
@@ -635,8 +648,8 @@ req.end();
         )
         assert len(http_events()) == before
         checks["ca_rotation_preserves_home"] = True
-        # New environments accept absent/empty sources; availability changes
-        # must remove the old proxy before requiring explicit recreation.
+        # Empty sources produce empty client variables. A stopped environment
+        # is recreated when its client-variable availability changes.
         empty_name = "credential-empty-" + suffix
         names.append(empty_name)
         empty_config = json.loads(json.dumps(configs[0][1]))
@@ -670,31 +683,15 @@ req.end();
         assert http_events()[-1]["api_key"] == []
         checks["active_and_empty_sources_share_destination"] = True
         app("stop", empty_name)
-        before = len(http_events())
-        assert app("start", str(empty_path), token="", check=False).returncode != 0
-        stopped_empty = json.loads(app("status").stdout)[empty_name]
-        assert (
-            stopped_empty["status"] == "proxy-stopped" and "proxy" not in stopped_empty["resources"]
-        )
-        docker("container", "start", stopped_empty["resources"]["agent"])
+        recreated = json.loads(app("start", str(empty_path), token="").stdout)
+        assert recreated["resources"]["agent"] != active_state["resources"]["agent"]
         assert (
             docker(
-                "exec",
-                stopped_empty["resources"]["agent"],
-                "curl",
-                "--fail",
-                "-sS",
-                "--max-time",
-                "2",
-                "https://allowed.agentbox.test/",
-                check=False,
+                "container", "inspect", active_state["resources"]["agent"], check=False
             ).returncode
             != 0
         )
-        assert len(http_events()) == before
-        checks["availability_change_on_resume_removes_old_proxy"] = True
-        app("remove", empty_name)
-        recreated = json.loads(app("start", str(empty_path), token="").stdout)
+        checks["availability_change_on_resume_recreates_client_environment"] = True
         assert recreated["placeholders"] == {"hf_token": "", "EMPTY_TOKEN": ""}
         placeholders[empty_name] = ""
         request(empty_name)

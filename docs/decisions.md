@@ -21,41 +21,53 @@ Utviklerens ACL-journal ligger separat i `/var/lib/agentbox-operator` med modus
 
 ## Lokale imageoppskrifter
 
-Agentimages har lokale Dockerfiles under utviklerens `~/.config/agentbox/images/`.
-Katalogen er byggkontekst; vanlige FROM, COPY og hjelpeskript brukes uten et
-eget byggformat eller imageregister. Malene følger Python-pakken og kopieres
-bare ved eksplisitt `image new`. Oppskrifter eies og redigeres av utvikleren.
-Proxyimaget er en intern komponent som installeren bygger når det mangler.
-Eksisterende image beholdes; `proxy build` brukes til ombygging.
+Brukerens oppskrifter under XDG/~/.config/agentbox/images er både byggkontekst
+og lokale maler. En lokal default velges når ingen mal er angitt. Medfølgende
+maler bruker pakkens installasjonseide templates-katalog, på verten under
+/opt/agentbox/lib/agentbox/templates. Dette gir reinstallasjon ett kjent
+kodeområde å gjenopprette, mens brukerens filer beholdes. Ingen ekstra
+systemkatalog eller eget malregister trengs. Kopier beholder kontekst/lenker
+uten binding til senere endringer i kilden.
 
-CLI-en pakker konteksten som tar uten å følge lenker og sender den etter en
-JSON-header. Kontrollhjelperen autentiserer først og mellomlagrer i private,
-midlertidige filer. Ingen generell tilgang til utviklerens hjem eller nye
-katalog-ACL-er trengs. Utpakking bruker Pythons datafilter; lenker ut av
-konteksten og spesialfiler avvises. Docker bygger den midlertidige katalogen,
-slik at Docker selv behandler .dockerignore. BuildKits upload-kontekst
-filtrerer ikke ignore-reglene. Hele konteksten overføres til kontrollsiden
-før builderen filtrerer filer.
+CLI pakker tar uten å følge lenker. Kontrollhjelperen autentiserer før den
+leser, mellomlagrer privat og bruker Pythons datafilter. Docker bygger den
+utpakkede katalogen og behandler .dockerignore selv. Hele konteksten overføres
+før builderens filtrering; ingen generell ACL-tilgang til brukerhjemmet kreves.
 
-En fast tag avledes fra navnet, `agentbox-image-NAVN:local`. Docker-labels
-identifiserer installasjon og oppskrift; et tilfeldig image med samme tag
-aksepteres ikke ved start. Oppskriftskatalogene gir oversikten over lokale
-oppskrifter; Docker gir bygde ID-er og brukere. Ingen ekstra tilstandsfil.
+Inputstempelet hasher medlemmer og filbytes, uten mtime/eier/padding, og lagres
+som imagelabel. Samme funksjon beregner lokal status og faktisk mottatt input.
+Hele input teller konservativt, også ignorerte filer. Det kan gi ekstra bygg,
+men krever ingen nesten-lik Dockerignore-parser eller ny tilstandsdatabase.
+Registryendringer i uendret FROM-tag inngår ikke i denne lokale kontrollen.
 
-Bygg og fjerning undersøker alle containere og sammenligner eksakt image-ID.
-Avledede images inngår ikke i brukssjekken. Stoppede containere regnes som
-brukere. Kontrollsidens operasjonslås serialiserer sjekken og mutasjonen
-med start/remove. Dette forutsetter
-at Docker-instansen administreres gjennom kontrollhjelperen.
+En fast tag, agentbox-image-NAVN:local, gir gjeldende image. Bruk følger
+identitetsbundne agentressurser, agentens egne containerlabels, den opprinnelige
+Config.Image-taggen og eksakt aktuell image-ID. Dermed skjuler tagflytting
+ikke Agentbox-brukere, mens arvede image-labels alene ikke sperrer avledede
+images. Bygg sperres av kjørende bruk, remove også av stoppede brukere.
+Kontrollåsen dekker sjekk og mutasjon.
 
-Containerlaget følger vanlig Docker-livssyklus. Fjern miljøene før ombygging,
-og behold nødvendige arbeidsfiler i mounts. Fjerning sletter containerlaget,
-inkludert hjem og innlogging.
+Start/run/exec deler klargjøring og bygger ved behov. Kontrollstart sjekker
+ønsket digest under lås: Et foreldet CLI-øyeblikksbilde kan ikke starte et
+gammelt image etter at miljøet har stoppet. Samme handling prøver klargjøring
+på nytt ved image_outdated, inntil tre forsøk. Run holder stdin tilbake til
+intern input_ready rett før execute. Retry krever at ready ikke er mottatt
+og at brukeren ikke avbrøt; etter ready retries aldri. Offentlig JSON har ett
+sluttresultat. Exec bruker valgt full agent-ID, så et generasjonsbytte før
+kommandoen avvises fremfor å sende den til et annet oppsett.
 
-Kildegrunnlag: [Docker-byggkontekst](https://docs.docker.com/build/concepts/context/),
-[ancestor-filter](https://docs.docker.com/reference/cli/docker/container/ls/),
-[Buildx-ruting](https://github.com/docker/buildx/blob/master/build/opt.go) og
-[BuildKit-kontekst](https://github.com/moby/buildkit/blob/master/frontend/dockerui/config.go).
+Pending beholder kjørende agent og proxy/policy, også når proxyen mangler.
+Exec reaktiverer ikke en stoppet proxy på kjørende agent. Eksplisitt start kan
+reparere proxy bare ved uendret profil/digest/klientmiljø. Adressevakten kan
+fortsatt stoppe miljøet før pending-retur. Profil, mounts, tokenverdier, DNS
+og policy valideres før et stoppet lag erstattes. Uendret stoppet miljø
+beholder laget; endret image/config/klienttilstand/adresser gir ny container.
+Data som skal overleve dette må ligge i eksplisitte mounts.
+
+Grunnlag: [Docker-byggkontekst](https://docs.docker.com/build/concepts/context/),
+[Buildx](https://docs.docker.com/reference/cli/docker/buildx/build/) og
+[tarfile/datafilter](https://docs.python.org/3.12/library/tarfile.html).
+Proxyimaget er en intern komponent med separat bygg-/oppgraderingsregel.
 
 ## Katalogroten som grense for tilbakekalling
 
@@ -145,8 +157,8 @@ og lagres i private, roterte logger; de kan inneholde det agenten skriver.
 Med `persistent: true` bevarer stopp og gjenopptak med uendret konfigurasjon
 containerlaget, verktøyoppsett og innlogging. Profiler i eksplisitte katalog-/volummounts
 lever uavhengig av containerlaget.
-Endret agentprofil eller vertsadresse krever eksplisitt fjerning og ny
-opprettelse. Nettverk/tokenregler aktiveres med proxy apply; gjenopptak av
+Endret image, konfigurasjon, klientvariabeltilstand eller vertsadresse gir
+ny container ved neste oppstart av stoppet miljø. Nettverk/tokenregler aktiveres med proxy apply; gjenopptak av
 stoppet miljø validerer og fastlåser DNS på nytt.
 Fjerning sletter laget og miljøets logger. Filer i katalogmounts, registreringer og ACL-er består til egne
 operasjoner endrer dem. Kjøremiljøer gjenopptas ikke automatisk etter vertsreboot.
@@ -194,8 +206,9 @@ for å endre HTTPS-headere og velges bare av eksplisitte nøkkelregler.
 
 Tomme referanser bruker samme regeltype med tom plassholder. De beholder
 TLS-inspeksjon for å unngå at manglende nøkkel åpner en tunnel. Nye klientnavn
-og tom/ikke-tom overgang krever gjenskaping fordi Docker sitt prosessmiljø er
-fast; ingen shell-hook eller egen oppdateringstjeneste innføres.
+og tom/ikke-tom overgang krever ny container fordi Docker sitt prosessmiljø er
+fast. Start av stoppet miljø håndterer erstatningen; proxy apply avviser slik
+endring på eksisterende agent. Ingen shell-hook eller oppdateringstjeneste trengs.
 
 ## Teststrategi
 

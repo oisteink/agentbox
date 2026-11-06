@@ -24,12 +24,15 @@ _abx()
     choices="doctor status image validate mount proxy start run stop remove shell logs login-api-key exec completion --help --json --yes"
   elif [[ "$action" == image ]]; then
     if (( COMP_CWORD == 2 )); then
-      choices="ls new edit build inspect rm --help --json --yes"
+      choices="list new edit build inspect remove --help --json --yes"
     elif [[ "$prev" == --template ]]; then
-      choices="base codex opencode claude-code"
+      mapfile -t COMPREPLY < <(abx completion --names templates 2>/dev/null | while IFS= read -r value; do
+        [[ "$value" == "$cur"* ]] && printf '%s\n' "$value"
+      done)
+      return
     elif [[ "${COMP_WORDS[2]}" == new ]]; then
       choices="--template --help --json --yes"
-    elif [[ "${COMP_WORDS[2]}" != ls ]]; then
+    elif [[ "${COMP_WORDS[2]}" != list ]]; then
       kind=images
       start=3
     fi
@@ -49,10 +52,10 @@ _abx()
       kind=environments
       start=3
     fi
-  elif [[ "$prev" == --key-file ]] || { [[ "$action" == start || "$action" == run || "$action" == validate ]] && (( COMP_CWORD == 2 )) && [[ "$cur" != -* ]]; }; then
+  elif [[ "$prev" == --key-file ]] || { [[ "$action" == start || "$action" == run || "$action" == exec || "$action" == validate ]] && (( COMP_CWORD == 2 )) && [[ "$cur" != -* ]]; }; then
     compopt -o filenames
     mapfile -t COMPREPLY < <(compgen -f -- "$cur")
-    if [[ "$action" == start || "$action" == run || "$action" == validate ]] && [[ "$prev" != --key-file && "$cur" != */* ]]; then
+    if [[ "$action" == start || "$action" == run || "$action" == exec || "$action" == validate ]] && [[ "$prev" != --key-file && "$cur" != */* ]]; then
       while IFS= read -r value; do
         [[ -n "$value" && "$value" == "$cur"* && ! -e "$value" ]] && COMPREPLY+=("$value")
       done < <(abx completion --names configs 2>/dev/null)
@@ -77,8 +80,8 @@ _abx()
     fi
   else
     case "$action" in
-      start|run|validate) choices="--help --json --yes" ;;
-      stop|remove|shell|exec) kind=environments; choices="--help --json --yes" ;;
+      start|run|exec|validate) choices="--help --json --yes" ;;
+      stop|remove|shell) kind=environments; choices="--help --json --yes" ;;
       logs) kind=environments; choices="--proxy --help --json --yes" ;;
       login-api-key) kind=environments; choices="--key-file --help --json --yes" ;;
       completion) choices="bash --help --json --yes" ;;

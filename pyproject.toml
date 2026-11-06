@@ -19,7 +19,7 @@ abx = "agentbox.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-agentbox = ["completions/*.bash", "templates/*/*"]
+agentbox = ["completions/*.bash", "templates/*/*", "templates/*/.dockerignore"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/unit"]

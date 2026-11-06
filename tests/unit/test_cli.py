@@ -19,7 +19,7 @@ def test_start_reads_environment_name_from_file(monkeypatch, tmp_path, capsys):
         return {"status": "running"}
 
     monkeypatch.setattr(cli, "load_settings", lambda: {"operator_uid": os.getuid()})
-    monkeypatch.setattr(cli.images, "recipe", lambda name: tmp_path)
+    monkeypatch.setattr(cli, "ensure_image", lambda environment: "0" * 64)
     monkeypatch.setattr(cli, "rpc", rpc)
     monkeypatch.setattr("sys.argv", ["abx", "start", str(path)])
     cli.main()
@@ -59,7 +59,7 @@ def test_alias_only_reads_host_source(monkeypatch, tmp_path, capsys):
         ],
     }
     monkeypatch.setattr(cli, "load_settings", lambda: {"operator_uid": os.getuid()})
-    monkeypatch.setattr(cli.images, "recipe", lambda name: tmp_path)
+    monkeypatch.setattr(cli, "ensure_image", lambda environment: "0" * 64)
     monkeypatch.setattr(cli.config, "load", lambda path: parse(data))
     monkeypatch.setenv("hf_token", "wrong-client-value")
     monkeypatch.setenv("hugging_face_token", "synthetic-source")

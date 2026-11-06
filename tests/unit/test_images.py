@@ -190,13 +190,14 @@ def test_control_reads_binary_context_after_authentication(monkeypatch, capsys):
 class ImageDocker:
     """Only the daemon boundary; container IDs refer to actual inspect response fields."""
 
-    def __init__(self, used=False):
+    def __init__(self, used=False, running=False):
         self.image = {
             "Id": "sha256:built",
             "Architecture": "amd64",
             "Config": {"Labels": {"agentbox.installation": "test", "agentbox.image": "js"}},
         }
         self.used = used
+        self.running = running
         self.mutations = []
 
     def run(self, *args):
@@ -213,12 +214,17 @@ class ImageDocker:
             if identifier == "container" and self.used
             else "sha256:derived",
             "Name": "/" + identifier,
-            "State": {"Running": False},
+            "State": {"Running": self.running},
         }
 
     def mutate(self, *args, **kwargs):
         if args[0] == "build":
             assert (Path(args[-1]) / "Dockerfile").is_file()
+            self.image["Config"]["Labels"]["agentbox.recipe-digest"] = next(
+                value.partition("=")[2]
+                for value in args
+                if value.startswith("agentbox.recipe-digest=")
+            )
         self.mutations.append(args)
 
 
@@ -233,9 +239,9 @@ def build_context():
     return source
 
 
-def test_build_rejects_stopped_container_before_mutation():
-    docker = ImageDocker(used=True)
-    with pytest.raises(AgentboxError, match="including stopped.*container"):
+def test_build_rejects_running_container_before_mutation():
+    docker = ImageDocker(used=True, running=True)
+    with pytest.raises(AgentboxError, match="Image is in use"):
         images.build(docker, "test", "js", io.BytesIO(b"tar"))
     assert docker.mutations == []
 
@@ -291,7 +297,7 @@ def test_missing_build_has_actionable_error():
         images.managed(docker, "test", "js")
 
 
-@pytest.mark.parametrize("action", ["rm", "proxy-build"])
+@pytest.mark.parametrize("action", ["remove", "proxy-build"])
 def test_control_removal_and_proxy_build_share_use_guard(tmp_path, monkeypatch, action):
     from agentbox.control import Control
 
@@ -299,8 +305,8 @@ def test_control_removal_and_proxy_build_share_use_guard(tmp_path, monkeypatch, 
     control.docker = ImageDocker(used=True)
     monkeypatch.setattr(control, "verified", lambda data: data.update(installation="test"))
     request = (
-        {"action": "image", "operation": "rm", "name": "js"}
-        if action == "rm"
+        {"action": "image", "operation": "remove", "name": "js"}
+        if action == "remove"
         else {"action": "proxy", "operation": "build"}
     )
     with pytest.raises(AgentboxError, match="Image is in use"):
@@ -316,3 +322,42 @@ def test_completion_only_reads_local_recipes(recipes, monkeypatch):
         completion.subprocess, "run", lambda *args, **kwargs: pytest.fail("No sudo lookup")
     )
     assert completion.names("images") == ["js"]
+
+
+def test_build_accepts_stopped_container():
+    docker = ImageDocker(used=True)
+    assert images.build(docker, "test", "js", build_context())["status"] == "built"
+    assert docker.mutations
+
+
+@pytest.mark.parametrize("reference", ["label", "state", "tag"])
+def test_running_recipe_reference_survives_tag_movement(reference):
+    docker = ImageDocker(used=True, running=True)
+    original = docker.inspect
+
+    def inspect(kind, identifier):
+        result = original(kind, identifier)
+        if kind == "container":
+            result["Image"] = "sha256:old"
+            result["Config"] = {"Labels": {}}
+            if identifier == "container":
+                if reference == "label":
+                    result["Config"]["Labels"] = {
+                        "agentbox.installation": "test",
+                        "agentbox.image": "js",
+                        "agentbox.role": "agent",
+                        "agentbox.environment": "example",
+                    }
+                if reference == "tag":
+                    result["Config"]["Image"] = images.tag("js")
+        return result
+
+    docker.inspect = inspect
+    environments = (
+        {"env": {"config": {"image": "js"}, "resources": {"agent": "container"}}}
+        if reference == "state"
+        else {}
+    )
+    with pytest.raises(AgentboxError) as error:
+        images.build(docker, "test", "js", build_context(), environments=environments)
+    assert error.value.code == "image_in_use" and not docker.mutations

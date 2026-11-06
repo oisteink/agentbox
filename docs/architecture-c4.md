@@ -68,8 +68,8 @@ System_Ext(services, "Tjenester brukt av agentene", "Eksterne API-er, MCP-tjenes
 System_Ext(registry, "Kilder for kjøremiljøer", "Images og byggeavhengigheter; tilgang fra betrodd kontrollside.")
 
 System_Boundary(agentbox, "Agentbox") {
-    Container(cli, "abx", "Python; utviklerens UID", "Validerer miljøfiler, håndterer imageoppskrifter og administrerer utviklerens ACL-endringer.")
-    ContainerDb(recipes, "Miljøfiler og imageoppskrifter", "Utviklerens filer", "~/.config/agentbox; YAML og lokale Dockerfiles med byggkontekst.")
+    Container(cli, "abx", "Python; utviklerens UID", "Validerer miljøfiler, velger lokale/medfølgende maler og klargjør imagebygg. Administrerer utviklerens ACL-endringer.")
+    ContainerDb(recipes, "Miljøfiler og lokale imageoppskrifter", "Utviklerens filer", "~/.config/agentbox; YAML og lokale Dockerfiles med byggkontekst.")
     ContainerDb(journal, "ACL-journal", "Private JSON-filer", "/var/lib/agentbox-operator; eies av utvikleren.")
     Container(control, "Kontrollhjelper", "Python; agentbox UID", "Bygger images og administrerer mounts, miljøer, proxy og terminaler.")
     Container(uninstall, "Avinstallering", "scripts/uninstall.sh; Bash / Python; root", "Kjøres fra repoet. Rydder ACL-er og overfører filer i katalogmounts til utvikleren før installasjonen fjernes. ")
@@ -99,7 +99,7 @@ Rel(uninstall, journal, "Avstemmer og rydder foreldrenes ACL-er", "Privat journa
 Rel(control, directories, "Reparerer ACL på filer eid av agentbox", "POSIX ACL")
 Rel(control, state, "Lagrer tilstand, policy og agentutdata", "Filsystem")
 Rel(watch, state, "Leser miljøer og oppdaterer status", "Filsystem og felles lås")
-Rel(control, docker, "Styrer containere; gir kun proxyen tokenmiljø", "Docker CLI; fast Unix-socket")
+Rel(control, docker, "Bygger images og styrer containere; gir kun proxyen tokenmiljø", "Docker CLI; fast Unix-socket")
 Rel(watch, docker, "Stopper berørte containere", "Docker CLI; samme socket")
 Rel(docker, agent, "Oppretter og styrer livssyklus", "Docker runtime")
 Rel(docker, proxy, "Oppretter og styrer livssyklus", "Docker runtime")
@@ -132,6 +132,9 @@ SHOW_LEGEND()
 - Proxyen leser policy og nødvendig privat CA fra skrivebeskyttede mounts;
   ekte tokens tilføres bare proxyens miljø. Kontrollhjelperen gjør navneoppløsning
   og adressevalidering før de fastlåste adressene tas i bruk.
+- Medfølgende maler er installasjonseid innhold i Python-pakken; lokale maler
+  og oppskrifter eies av brukeren. Inputstempel og konkrete containerreferanser
+  styrer bygg og erstatning av stoppede containere. Pending endrer ikke live-proxy.
 - Vertskataloger og navngitte volumer overlever miljøfjerning. Volumer slettes
   eksplisitt med mount remove. Hjem/profiler ligger i containerlaget med mindre
   brukeren har valgt et eget katalog-/volummount.

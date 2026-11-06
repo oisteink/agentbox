@@ -20,14 +20,22 @@ from .state import Store, atomic_json
 _output = Output()
 
 
+class StreamResult(dict):
+    def __init__(self, result, *, input_ready=False, interrupted=False):
+        super().__init__(result)
+        self.input_ready = input_ready
+        self.interrupted = interrupted
+
+
 def rpc(request, stream=False, context=None):
     command = ["/usr/bin/sudo", "-H", "-u", "agentbox", "/usr/local/libexec/agentbox-control"]
     frames = []
     buffer = ""
     invalid = False
+    ready = False
 
     def receive(channel, text):
-        nonlocal buffer, invalid
+        nonlocal buffer, invalid, ready
         if channel == "stderr":
             return  # sudo diagnostics are not part of the authenticated result protocol.
         buffer += text
@@ -45,6 +53,8 @@ def rpc(request, stream=False, context=None):
                     ):
                         raise ValueError
                     frames.append(frame)
+                elif frame == {"type": "input_ready"} and stream and not ready:
+                    ready = True
                 elif frame.get("type") == "output" and frame.get("stream") in ("stdout", "stderr"):
                     if not isinstance(frame.get("data"), str):
                         raise ValueError
@@ -67,19 +77,28 @@ def rpc(request, stream=False, context=None):
             stderr=subprocess.PIPE,
             bufsize=0,
         )
-        pump(
+        status = pump(
             child,
             receive,
             prefix=header if context is None else b"",
             source=sys.stdin.buffer if stream and not request.get("tty") else None,
+            input_ready=lambda: ready,
         )
+    if status == 130:
+        if stream:
+            return StreamResult(
+                failure("interrupted", "Interrupted", exit_code=130),
+                input_ready=ready,
+                interrupted=True,
+            )
+        raise KeyboardInterrupt
     if invalid or buffer or len(frames) != 1:
         raise AgentboxError(
             "Control helper did not return a complete result", code="control_protocol_error"
         )
     result = frames[0]
     if stream:
-        return result
+        return StreamResult(result, input_ready=ready)
     if not result["ok"]:
         error = result["error"]
         raise AgentboxError(error["message"], code=error["code"], details=error.get("details"))
@@ -343,6 +362,81 @@ def mount_remove(settings, name, *, yes=False):
         return rpc(base | {"operation": "forget", "inventory": digest})
 
 
+def environment_request(environment, action):
+    payload = environment.to_dict()
+    payload["network"] = {"allow": payload.pop("allow")}
+    tokens = {
+        credential.source_env: os.environ[credential.source_env]
+        for credential in environment.credentials
+        if credential.source_env in os.environ
+    }
+    return {"action": action, "config": payload, "tokens": tokens}
+
+
+def ensure_image(environment, *, temporary=False):
+    digest = images.fingerprint(environment.image)
+    entry = rpc({"action": "status"}).get(environment.name)
+    if temporary and entry:
+        raise AgentboxError(
+            "Environment already exists; choose a new temporary name", code="environment_exists"
+        )
+    running = entry and entry.get("containers", {}).get("agent") == "running"
+    built = rpc(
+        {"action": "image", "operation": "inspect", "name": environment.image, "digest": digest}
+    )
+    if built["status"] != "built" and not running:
+        _output.event("stderr", f"abx: Building image {environment.image}.\n")
+        built = rpc(
+            {"action": "image", "operation": "build", "name": environment.image},
+            context=environment.image,
+        )
+        digest = built["digest"]
+    return digest
+
+
+def prepared_environment(environment, *, execute=False):
+    request = environment_request(environment, "prepare-exec" if execute else "start")
+    for attempt in range(3):
+        digest = ensure_image(environment)
+        try:
+            result = rpc(request | {"recipe_digest": digest})
+            environment_notice(environment.name, result)
+            return result
+        except AgentboxError as exc:
+            if exc.code != "image_outdated" or attempt == 2:
+                raise
+    raise AssertionError("Unreachable preparation state")
+
+
+def environment_notice(name, result):
+    if result.get("pending_changes"):
+        _output.event(
+            "stderr",
+            f"abx: {name} is running; recipe/configuration changes apply at next startup.\n",
+        )
+    if result.get("recreated"):
+        _output.event("stderr", f"abx: {name} recreated; explicit mounts retained.\n")
+    if result.get("proxy_active") is False:
+        _output.event("stderr", f"abx: {name} proxy is stopped; traffic remains blocked.\n")
+
+
+def run_environment(environment):
+    request = environment_request(environment, "run")
+    request["tty"] = not _output.json_mode and sys.stdin.isatty() and sys.stdout.isatty()
+    for attempt in range(3):
+        digest = ensure_image(environment, temporary=True)
+        result = rpc(request | {"recipe_digest": digest}, stream=True)
+        retry = (
+            not result["ok"]
+            and result["error"]["code"] == "image_outdated"
+            and not getattr(result, "input_ready", False)
+            and not getattr(result, "interrupted", False)
+        )
+        if not retry or attempt == 2:
+            return result
+    raise AssertionError("Unreachable run state")
+
+
 class HelpRequested(Exception):
     def __init__(self, text):
         self.text = text
@@ -402,17 +496,17 @@ def parser():
     commands.add_parser("status")
     image = commands.add_parser("image", help="Manage local Dockerfile recipes and builds")
     image_ops = image.add_subparsers(dest="operation", required=True)
-    image_ops.add_parser("ls")
+    image_ops.add_parser("list")
     new = image_ops.add_parser("new")
     new.add_argument("name", type=config.name)
-    new.add_argument("--template", choices=images.TEMPLATES, default="base")
-    for operation in ("edit", "build", "inspect", "rm"):
+    new.add_argument("--template", type=config.name, help="Local recipe or bundled template")
+    for operation in ("edit", "build", "inspect", "remove"):
         image_ops.add_parser(operation).add_argument("name", type=config.name)
     complete = commands.add_parser("completion", help="Print shell completion setup")
     complete.add_argument("shell", choices=["bash"], nargs="?", default="bash")
     complete.add_argument(
         "--names",
-        choices=["environments", "mounts", "configs", "images"],
+        choices=["environments", "mounts", "configs", "images", "templates"],
         help=argparse.SUPPRESS,
     )
     validate = commands.add_parser("validate")
@@ -448,7 +542,10 @@ def parser():
         operation_parser.add_argument("name", type=config.name)
     for action in ("stop", "remove", "shell", "logs", "login-api-key", "exec"):
         sub = commands.add_parser(action)
-        sub.add_argument("name", type=config.name)
+        if action == "exec":
+            sub.add_argument("config", help="YAML path or saved configuration name")
+        else:
+            sub.add_argument("name", type=config.name)
         if action == "logs":
             sub.add_argument("--proxy", action="store_true")
         if action == "exec":
@@ -465,7 +562,7 @@ def main():
         args = parser().parse_args()
         if args.action == "completion":
             if args.names:
-                if args.names not in ("configs", "images"):
+                if args.names not in ("configs", "images", "templates"):
                     settings = load_settings()
                     if os.getuid() != settings["operator_uid"]:
                         return
@@ -488,16 +585,31 @@ def main():
             if args.operation == "new":
                 result = images.new(args.name, args.template)
             elif args.operation == "edit":
-                code = images.edit(args.name, emit=_output.event if _output.json_mode else None)
-                raise SystemExit(_output.finish(success(exit_code=code)))
-            elif args.operation == "ls":
+                result = images.edit(args.name, emit=_output.event if _output.json_mode else None)
+                code = result.pop("exit_code")
+                if not _output.json_mode:
+                    _output.event(
+                        "stderr",
+                        f"abx: {args.name}: {'changed' if result['changed'] else 'unchanged'}.\n",
+                    )
+                raise SystemExit(_output.finish(success(result, exit_code=code)))
+            elif args.operation == "list":
                 names = images.names()
-                result = rpc({"action": "image", "operation": "ls", "names": names})
+                result = rpc(
+                    {
+                        "action": "image",
+                        "operation": "list",
+                        "names": names,
+                        "digests": {name: images.fingerprint(name) for name in names},
+                    }
+                )
                 for name in names:
                     result[name]["path"] = str(images.recipe(name))
             else:
                 path = images.recipe(args.name)
                 request = {"action": "image", "operation": args.operation, "name": args.name}
+                if args.operation == "inspect":
+                    request["digest"] = images.fingerprint(args.name)
                 result = (
                     rpc(request, context=args.name) if args.operation == "build" else rpc(request)
                 )
@@ -531,30 +643,16 @@ def main():
             args.action == "proxy" and args.operation == "apply"
         ):
             environment = config.load(args.config)
-            if args.action in ("start", "run"):
-                images.recipe(environment.image)
-            payload = environment.to_dict()
-            payload["network"] = {"allow": payload.pop("allow")}
-            # Missing/invalid values are deliberately validated in the helper after apply stops
-            # the old proxy. Never fail locally and leave old credentials active.
-            tokens = {
-                c.source_env: os.environ[c.source_env]
-                for c in environment.credentials
-                if c.source_env in os.environ
-            }
-            request = {"action": args.action, "config": payload, "tokens": tokens}
             if args.action == "run":
-                request["tty"] = (
-                    not _output.json_mode and sys.stdin.isatty() and sys.stdout.isatty()
-                )
-                raise SystemExit(_output.finish(rpc(request, stream=True)))
-            if args.action == "proxy":
-                request["operation"] = "apply"
-            result = rpc(request)
-            if args.action == "start" and not environment.persistent:
-                _output.event(
-                    "stderr", "abx: Non-persistent environment; shell or stop will remove it.\n"
-                )
+                raise SystemExit(_output.finish(run_environment(environment)))
+            if args.action == "start":
+                result = prepared_environment(environment)
+                if not environment.persistent:
+                    _output.event(
+                        "stderr", "abx: Non-persistent environment; shell or stop will remove it.\n"
+                    )
+            else:
+                result = rpc(environment_request(environment, "proxy") | {"operation": "apply"})
         elif args.action == "proxy":
             request = {"action": "proxy", "operation": args.operation}
             if hasattr(args, "name"):
@@ -564,16 +662,18 @@ def main():
             command = getattr(args, "command", [])
             if command and command[0] == "--":
                 command.pop(0)
-            code = rpc(
-                {
-                    "action": args.action,
-                    "name": args.name,
-                    "command": command,
-                    "tty": not _output.json_mode and sys.stdin.isatty() and sys.stdout.isatty(),
-                },
-                stream=True,
-            )
-            raise SystemExit(_output.finish(code))
+            request = {
+                "action": args.action,
+                "command": command,
+                "tty": not _output.json_mode and sys.stdin.isatty() and sys.stdout.isatty(),
+            }
+            if args.action == "exec":
+                environment = config.load(args.config)
+                entry = prepared_environment(environment, execute=True)
+                request.update(name=environment.name, agent=entry["resources"]["agent"])
+            else:
+                request["name"] = args.name
+            raise SystemExit(_output.finish(rpc(request, stream=True)))
         elif args.action == "login-api-key":
             path = Path(args.key_file)
             metadata = path.stat()
@@ -593,7 +693,7 @@ def main():
                 _output.event("stdout", result)
                 raise SystemExit(_output.finish(success(exit_code=0)))
         table = args.action == "status" or (
-            args.action in ("mount", "image") and args.operation in ("list", "ls")
+            args.action in ("mount", "image") and args.operation == "list"
         )
         _output.finish(success(result), table=args.action if table else False)
     except HelpRequested as exc:
@@ -634,6 +734,7 @@ def control_main():
         streaming = request["action"] in ("exec", "run", "shell")
         if streaming:
             control.docker.input_source = source
+            control.docker.ready = lambda: write_frame({"type": "input_ready"})
             control.docker.output = lambda stream, data: write_frame(
                 {"type": "output", "stream": stream, "data": data}
             )
