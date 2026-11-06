@@ -134,6 +134,9 @@ abx run ./task.yaml
 Kommandoen kjører i terminalen. Miljøet fjernes ved avslutning; prosjektfiler
 beholdes. Se [midlertidig kjøring](docs/usage.md#midlertidig-kjøring).
 
+Standardutskrift er for mennesker. Bruk `abx --json status` for maskinlesbare
+resultater og [JSON-kontrakten](docs/usage.md#utskrift-og-automatisering) ved automatisering.
+
 ## Dokumentasjon
 
 | Dokument | Bruk det til |

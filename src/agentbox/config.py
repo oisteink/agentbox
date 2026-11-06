@@ -330,5 +330,9 @@ def load(path):
         if len(source) > 65536:
             raise AgentboxError("Configuration is too large")
         return parse(yaml.load(source, Loader=StrictLoader))
+    except AgentboxError as exc:
+        raise AgentboxError(str(exc), code="invalid_configuration") from None
     except (OSError, yaml.YAMLError, RecursionError) as exc:
-        raise AgentboxError(f"Cannot load configuration: {type(exc).__name__}") from exc
+        raise AgentboxError(
+            f"Cannot load configuration: {type(exc).__name__}", code="invalid_configuration"
+        ) from None

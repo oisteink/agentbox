@@ -137,10 +137,11 @@ class Control:
                     identifier = agent
                     self.save(data)
             if not persistent:
-                print(
-                    "abx: Non-persistent environment; removed when this shell exits.",
-                    file=sys.stderr,
-                )
+                notice = "abx: Non-persistent environment; removed when this shell exits.\n"
+                if getattr(self.docker, "output", None):
+                    self.docker.output("stderr", notice)
+                else:
+                    print(notice, file=sys.stderr, end="")
             return self.execute(name, agent, command, request.get("tty") is True, daemon_id)
         finally:
             if identifier is not None:

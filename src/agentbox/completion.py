@@ -38,7 +38,7 @@ def names(kind):
     try:
         result = subprocess.run(
             ["/usr/bin/sudo", "-n", "-H", "-u", "agentbox", "/usr/local/libexec/agentbox-control"],
-            input=json.dumps(request),
+            input=json.dumps(request) + "\n",
             text=True,
             capture_output=True,
             timeout=2,
@@ -46,7 +46,10 @@ def names(kind):
         )
         if result.returncode:
             return []
-        entries = json.loads(result.stdout)
+        frame = json.loads(result.stdout)
+        if not isinstance(frame, dict) or frame.get("type") != "result" or not frame.get("ok"):
+            return []
+        entries = frame.get("data")
         if not isinstance(entries, dict):
             return []
         return sorted(config.name(name) for name in entries)

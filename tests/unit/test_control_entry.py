@@ -27,8 +27,10 @@ def test_unauthorized_control_caller_cannot_dispatch(monkeypatch, capsys, wrong_
         cli.control_main()
     assert error.value.code == 2
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert "requires the configured sudo caller and service user" in captured.err
+    assert captured.err == ""
+    frame = json.loads(captured.out)
+    assert frame["error"]["code"] == "permission_denied"
+    assert "requires the configured sudo caller and service user" in frame["error"]["message"]
 
 
 @pytest.mark.parametrize("payload", ["not-json", "[]", '{"action":42}', "x" * 1048577])
@@ -42,7 +44,8 @@ def test_malformed_control_input_is_rejected_without_echo(monkeypatch, capsys, p
         cli.control_main()
     assert error.value.code == 2
     captured = capsys.readouterr()
-    assert captured.out == "" and payload not in captured.err
+    assert captured.err == "" and payload not in captured.out
+    assert json.loads(captured.out)["ok"] is False
 
 
 def test_control_subprocess_failure_does_not_echo_request_or_output(monkeypatch, capsys):
@@ -66,6 +69,6 @@ def test_control_subprocess_failure_does_not_echo_request_or_output(monkeypatch,
         cli.control_main()
     assert error.value.code == 2
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err == "agentbox control: CalledProcessError\n"
-    assert secret not in captured.err
+    assert captured.err == ""
+    assert json.loads(captured.out)["error"]["message"] == "CalledProcessError"
+    assert secret not in captured.out

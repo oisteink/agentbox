@@ -9,7 +9,11 @@ og produktkontrakten i [spesifikasjonen](specification.md).
 
 Python-CLI kjøres som utvikleren. Docker-operasjoner går gjennom en fast
 kontrollhjelper kjørt som `agentbox` med en avgrenset sudo-regel. Forespørsler
-sendes som JSON på stdin. Root-installasjonen og Python-avhengighetene ligger
+sendes som en JSON-header på stdin; resten brukes til bygg eller kommandoinput.
+JSON Lines skiller kontrollresultat fra agentens stdout/stderr uten en ekstra
+socket eller tjeneste. CLI-en krever ett terminalresultat og velger menneske-
+eller JSON-visning. Poll-basert videresending hindrer at input venter på output
+som først kan produseres etter at mer input er sendt. Root-installasjonen og Python-avhengighetene ligger
 under `/opt/agentbox`; hjelperen bruker isolert Python-oppstart og fast socket.
 
 Utviklerens ACL-journal ligger separat i `/var/lib/agentbox-operator` med modus

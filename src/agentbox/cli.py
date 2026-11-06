@@ -4,7 +4,6 @@ import argparse
 import json
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -13,39 +12,78 @@ from pathlib import Path
 from . import completion, config, images, projects
 from .control import Control
 from .errors import AgentboxError
+from .output import Output, failure, success, write_frame
+from .process import pump
 from .settings import load_settings
 from .state import Store, atomic_json
+
+_output = Output()
 
 
 def rpc(request, stream=False, context=None):
     command = ["/usr/bin/sudo", "-H", "-u", "agentbox", "/usr/local/libexec/agentbox-control"]
-    if stream and request.get("action") in ("run", "shell"):
-        process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True)
-        try:
-            process.communicate(json.dumps(request))
-        except KeyboardInterrupt:
-            process.send_signal(signal.SIGINT)
-            while True:
-                try:
-                    process.wait()
-                    break
-                except KeyboardInterrupt:
-                    pass  # Let the helper finish cleanup before returning.
-        return process.returncode
-    options = {"text": True, "capture_output": not stream, "check": False}
-    if context is None:
-        completed = subprocess.run(command, input=json.dumps(request), **options)
-    else:
-        with tempfile.TemporaryFile() as source:
-            source.write((json.dumps(request) + "\n").encode())
+    frames = []
+    buffer = ""
+    invalid = False
+
+    def receive(channel, text):
+        nonlocal buffer, invalid
+        if channel == "stderr":
+            return  # sudo diagnostics are not part of the authenticated result protocol.
+        buffer += text
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            try:
+                frame = json.loads(line)
+                if frames or not isinstance(frame, dict):
+                    raise ValueError
+                if frame.get("type") == "result" and isinstance(frame.get("ok"), bool):
+                    if not frame["ok"] and not (
+                        isinstance(frame.get("error"), dict)
+                        and isinstance(frame["error"].get("code"), str)
+                        and isinstance(frame["error"].get("message"), str)
+                    ):
+                        raise ValueError
+                    frames.append(frame)
+                elif frame.get("type") == "output" and frame.get("stream") in ("stdout", "stderr"):
+                    if not isinstance(frame.get("data"), str):
+                        raise ValueError
+                    _output.event(frame["stream"], frame["data"])
+                else:
+                    raise ValueError
+            except (ValueError, TypeError):
+                invalid = True
+
+    header = (json.dumps(request) + "\n").encode()
+    with tempfile.TemporaryFile() as source:
+        if context is not None:
+            source.write(header)
             images.archive(context, source)
             source.seek(0)
-            completed = subprocess.run(command, stdin=source, **options)
+        child = subprocess.Popen(
+            command,
+            stdin=source if context is not None else subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0,
+        )
+        pump(
+            child,
+            receive,
+            prefix=header if context is None else b"",
+            source=sys.stdin.buffer if stream and not request.get("tty") else None,
+        )
+    if invalid or buffer or len(frames) != 1:
+        raise AgentboxError(
+            "Control helper did not return a complete result", code="control_protocol_error"
+        )
+    result = frames[0]
     if stream:
-        return completed.returncode
-    if completed.returncode:
-        raise AgentboxError((completed.stderr or "Control request failed").strip())
-    return json.loads(completed.stdout)
+        return result
+    if not result["ok"]:
+        error = result["error"]
+        raise AgentboxError(error["message"], code=error["code"], details=error.get("details"))
+    return result.get("data")
 
 
 def _fd(path):
@@ -159,8 +197,60 @@ def project_revoke(settings, name):
         return result
 
 
+class HelpRequested(Exception):
+    def __init__(self, text):
+        self.text = text
+
+
+class Parser(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.add_argument(
+            "--json",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help="Emit JSON results; handled errors have exit status 0",
+        )
+        self.add_argument(
+            "--yes",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help="Confirm requested operations without prompting",
+        )
+
+    def error(self, message):
+        # Argparse messages can echo arbitrary argument values, including secrets.
+        raise AgentboxError(f"Invalid arguments; see {self.prog} --help", code="invalid_arguments")
+
+    def _get_value(self, action, arg_string):
+        try:
+            return super()._get_value(action, arg_string)
+        except AgentboxError as exc:
+            raise AgentboxError(str(exc), code="invalid_arguments") from None
+
+    def print_help(self, file=None):
+        raise HelpRequested(self.format_help())
+
+
+def json_requested(arguments):
+    # exec owns everything after its environment name, including flags.
+    action = next((value for value in arguments if not value.startswith("-")), None)
+    command_started = False
+    for argument in arguments:
+        if argument == "--":
+            return False
+        if argument == "--json":
+            return True
+        if action == "exec":
+            if command_started and not argument.startswith("-"):
+                return False
+            if argument == "exec":
+                command_started = True
+    return False
+
+
 def parser():
-    cli = argparse.ArgumentParser(prog="abx")
+    cli = Parser(prog="abx")
     commands = cli.add_subparsers(dest="action", required=True)
     commands.add_parser("doctor")
     commands.add_parser("status")
@@ -215,6 +305,8 @@ def parser():
 
 
 def main():
+    global _output
+    _output = Output(json_requested(sys.argv[1:]))
     try:
         args = parser().parse_args()
         if args.action == "completion":
@@ -225,19 +317,25 @@ def main():
                         return
                 print("\n".join(completion.names(args.names)))
             else:
-                print(completion.bash_script(), end="")
+                script = completion.bash_script()
+                if _output.json_mode:
+                    _output.finish(success(script))
+                else:
+                    print(script, end="")
             return
         if args.action == "validate":
-            print(json.dumps(config.load(args.config).to_dict(), indent=2))
+            environment = config.load(args.config)
+            _output.finish(success(environment.to_dict() if _output.json_mode else "OK"))
             return
         settings = load_settings()
         if os.getuid() != settings["operator_uid"]:
-            raise AgentboxError("Run abx as the configured developer")
+            raise AgentboxError("Run abx as the configured developer", code="permission_denied")
         if args.action == "image":
             if args.operation == "new":
                 result = images.new(args.name, args.template)
             elif args.operation == "edit":
-                raise SystemExit(images.edit(args.name))
+                code = images.edit(args.name, emit=_output.event if _output.json_mode else None)
+                raise SystemExit(_output.finish(success(exit_code=code)))
             elif args.operation == "ls":
                 names = images.names()
                 result = rpc({"action": "image", "operation": "ls", "names": names})
@@ -288,15 +386,16 @@ def main():
             }
             request = {"action": args.action, "config": payload, "tokens": tokens}
             if args.action == "run":
-                request["tty"] = sys.stdin.isatty() and sys.stdout.isatty()
-                raise SystemExit(rpc(request, stream=True))
+                request["tty"] = (
+                    not _output.json_mode and sys.stdin.isatty() and sys.stdout.isatty()
+                )
+                raise SystemExit(_output.finish(rpc(request, stream=True)))
             if args.action == "proxy":
                 request["operation"] = "apply"
             result = rpc(request)
             if args.action == "start" and not environment.persistent:
-                print(
-                    "abx: Non-persistent environment; shell or stop will remove it.",
-                    file=sys.stderr,
+                _output.event(
+                    "stderr", "abx: Non-persistent environment; shell or stop will remove it.\n"
                 )
         elif args.action == "proxy":
             request = {"action": "proxy", "operation": args.operation}
@@ -312,11 +411,11 @@ def main():
                     "action": args.action,
                     "name": args.name,
                     "command": command,
-                    "tty": sys.stdin.isatty() and sys.stdout.isatty(),
+                    "tty": not _output.json_mode and sys.stdin.isatty() and sys.stdout.isatty(),
                 },
                 stream=True,
             )
-            raise SystemExit(code)
+            raise SystemExit(_output.finish(code))
         elif args.action == "login-api-key":
             path = Path(args.key_file)
             metadata = path.stat()
@@ -332,10 +431,27 @@ def main():
             if hasattr(args, "proxy"):
                 request["proxy"] = args.proxy
             result = rpc(request)
-        print(result if isinstance(result, str) else json.dumps(result, indent=2))
+            if args.action == "logs":
+                _output.event("stdout", result)
+                raise SystemExit(_output.finish(success(exit_code=0)))
+        table = args.action == "status" or (
+            args.action in ("project", "image") and args.operation in ("list", "ls")
+        )
+        _output.finish(success(result), table=args.action if table else False)
+    except HelpRequested as exc:
+        if _output.json_mode:
+            _output.finish(success({"help": exc.text}))
+        else:
+            print(exc.text, end="")
+    except KeyboardInterrupt:
+        raise SystemExit(
+            _output.finish(failure("interrupted", "Interrupted", exit_code=130))
+        ) from None
     except (AgentboxError, OSError, ValueError, subprocess.SubprocessError) as exc:
-        print(f"abx: {exc}", file=sys.stderr)
-        raise SystemExit(2) from None
+        code = exc.code if isinstance(exc, AgentboxError) else "operation_failed"
+        message = str(exc) if isinstance(exc, AgentboxError) else type(exc).__name__
+        details = exc.details if isinstance(exc, AgentboxError) else None
+        raise SystemExit(_output.finish(failure(code, message, details=details))) from None
 
 
 def control_main():
@@ -345,35 +461,41 @@ def control_main():
             settings["operator_uid"]
         ):
             raise AgentboxError(
-                "Control entry point requires the configured sudo caller and service user"
+                "Control entry point requires the configured sudo caller and service user",
+                code="permission_denied",
             )
-        # Read the header and tar through the same buffer to preserve prefetched bytes.
         source = getattr(sys.stdin, "buffer", sys.stdin)
+        source = getattr(source, "raw", source)
         raw = source.readline(1048577)
         if len(raw) > 1048576:
-            raise AgentboxError("Control request too large")
+            raise AgentboxError("Control request too large", code="invalid_request")
         request = json.loads(raw)
         if not isinstance(request, dict) or not isinstance(request.get("action"), str):
-            raise AgentboxError("Expected a structured control operation")
+            raise AgentboxError("Expected a structured control operation", code="invalid_request")
+        control = Control(settings)
+        streaming = request["action"] in ("exec", "run", "shell")
+        if streaming:
+            control.docker.input_source = source
+            control.docker.output = lambda stream, data: write_frame(
+                {"type": "output", "stream": stream, "data": data}
+            )
         if request.get("action") == "image" and request.get("operation") == "build":
             with tempfile.TemporaryFile() as context:
                 shutil.copyfileobj(source, context)
                 context.seek(0)
-                result = Control(settings).dispatch(request, context=context)
+                result = control.dispatch(request, context=context)
         else:
-            rest = source.read(1048577 - len(raw))
-            if len(raw) + len(rest) > 1048576:
-                raise AgentboxError("Control request too large")
-            if rest.strip():
-                raise AgentboxError("Unexpected trailing control input")
-            result = Control(settings).dispatch(request)
-        if request.get("action") in ("exec", "run", "shell"):
-            raise SystemExit(result)
-        print(json.dumps(result))
+            if not streaming:
+                rest = source.read(1048577 - len(raw))
+                if len(raw) + len(rest) > 1048576 or rest.strip():
+                    raise AgentboxError("Unexpected trailing control input", code="invalid_request")
+            result = control.dispatch(request)
+        write_frame(success(exit_code=result) if streaming else success(result))
     except (AgentboxError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
-        # Never print the request, argv, subprocess exception or key material.
         message = str(exc) if isinstance(exc, AgentboxError) else type(exc).__name__
-        print(f"agentbox control: {message}", file=sys.stderr)
+        code = exc.code if isinstance(exc, AgentboxError) else "control_failed"
+        write_frame(failure(code, message, details=getattr(exc, "details", None)))
         raise SystemExit(2) from None
     except KeyboardInterrupt:
+        write_frame(failure("interrupted", "Interrupted", exit_code=130))
         raise SystemExit(130) from None

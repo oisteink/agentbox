@@ -4,6 +4,51 @@ Kjør kommandoene som utvikleren på verten. Agentbox velger sin egen rootless
 Docker-instans; du trenger ikke bytte Docker-context eller sette `DOCKER_HOST`.
 Se [installasjon](installation.md) hvis `doctor` ikke fungerer.
 
+## Utskrift og automatisering
+
+Standardutskriften har tabeller for lister, navngitte felt for detaljer og
+feilmeldinger på stderr. `abx validate MILJØFIL` skriver `OK` eller en konkret
+feil. En kommando som kjøres i miljøet, gir sin exitkode tilbake til skallet.
+
+Bruk `--json` for maskinlesbar utskrift. Flagget kan stå før kommandoen eller
+på kommandonivå; for `exec` må det stå før miljønavnet. Alt etter miljønavnet
+er kommandoargumenter. `--` skiller eksplisitt mellom abx og kommandoen.
+
+```sh
+abx --json status
+abx image ls --json
+printf 'input' | abx --json exec example-codex -- cat
+```
+
+Utdata er JSON Lines. Siste linje er nøyaktig ett resultat:
+
+```json
+{"type":"result","ok":true,"data":{}}
+{"type":"result","ok":false,"error":{"code":"invalid_configuration","message":"persistent must be a boolean"}}
+```
+
+Prosesskjøring, editor og logger kan først sende hendelser med
+`{"type":"output","stream":"stdout","data":"tekst"}`; `stream` kan også være
+`stderr`. Prosessresultatet har `exit_code`, og en feilende kommando har
+`ok: false` og `error.code: command_failed`. Ctrl-C gir `interrupted` og
+`exit_code: 130` når abx rekker å håndtere signalet. JSON-modus bruker ingen TTY,
+videresender stdin og skriver alle hendelser og resultater på stdout.
+
+Håndterte feil gir exitkode 0 i JSON-modus. Les alltid `ok`, `error.code` og
+`exit_code` i sluttresultatet. Manglende sluttresultat betyr avbrutt eller
+ufullstendig kjøring. Ukjente argumenter gir `invalid_arguments`; feil i
+kontrolltransporten gir `control_protocol_error`; øvrige operasjonsfeil gir
+`operation_failed` eller `control_failed`. Feil kan ha et ekstra `details`-felt.
+`--json --help` returnerer hjelpeteksten i `data.help`.
+
+`--yes` gir samtykke der en handling krever bekreftelse. JSON spør aldri;
+uten samtykke gir slike handlinger `confirmation_required` med berørte
+ressurser i `error.details.affected`. Samtykke endrer ikke hvordan handlingen utføres.
+
+Kommandoens egne utdata kan inneholde hemmeligheter. JSON-innramming renser
+ikke disse. Ugyldige UTF-8-bytes erstattes med erstatningstegn ved visning;
+den private agentloggen beholder bytes fra kommandoen.
+
 ## Prosjekt og miljø
 
 | Begrep | Eksempel | Betydning |
@@ -176,9 +221,8 @@ skal beholdes i prosjektmountene. Ved SIGKILL eller vertskrasj kan ressurser
 gjenstå; kontroller `abx status` og fjern miljøet med `abx remove NAVN`.
 
 Når både stdin og stdout er terminaler, brukes en interaktiv terminal. Ellers
-kjøres kommandoen uten terminal og med lukket stdin; pipet innhold sendes ikke
-inn i agenten. Stdout og stderr fra kommandoen samles i CLI-ens stdout. Dette
-gjelder også `shell` og `exec`.
+videresendes stdin uten terminal, og kommandoens stdout og stderr holdes atskilt.
+Utdata lagres også i en privat, størrelsesbegrenset logg hos tjenestebrukeren.
 
 ## Innlogging og verktøyoppsett
 

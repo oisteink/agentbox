@@ -125,7 +125,7 @@ def test_exec_exit_status_and_configured_shell(lab):
     )
     assert result.returncode == 23, result
     assert "'argument with spaces'\n" in result.stdout
-    assert "child-stderr\n" in result.stdout
+    assert "child-stderr\n" in result.stderr
     assert "child-stderr" in cli("logs", env).stdout
 
 
@@ -328,7 +328,7 @@ def test_socket_capability_and_cgroup_enforcement(lab):
     )
     assert result.stdout == "socket-denied\n"
     denied = cli("exec", env, "--", "ip", "link", "add", "forbidden", "type", "dummy", check=False)
-    assert denied.returncode != 0 and "Operation not permitted" in denied.stdout
+    assert denied.returncode != 0 and "Operation not permitted" in denied.stderr
     limited = python(
         env,
         """

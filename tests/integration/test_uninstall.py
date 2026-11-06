@@ -96,7 +96,7 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
         assert "dry_run" in preview.stdout
         assert pwd.getpwnam("agentbox").pw_uid == service_uid
         assert (active / "agent-file").stat().st_uid == service_uid
-        assert json.loads(run("abx", "status").stdout)[env]["status"] == "running"
+        assert json.loads(run("abx", "--json", "status").stdout)["data"][env]["status"] == "running"
         result = run("sudo", "bash", str(script))
         assert "will be stopped" in result.stdout
         assert "Agentbox removed" in result.stdout
@@ -167,11 +167,11 @@ def test_full_uninstall_keeps_projects_and_returns_ownership():
             cleanup("sudo", "umount", str(mount))
         if Path("/usr/local/bin/abx").exists():
             cleanup("abx", "remove", env)
-            listed = run("abx", "project", "list", check=False)
+            listed = run("abx", "--json", "project", "list", check=False)
             if listed.returncode:
                 errors.append(listed.stderr)
             else:
-                entries = json.loads(listed.stdout)
+                entries = json.loads(listed.stdout)["data"]
                 for name in registered:
                     if name in entries and entries[name]["status"] != "revoked":
                         cleanup("abx", "project", "revoke", name)

@@ -13,7 +13,12 @@ def test_names_use_read_only_request_without_password_prompt(monkeypatch):
 
     def run(command, **kwargs):
         seen.update(command=command, **kwargs)
-        return SimpleNamespace(returncode=0, stdout=json.dumps({"example-codex": {}, "other": {}}))
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {"type": "result", "ok": True, "data": {"example-codex": {}, "other": {}}}
+            ),
+        )
 
     monkeypatch.setattr(completion.subprocess, "run", run)
     assert completion.names("environments") == ["example-codex", "other"]
@@ -46,6 +51,9 @@ def test_completion_timeout_is_ignored(monkeypatch):
     "words,expected",
     [
         (["abx", "sh"], ["shell"]),
+        (["abx", "--js"], ["--json"]),
+        (["abx", "--json", "sh"], ["shell"]),
+        (["abx", "--json", "--yes", "image", "b"], ["build"]),
         (["abx", "image", "b"], ["build"]),
         (["abx", "image", "build", "j"], ["js"]),
         (["abx", "image", "e"], ["edit"]),

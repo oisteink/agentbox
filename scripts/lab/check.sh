@@ -82,7 +82,7 @@ print(json.dumps({
     'installed_sha256': hashlib.sha256(json.dumps(installed, sort_keys=True).encode()).hexdigest(),
     'suite_sha256': hashlib.sha256(json.dumps(suite, sort_keys=True).encode()).hexdigest(),
     'installed_files': installed, 'images': images.splitlines(),
-    'doctor': json.loads(subprocess.check_output(['abx', 'doctor'], text=True)),
+    'doctor': json.loads(subprocess.check_output(['abx', '--json', 'doctor'], text=True))['data'],
 }, indent=2, sort_keys=True))
 PY
 
@@ -102,6 +102,7 @@ PY
 failed=0
 AGENTBOX_LAB=1 "$lab_python" -m pytest -q tests/integration/test_installation.py \
   tests/integration/test_lifecycle.py tests/integration/test_temporary_run.py \
+  tests/integration/test_json.py \
   --junitxml="$results_dir/lifecycle.xml" || failed=1
 verify_report "$results_dir/lifecycle.xml" || failed=1
 sudo "$lab_python" scripts/lab/credential_proxy.py > "$results_dir/proxy.json" || failed=1

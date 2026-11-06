@@ -34,7 +34,7 @@ def test_temporary_command_output_exit_and_project_preservation(lab, exit_code, 
         original = lab.state(name)["resources"]["agent"]
     result = cli(operation, name if operation == "shell" else str(config), check=False)
     assert result.returncode == exit_code, result.stderr
-    assert "task-stdout" in result.stdout and "task-stderr" in result.stdout
+    assert "task-stdout" in result.stdout and "task-stderr" in result.stderr
     assert (path / "kept").read_text() == "argument with spaces;$(touch unwanted)"
     assert not (path / "unwanted").exists()
     lab.assert_removed(name)

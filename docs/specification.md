@@ -41,7 +41,7 @@ sende data ut; domenepolicyen gir ingen innholdsfiltrering.
 - Linux med systemd, cgroup v2, user namespaces, POSIX ACL og Python 3.12 eller nyere.
 - Debian er målplattformen; Ubuntu brukes også til labprøver. Konkret minste
   Debian-versjon er ikke fastsatt utover forutsetningene over.
-- Docker Engine og CLI 28 eller nyere. Den testede versjonen er 29.9.2;
+- Docker Engine og CLI 28 eller nyere. Den testede versjonen er 29.9.3;
   øvrige versjoner har ikke samme prøvegrunnlag.
 - Egen Linux-bruker `agentbox`, privat hjem `/var/lib/agentbox` med modus 0700
   og egen Docker-konfigurasjon. Runtime-socket ligger under `/run/user/<uid>`.
@@ -256,13 +256,18 @@ SIGKILL og vertskrasj kan etterlate ressurser som må fjernes eksplisitt.
 
 Terminalsesjoner i vedvarende miljøer har separat levetid fra miljøet.
 `start` starter oppholdsprosessen, ikke `command`. `run`, `shell` og `exec`
-bruker terminal bare når både CLI-ens stdin og stdout er terminaler. Ellers
-er kommandoens stdin lukket; pipet input støttes ikke. Kommandoens stdout og
-stderr samles i CLI-ens stdout.
-Størrelse og størrelsesendringer videresendes. Kontrolloperasjoner låses,
-tilstand skrives atomisk, og opprydding
-avgrenses med ressurs-ID-er og installasjons-/miljøetiketter. Global Docker-
-prune brukes ikke. Testavgrensninger for krasj og samtidighet står i teststatus.
+bruker terminal bare når både CLI-ens stdin og stdout er terminaler og JSON
+ikke er valgt. Uten terminal videresendes stdin, og stdout/stderr holdes atskilt.
+Standardutskrift er for mennesker. `--json` gir JSON Lines med output-hendelser
+og ett terminalt resultat med `ok`, `data` eller `error.code/message`, samt
+`exit_code` for prosesser. Håndterte feil, kommandofeil og håndtert Ctrl-C gir
+CLI-exitkode 0 i JSON-modus. Manglende terminalresultat er ikke suksess.
+`--yes` gir samtykke; maskinmodus spør aldri interaktivt. Detaljert kontrakt
+står i [bruksveiledningen](usage.md#utskrift-og-automatisering).
+Terminalstørrelse og størrelsesendringer videresendes. Kontrolloperasjoner låses,
+tilstand skrives atomisk, og opprydding avgrenses med ressurs-ID-er og
+installasjons-/miljøetiketter. Global Docker-prune brukes ikke. Testavgrensninger
+for krasj og samtidighet står i teststatus.
 
 Agentnøkler gis eksplisitt per miljø. `login-api-key` krever en privat fil eid
 av utvikleren og sender nøkkelen via stdin. Kontrollverktøyet logger ikke
