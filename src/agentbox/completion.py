@@ -13,6 +13,11 @@ def bash_script():
 
 
 def names(kind):
+    if kind == "templates":
+        try:
+            return images.template_names()
+        except OSError:
+            return []
     if kind == "images":
         try:
             return images.names()

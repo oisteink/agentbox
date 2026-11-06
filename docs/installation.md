@@ -4,6 +4,9 @@ Installer fra repoet på Linux-verten som skal kjøre agentmiljøene.
 Daglig bruk skjer som utvikleren, uten `sudo abx`.
 
 Agentimages bygges fra egne Dockerfiles under `~/.config/agentbox/images/`.
+Start, run og exec bygger automatisk ved behov. Medfølgende maler installeres
+under `/opt/agentbox/lib/agentbox/templates`; reinstallasjon gjenoppretter dem
+og beholder brukerens lokale oppskrifter.
 Installeren bygger det interne proxyimaget når det mangler. Eksisterende
 image beholdes; ombygging gjøres med `abx proxy build`. Byggfeil gir
 mislykket installasjon.
@@ -15,7 +18,7 @@ på verten. Tokens bygges ikke inn i imaget.
 Debian er målplattformen. Ubuntu 24.04 brukes som disponibel labplattform;
 utvikleren har også prøvd installasjonen på Debian. Systemd, cgroup v2,
 POSIX ACL, user namespaces og rootless Docker kreves, med Python 3.12 eller nyere.
-Koden krever Docker 28 eller nyere; bare 29.9.2 er testet. Installer
+Koden krever Docker 28 eller nyere; 29.9.3 er testet. Installer
 [Docker Engine og rootless extras](https://docs.docker.com/engine/security/rootless/)
 før prosjektets installer kjøres. Andre nødvendige pakker på Debian/Ubuntu:
 
@@ -63,9 +66,8 @@ Installeren bevarer adressevalget ved reinstallasjon.
 
 `abx doctor` skal rapportere `rootless: true`, riktig daemon-ID og
 `cgroup: systemd`. Proxyimaget `agentbox-proxy:local` skal være bygget.
-`abx image ls` viser den lokale Codex-oppskriften
-med status `built` etter `abx image build codex`. `abx status` kan vise `{}`
-før første miljø er opprettet.
+`abx image list` viser den lokale Codex-oppskriften
+med status `built` etter `abx image build codex`. `abx status` viser en tom tabell før første miljø er opprettet.
 
 Fortsett med [mount-registrering og første miljø](usage.md).
 Versjonsmatrise og skillet mellom labprøver og manuell Debian-utprøving står i

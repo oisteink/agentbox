@@ -123,7 +123,8 @@ abx shell context7-codex
 Codex sin egen kontoinnlogging gjøres separat med
 [device-login](docs/usage.md#innlogging-og-verktøyoppsett). Etter endring av en
 ikke-tom nøkkel brukes `abx proxy apply context7-codex`. Nye klientnavn
-og tom/ikke-tom overgang krever gjenskaping; `remove` sletter containerlaget; eksplisitte mounts beholdes.
+og tom/ikke-tom overgang krever ny container. Start av stoppet miljø håndterer
+dette; containerlaget erstattes og eksplisitte mounts beholdes.
 Se [brukerveiledningen](docs/usage.md#api-tokens-i-proxyen) for tilbakekalling
 og begrensninger.
 

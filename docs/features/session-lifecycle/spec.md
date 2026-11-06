@@ -12,7 +12,6 @@ fortsatt må fastsettes i research og plan.
 | --- | --- |
 | Samle start, exec og run med automatisk livssyklus | [#11](https://github.com/oisteink/agentbox/issues/11) |
 | Gjør proxyoppgradering og nødstopp pålitelige | [#12](https://github.com/oisteink/agentbox/issues/12) |
-| Utvid imagemaler og bygg ved behov | [#14](https://github.com/oisteink/agentbox/issues/14) |
 | Administrer miljøfiler, status og logger | [#15](https://github.com/oisteink/agentbox/issues/15) |
 | Samle diagnose og reparasjon i doctor | [#17](https://github.com/oisteink/agentbox/issues/17) |
 
@@ -145,49 +144,10 @@ volumsletting, tilbakekalling og samtykke for fjerning av kildebrukere.
 
 ## Images og maler
 
-- `abx image new NAVN --template MAL` kan bruke både medfølgende maler
-  (base, codex, opencode, claude-code) og lokale imageoppskrifter som mal.
-  Oppskriften kopieres med Dockerfile, .dockerignore og hjelpeskript;
-  den trenger ikke være bygget. Kopien er selvstendig og følger ikke senere
-  endringer i malen. Eksisterende målkatalog overskrives ikke.
-- Egne oppskrifter/maler ligger under ~/.config/agentbox/images/ (med samme
-  XDG-støtte som øvrig brukerkonfigurasjon). Uten --template brukes lokal
-  oppskrift med navnet default hvis den finnes, ellers medfølgende base.
-  Egen standard redigeres med `abx image edit default`.
-- Autocomplete for --template foreslår både lokale oppskrifter og medfølgende
-  maler. De medfølgende malene beholdes og lagres som installasjonseid innhold,
-  utenfor brukerstyrt .config. /usr/share er nevnt som mulig plassering;
-  konkret installasjons-/pakkesti er ikke fastsatt.
-- Installasjon/reinstallasjon gjenoppretter installasjonens medfølgende malfiler.
-  Lokale maler overstyrer medfølgende maler ved samme navn; lokal default er
-  tilsvarende brukerens valg av standard. Lokale oppskrifter beholdes ved
-  installasjon. Ingen særskilt mekanisme for å omgå lokale overrides er påkrevd.
-- `abx image edit NAVN` rapporterer etter editoravslutning om den lokale
-  oppskriften ble endret eller om det er ingen endringer. Det omfatter også
-  .dockerignore og hjelpeskript i oppskriftskatalogen. --json gir tilsvarende
-  strukturert endringsstatus. Redigering utløser ikke automatisk bygging.
-- `abx image build NAVN` tillates når alle containere som bruker imaget er
-  stoppet. Kjørende bruk sperrer bygging; stoppede containere skal ikke måtte
-  fjernes først. Byggingen oppdaterer image/tag uten å endre eksisterende
-  containerlag.
-- Start og exec bygger automatisk før oppstart hvis imaget mangler eller
-  oppskriften er endret siden bygg. Hvis miljøets container allerede kjører,
-  brukes den uten ombygging eller erstatning; brukeren varsles om at endret
-  oppskrift får virkning etter stopp og ny oppstart. Nytt image tas i bruk
-  med ny container; mountene beholdes. Kjørende bruk i andre miljøer gir
-  fortsatt byggesperre etter den felles byggeregelen.
-- Oversiktskommandoene bruker navnet list: `abx image list` og `abx mount list`.
-  Image ls erstattes av image list; det trengs ikke et ls-alias.
-  Imageoversikten viser lokale oppskrifter og byggestatus, også ubygde.
-  Full liste over miljøer som bruker imaget legges i detaljvisningen,
-  slik at oversikten ikke får en ubegrenset «brukes av»-kolonne.
-- `abx image inspect NAVN` viser oppskriftskatalog, byggestatus, image-ID og
-  hvilke miljøer som bruker imaget. Standardutskriften er lesbar for mennesker;
-  --json gir tilsvarende strukturerte detaljer.
-- `abx image remove NAVN` erstatter image rm. Den fjerner det bygde imaget,
-  men beholder den lokale Dockerfilen og resten av oppskriften for senere bygg.
-  Fjerning avvises når containere bruker imaget, også stoppede containere.
-  Dette er forskjellig fra bygging, som tillates når alle brukere er stoppet.
+Livssyklusarbeidet bruker [image-klargjøringen](../../usage.md#lokale-maler-redigering-og-bygg)
+med lokale maler, inputdigest, bygg ved behov og erstatning av stoppede
+containere. Pending endrer ikke kjørende agent/proxy. Exec er bundet til valgt
+agent-ID; nye eierskaps-/keep-running-regler skal bevare denne grensen.
 
 ## Completion og miljøredigering
 
@@ -240,14 +200,7 @@ og ett sluttresultat når visningen avsluttes.
   og oppdagelse av krasjede klienter avklares i research/plan. Modellen med
   oversikt over aktive kjøringer og vanlig stopp etter siste kjøring er
   avklart, med et felles keep-running-flagg som kan settes underveis.
-- Hvordan oppskriftsendringer oppdages, avklares i research/plan. Automatisk
-  bygg ved manglende/endret imageoppskrift og erstatning ved imagebytte er
-  avklart. Miljøkonfigurasjonsendringer gjelder ved neste oppstart, med
-  eksplisitt proxy apply som mulighet for nettverk/tokens underveis.
 - Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
   avklares i research/plan.
 - Mekanisme for å oppdage endret proxykode og ta nytt proxyimage i bruk ved
   oppgradering er ikke valgt. Den må håndtere at gamle proxycontainere finnes.
-- Mount remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding
-  frem til denne er fullført. Konkrete regler for oppryddingen avklares i
-  research/plan; samtykke i JSON-modus håndteres med --yes som avklart over.

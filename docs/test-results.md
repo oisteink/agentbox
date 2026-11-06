@@ -12,21 +12,21 @@ OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 
 | Kontroll | Resultat |
 | --- | --- |
-| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 235 bestått |
+| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 265 bestått |
 | Ruff lint/format, Bash-syntaks og gofmt | Bestått |
 | Go race og vet | Bestått, HTTP/1 og HTTP/2 |
 | govulncheck v1.9.0, Go 1.27.3 | Ingen sårbarheter som kan nås |
 | C4-kilde og bilder | SVG/PNG rendret; etiketter, lesbarhet og lenker kontrollert |
 | Dokumentasjon | CLI, skjema, lagring, proxybygg, installasjon og C4 kontrollert mot kode; lokale lenker og eksempler validert |
-| Wheel | Dockerfile-maler og Codex-launcher inkludert |
+| Wheel | Dockerfile-maler, .dockerignore, launcher og CLI-moduler verifisert |
 | Installasjon og imagebygg i VM | Bestått; installerte filer sammenlignet med kilde |
 | Mounts/volumer | Katalog-ACL, ro/rw, profil/HOME-volumer, revoke/fix, samtykke, stoppede brukere og retry bestått |
-| Installert CLI og oppsett | 39 scenarier bestått, ingen skips |
+| Installert CLI og oppsett | 45 scenarier bestått, ingen skips |
 | Installert proxy | 24 kontroller bestått, ingen oppryddingsfeil |
 | Avinstallasjon | Bestått; annen rootful Docker-instans og kontrollvolum bevart |
 
-Installert kildehash: `d674e10184c5b6a679c2b323882371a0c6f27fb9a2a7f251c4cbe032b123b5e6`.
-Test-/skripthash: `fd30bd13feb02e5ee2bbbab8efb69ce4d54f47eee56a86ed1086426b098289a0`.
+Installert kildehash: `487cf755bd5a4afe2bbada1279be8df365af791ea417a2c1f520414faa7d59d8`.
+Test-/skripthash: `33f2bc0f798c32f12651d397ecd3a887391e5936b586c0bf49739f38686207a5`.
 Hashene beregnes av labskriptets plattformkontroll.
 
 Lokale kontroller bruker `scripts/check.sh`; laben bruker `scripts/lab/check.sh`
@@ -39,6 +39,12 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
 
 - Installasjon: proxyimage ved første oppsett, gjenbruk under reinstallasjon
   med en stoppet container og feil ved ugyldig kilde når imaget mangler.
+- Imageoppskrifter: lokal default/prioritet, selvstendige kopier med skjulte
+  filer og lenker, endringsdeteksjon, automatisk bygg og exec-oppstart. Tagflytting
+  beholder bygg-/fjerningssperren; stoppet image-/profilbytte gir ny agent-ID
+  og bevarer katalog-/volumdata. Ugyldig ny mount beholder det stoppede laget.
+  Exec og pending start beholder en stoppet proxy. Reinstallasjon gjenoppretter
+  medfølgende maler og beholder lokale oppskrifter.
 - Lokale prøver: konfigurasjon, ACL-regler, policy, tokenaliaser, plassholdere,
   editorvalg, binær kontrollprotokoll og sikker utpakking av byggkontekst.
 - Installert CLI: to images/miljøer, COPY/.dockerignore, bygg/fjerning under
@@ -57,7 +63,8 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
   kommandofeil med exitkode i sluttresultatet. Installert stdin/stdout/stderr
   med 200 kB i begge retninger, tidlig stdin-stenging, delt/ugyldig UTF-8,
   editor med input/exitstatus og Ctrl-C gjennom sudo med full opprydding.
-  Lokale prosesser dekker ventende input og ugyldig/ufullstendig protokoll.
+  Lokale prosesser dekker ventende input, stor pipet input gjennom setup-retry,
+  avbrudd før input åpnes og ugyldig/ufullstendig protokoll.
 - Mounts: navngitt profilvolum gjennom remove/run/imagebytte, eksplisitt HOME i
   ikke-persistent miljø, ro/rw, revoke med aktive brukere og åpent håndtak,
   fix uten reaktivering og sletting med stoppede volumbrukere. Katalog-remove

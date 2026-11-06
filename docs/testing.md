@@ -93,7 +93,7 @@ kravet er uttømmende verifisert. Installerte scenarier ligger i
 | A13: tilbakekalling | `test_acl_repair_and_revocation_leave_other_mount_working`: varsling under read-only bruk, EACCES som tjenestebruker og annet mount fortsetter; ACL-unitprøver | Konkurrerende manuelle ACL-endringer mangler |
 | Installasjon | `test_install` validerer operatørvalg; `test_proxy_image_installation_and_build_failure` prøver proxybygg, gjenbruk og feilstatus; laben sammenligner installerte filer | Minste Debian er ikke fastsatt |
 | Shell, exec og terminal | `test_exec_exit_status_and_configured_shell`, `test_terminal_reads_input_and_preserves_size`, lokal PTY-prøve | Dynamisk størrelsesendring og signaler i vedvarende shell/exec trenger egne prøver; midlertidig run/shell har Ctrl-C-prøver |
-| Stopp/start og endret profil | `test_stop_start_preserves_container_and_home`, `test_changed_profile_is_rejected_without_losing_home` | Home-markør og samme container-ID; full innlogging er ikke utført her |
+| Stopp/start og endret profil | `test_stop_start_preserves_container_and_home`, `test_changed_profile_waits_for_restart_and_recreates_container` | Home-markør og samme container-ID; full innlogging er ikke utført her |
 | Ikke-persistent miljø | `test_temporary_run.py`: start/shell, rent hjem ved neste start, ny ID, stop, mount-bevaring og konkurrerende shell; `test_run.py`: reservasjon, signalgap og identitetsbinding | Hardt avbrudd krever eksplisitt remove |
 | Midlertidig kjøring | `test_temporary_run.py`: exitkode, terminal, Ctrl-C, ressursfjerning og mount-bevaring; `test_run.py`: feilbaner og identitetsbinding | SIGKILL/vertskrasj krever eksplisitt opprydding |
 | Eksempelmaler | `test_example_agent_version_in_isolation`, `test_agent_examples_match_cli_templates_and_archive` | Bygg og versjonskommando er prøvd; ikke TUI, innlogging eller modelltrafikk |
@@ -162,3 +162,10 @@ samtykke for aktive/stoppede volumbrukere; katalogdata/operatørtilgang etter
 remove; manglende/fremmed volum; og ufullstendig cleanup med retry. Lokale
 feilprøver dekker samtykke ved endret kilde/ressurser og avbrudd mellom ACL-pass,
 før forget og etter volumsletting. Vanlig remove prøves uten root/chown.
+
+Imageoppskrifter prøves med lokal default/prioritet, hel kontekstkopi, edit-
+endringer og inputdigest uten tidsstøy. Brukssjekk må dekke tagflytting og
+stoppede containere. Preflight-feil skal beholde gammelt stoppet lag.
+Run-retry må bevare stor pipet input, aldri skje etter input_ready/Ctrl-C,
+og fortsatt gi ett offentlig sluttresultat. Installert exec prøves med
+CONFIG, automatisk bygg/start, valgt ID og proxy som forblir stoppet.

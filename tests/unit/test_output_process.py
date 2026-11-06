@@ -73,7 +73,7 @@ def test_interrupt_while_waiting_for_input_has_no_input_thread(tmp_path):
     [
         ["--json", "unknown-secret"],
         ["validate", "--json"],
-        ["--json", "image", "new", "example", "--template", "secret-value"],
+        ["--json", "image", "new", "example", "--template", "../secret-value"],
         ["--json", "--help"],
         ["image", "--json", "build", "--help"],
     ],
@@ -139,4 +139,122 @@ def test_control_protocol_requires_one_final_result(monkeypatch, payload):
     monkeypatch.setattr(cli, "_output", Output(True))
     with pytest.raises(AgentboxError) as error:
         cli.rpc({"action": "status"})
+    assert error.value.code == "control_protocol_error"
+
+
+def test_rpc_retry_keeps_large_input_until_ready(monkeypatch, tmp_path, capsys):
+    # Exercise the actual framing and poll pump with real subprocesses.
+    popen = subprocess.Popen
+    calls = []
+    source = tmp_path / "input"
+    source.write_bytes(b"input" * 100000)
+    script = (
+        "import json,sys; sys.stdin.buffer.readline(); "
+        "print(json.dumps({'type':'input_ready'}),flush=True); "
+        "data=sys.stdin.buffer.read().decode(); "
+        "print(json.dumps({'type':'output','stream':'stdout','data':data}),flush=True); "
+        "print(json.dumps({'type':'result','ok':True,'exit_code':0}))"
+    )
+
+    def child(*args, **kwargs):
+        calls.append(True)
+        program = (
+            script
+            if len(calls) > 1
+            else (
+                "import sys,json; sys.stdin.buffer.readline(); "
+                "print(json.dumps({'type':'result','ok':False,'error':{'code':'image_outdated','message':'changed'}}))"
+            )
+        )
+        return popen([sys.executable, "-c", program], **kwargs)
+
+    with source.open("rb") as incoming:
+        monkeypatch.setattr(cli.subprocess, "Popen", child)
+        monkeypatch.setattr("sys.stdin", type("Input", (), {"buffer": incoming})())
+        monkeypatch.setattr(cli, "_output", Output(True))
+        failed = cli.rpc({"action": "run"}, stream=True)
+        assert not failed.input_ready and incoming.tell() == 0
+        result = cli.rpc({"action": "run"}, stream=True)
+        assert result.input_ready and result["ok"]
+    frames = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert len(frames) == 1 and frames[0]["type"] == "output"
+    assert frames[0]["data"] == "input" * 100000
+
+
+def test_early_setup_failure_does_not_wait_for_open_input(monkeypatch):
+    popen = subprocess.Popen
+
+    def child(*args, **kwargs):
+        return popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.stdin.buffer.readline(); "
+                'print(\'{"type":"result","ok":false,"error":{"code":"image_outdated","message":"changed"}}\')',
+            ],
+            **kwargs,
+        )
+
+    read, write = os.pipe()
+    try:
+        with os.fdopen(read, "rb") as incoming:
+            monkeypatch.setattr(cli.subprocess, "Popen", child)
+            monkeypatch.setattr("sys.stdin", type("Input", (), {"buffer": incoming})())
+            assert not cli.rpc({"action": "run"}, stream=True).input_ready
+    finally:
+        os.close(write)
+
+
+def test_interrupt_while_waiting_for_ready_overrides_setup_retry(monkeypatch):
+    popen = subprocess.Popen
+
+    def child(*args, **kwargs):
+        return popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys,os,signal,time; sys.stdin.buffer.readline(); "
+                "time.sleep(.1); os.kill(os.getppid(),signal.SIGINT); "
+                'print(\'{"type":"result","ok":false,"error":{"code":"image_outdated","message":"changed"}}\'); '
+                "time.sleep(.1)",
+            ],
+            **kwargs,
+        )
+
+    read, write = os.pipe()
+    try:
+        with os.fdopen(read, "rb") as incoming:
+            monkeypatch.setattr(cli.subprocess, "Popen", child)
+            monkeypatch.setattr("sys.stdin", type("Input", (), {"buffer": incoming})())
+            result = cli.rpc({"action": "run"}, stream=True)
+            assert result.interrupted and result["error"]["code"] == "interrupted"
+            assert not result.input_ready
+    finally:
+        os.close(write)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        '{"type":"input_ready"}\n{"type":"input_ready"}\n{"type":"result","ok":true}\n',
+        '{"type":"result","ok":true}\n{"type":"input_ready"}\n',
+        '{"type":"input_ready","extra":true}\n{"type":"result","ok":true}\n',
+    ],
+)
+def test_invalid_internal_ready_frames_are_protocol_errors(monkeypatch, payload):
+    popen = subprocess.Popen
+
+    def child(*args, **kwargs):
+        return popen(
+            [
+                sys.executable,
+                "-c",
+                f"import sys; sys.stdin.buffer.readline(); sys.stdout.write({payload!r})",
+            ],
+            **kwargs,
+        )
+
+    monkeypatch.setattr(cli.subprocess, "Popen", child)
+    with pytest.raises(AgentboxError) as error:
+        cli.rpc({"action": "run", "tty": True}, stream=True)
     assert error.value.code == "control_protocol_error"

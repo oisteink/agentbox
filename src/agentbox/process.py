@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 
-def pump(process, emit, *, source=None, prefix=b"", interrupt=None):
+def pump(process, emit, *, source=None, prefix=b"", input_ready=None):
     """Keep bounded buffers; detect child exit even when input stays open."""
     decoders = {
         name: codecs.getincrementaldecoder("utf-8")("replace") for name in ("stdout", "stderr")
@@ -21,8 +21,7 @@ def pump(process, emit, *, source=None, prefix=b"", interrupt=None):
                 selector.register(pipe, selectors.EVENT_READ, name)
         pending = prefix
         input_open = source is not None
-        if input_open and not pending:
-            selector.register(source, selectors.EVENT_READ, "input")
+        reading = False
         if process.stdin:
             os.set_blocking(process.stdin.fileno(), False)
             if pending:
@@ -32,11 +31,20 @@ def pump(process, emit, *, source=None, prefix=b"", interrupt=None):
         outputs = sum(getattr(process, name) is not None for name in decoders)
         while outputs or process.poll() is None:
             try:
+                if (
+                    input_open
+                    and not pending
+                    and not reading
+                    and (input_ready is None or input_ready())
+                ):
+                    selector.register(source, selectors.EVENT_READ, "input")
+                    reading = True
                 events = selector.select(timeout=0.2)
                 for key, _ in events:
                     if key.data == "input":
                         pending = os.read(key.fd, 65536)
                         selector.unregister(key.fileobj)
+                        reading = False
                         if not pending:
                             input_open = False
                             if process.stdin and not process.stdin.closed:
@@ -56,9 +64,7 @@ def pump(process, emit, *, source=None, prefix=b"", interrupt=None):
                                     pass
                         if not pending:
                             selector.unregister(key.fileobj)
-                            if input_open:
-                                selector.register(source, selectors.EVENT_READ, "input")
-                            else:
+                            if not input_open:
                                 process.stdin.close()
                     else:
                         block = os.read(key.fd, 65536)
@@ -71,10 +77,7 @@ def pump(process, emit, *, source=None, prefix=b"", interrupt=None):
                             outputs -= 1
             except KeyboardInterrupt:
                 interrupted = True
-                if interrupt:
-                    interrupt(process)
-                else:
-                    process.send_signal(signal.SIGINT)
+                process.send_signal(signal.SIGINT)
         if process.stdin and not process.stdin.closed:
             process.stdin.close()
         while True:

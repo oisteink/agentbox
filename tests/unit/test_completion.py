@@ -58,7 +58,7 @@ def test_completion_timeout_is_ignored(monkeypatch):
         (["abx", "image", "build", "j"], ["js"]),
         (["abx", "image", "e"], ["edit"]),
         (["abx", "image", "edit", "j"], ["js"]),
-        (["abx", "image", "new", "js", "--template", "c"], ["codex", "claude-code"]),
+        (["abx", "image", "new", "js", "--template", "c"], ["claude-code", "codex"]),
         (["abx", "image", "new", "js", "--template", "o"], ["opencode"]),
         (["abx", "proxy", "b"], ["build"]),
         (["abx", "shell", "exa"], ["example-codex"]),
@@ -69,6 +69,8 @@ def test_completion_timeout_is_ignored(monkeypatch):
         (["abx", "start", "with"], ["with space.yaml"]),
         (["abx", "start", "exa"], ["example-codex"]),
         (["abx", "run", "exa"], ["example-codex"]),
+        (["abx", "exec", "with"], ["with space.yaml"]),
+        (["abx", "image", "new", "copy", "--template", "j"], ["js"]),
         (["abx", "validate", "exa"], ["example-codex"]),
         (["abx", "start", "--h"], ["--help"]),
         (["abx", "mount", "add", "example", "mou"], ["mount dir"]),
@@ -86,6 +88,7 @@ abx() {
     'completion --names mounts') printf '%s\\n' example ;;
     'completion --names configs') printf '%s\\n' example-codex ;;
     'completion --names images') printf '%s\\n' js ;;
+    'completion --names templates') printf '%s\\n' base claude-code codex js opencode ;;
     *) return 1 ;;
   esac
 }

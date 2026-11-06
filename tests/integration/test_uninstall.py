@@ -100,13 +100,13 @@ def test_full_uninstall_keeps_mounts_and_returns_ownership():
         run(
             "abx",
             "exec",
-            env,
+            str(cfg),
             "--",
             "sh",
             "-c",
             "printf agent-code > /workspace/agent-file; chmod 600 /workspace/agent-file",
         )
-        run("abx", "exec", env, "--", "ln", "-s", str(protected), "/workspace/link")
+        run("abx", "exec", str(cfg), "--", "ln", "-s", str(protected), "/workspace/link")
         assert (active / "agent-file").stat().st_uid == service_uid
         assert (active / "link").lstat().st_uid == service_uid
         script = Path(__file__).resolve().parents[2] / "scripts/uninstall.sh"

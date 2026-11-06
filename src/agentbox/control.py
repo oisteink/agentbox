@@ -56,7 +56,7 @@ class Control:
         self.docker.mutate("build", "--tag", image, "/opt/agentbox/proxy", timeout=900)
         return {"image": image}
 
-    def run(self, payload, tokens, *, tty=False):
+    def run(self, payload, tokens, *, tty=False, recipe_digest=None):
         environment = config.parse(payload)
         name = environment.name
         identifier = None
@@ -66,7 +66,7 @@ class Control:
                 if name in data["environments"]:
                     raise AgentboxError("Environment already exists; choose a new temporary name")
                 try:
-                    entry = self.start(data, payload, tokens)
+                    entry = self.start(data, payload, tokens, recipe_digest=recipe_digest)
                 except Exception:
                     try:
                         self.remove(data, name)
@@ -103,6 +103,8 @@ class Control:
         self.docker.verify(daemon_id)
         terminal = open("/dev/tty") if tty else None
         try:
+            if getattr(self.docker, "ready", None):
+                self.docker.ready()
             return self.docker.exec_stream(
                 identifier, command, self.store.root / "environments" / name, terminal=terminal
             )
@@ -735,60 +737,94 @@ class Control:
             self.drop_proxy(data, name)
             raise
 
-    def start(self, data, payload, tokens=None):
+    def start(self, data, payload, tokens=None, *, recipe_digest=None, reuse_running=False):
         self.check_guard()
         environment = config.parse(payload)
         name = environment.name
+        tokens = tokens or {}
         normalized = json.loads(json.dumps(environment.to_dict()))
-        image = images.managed(self.docker, data["installation"], environment.image)
-        images.profile(image)
+        addresses = local_addresses()
         previous = data["environments"].get(name)
+        agent_details = None
+        owned = self.owned(data, name, "container") if previous else []
         if previous:
-            if previous.get("proxy_format") != 2:
-                raise AgentboxError(
-                    "Legacy environment: stop and explicitly recreate; remove deletes agent login"
-                )
-            if (
-                previous["host_addresses"] != local_addresses()
-                or previous["status"] == "stopped-host-address-change"
-            ):
-                self.stop(data, name)
-                previous["status"] = "stopped-host-address-change"
-                self.save(data)
-                raise AgentboxError("Host addresses changed; remove and recreate explicitly")
-            if previous["config"] != normalized:
-                raise AgentboxError(
-                    "Configuration changed; use proxy apply for network/token rules, or recreate for other changes"
-                )
-            self.check_mounts(data, environment)
             agent = previous["resources"].get("agent")
-            if agent not in self.owned(data, name, "container"):
-                raise AgentboxError("Agent container is missing; explicit recreation required")
+            if agent in owned:
+                agent_details = self.docker.inspect("container", agent)
+            elif agent:
+                raise AgentboxError("Agent container ownership changed", code="environment_changed")
+        running = bool(agent_details and agent_details["State"]["Running"])
+        if running and previous["host_addresses"] != addresses:
+            self.stop(data, name)
+            previous["status"] = "stopped-host-address-change"
+            self.save(data)
+            running = False
+        desired_clients = {
+            credential.client_env: bool(tokens.get(credential.source_env))
+            for credential in environment.credentials
+        }
+        old_clients = (
+            {key: bool(value) for key, value in previous.get("placeholders", {}).items()}
+            if previous
+            else {}
+        )
+        image = images.managed(self.docker, data["installation"], environment.image, required=False)
+        if running:
+            actual_image = self.docker.inspect("image", agent_details["Image"])
+            actual_digest = (actual_image["Config"].get("Labels") or {}).get(
+                "agentbox.recipe-digest"
+            )
+            pending = (
+                previous["config"] != normalized
+                or desired_clients != old_clients
+                or not image
+                or agent_details["Image"] != image["Id"]
+                or (recipe_digest is not None and actual_digest != recipe_digest)
+            )
             proxy = previous["resources"].get("proxy")
-            if (
-                previous["status"] == "running"
-                and proxy in self.owned(data, name, "container")
-                and self.docker.inspect("container", agent)["State"]["Running"]
-                and self.docker.inspect("container", proxy)["State"]["Running"]
-            ):
-                return previous
-            self.apply_proxy(data, environment, tokens or {})
-            self.docker.mutate("container", "start", agent)
+            proxy_active = bool(
+                proxy in owned and self.docker.inspect("container", proxy)["State"]["Running"]
+            )
+            if reuse_running or pending:
+                return dict(previous, pending_changes=pending, proxy_active=proxy_active)
+            if not proxy_active:
+                self.apply_proxy(data, environment, tokens)
+            return dict(previous, pending_changes=False, proxy_active=True)
+        if not image:
+            raise AgentboxError("Recipe image is missing", code="image_outdated")
+        images.profile(image)
+        actual_digest = (image["Config"].get("Labels") or {}).get("agentbox.recipe-digest")
+        if recipe_digest is not None and recipe_digest != actual_digest:
+            raise AgentboxError("Recipe image changed during preparation", code="image_outdated")
+        mounts = self.check_mounts(data, environment)
+        policy.token_environment(environment, tokens)
+        can_reuse = (
+            previous
+            and agent_details
+            and previous["config"] == normalized
+            and agent_details["Image"] == image["Id"]
+            and desired_clients == old_clients
+            and previous["host_addresses"] == addresses
+            and previous["status"] != "stopped-host-address-change"
+        )
+        if can_reuse:
+            self.apply_proxy(data, environment, tokens)
+            self.docker.mutate("container", "start", previous["resources"]["agent"])
             previous["status"] = "running"
             self.save(data)
-            return previous
-        mounts = self.check_mounts(data, environment)
-        # Resolve on the trusted host and pin one verified address per name. No
-        # proxy DNS fallback means a later DNS rebind cannot change the destination.
-        addresses = local_addresses()
+            return dict(previous, pending_changes=False, proxy_active=True)
+        # Validate the new image, mounts, tokens, DNS and policy before discarding
+        # any stopped layer. These are the same validators used for creation.
         pinned = policy.resolve(environment.allow, addresses)
         inside_subnet, outside_subnet = self.subnets()
         proxy_ip = str(inside_subnet.network_address + 2)
-        policy.token_environment(environment, tokens or {})
-        placeholders = policy.placeholders(environment, tokens or {})
+        placeholders = policy.placeholders(environment, tokens)
         rendered, _, digest = policy.render(
             environment.allow, pinned, proxy_ip, addresses, environment.credentials, placeholders
         )
+        recreated = previous is not None
+        if previous:
+            self.remove(data, name)
         directory = self.store.root / "environments" / name
         directory.mkdir(parents=True, mode=0o700)
         self.prepare_pki(directory)
@@ -841,6 +877,8 @@ class Control:
                 prefix + "-agent",
                 *common,
                 *self.label_args(data, name, "agent"),
+                "--label",
+                f"agentbox.image={environment.image}",
                 "--user",
                 "0:0",
                 "--init",
@@ -900,7 +938,7 @@ class Control:
             self.docker.mutate("container", "start", agent)
             entry["status"] = "running"
             self.save(data)
-            return entry
+            return dict(entry, recreated=recreated, pending_changes=False, proxy_active=True)
         except Exception:
             try:
                 self.remove(data, name)
@@ -916,7 +954,10 @@ class Control:
             return self.shell(request)
         if action == "run":
             return self.run(
-                request["config"], request.get("tokens", {}), tty=request.get("tty") is True
+                request["config"],
+                request.get("tokens", {}),
+                tty=request.get("tty") is True,
+                recipe_digest=images.checked_digest(request["recipe_digest"]),
             )
         with self.store.locked() as data:
             info = self.verified(data)
@@ -933,27 +974,63 @@ class Control:
                 return self.mount(data, request["operation"], request)
             if action == "image":
                 operation = request.get("operation")
-                if operation == "ls":
+                if operation == "list":
                     names = request["names"]
-                    if not isinstance(names, list):
-                        raise AgentboxError("Expected local image names")
+                    digests = request.get("digests", {})
+                    if not isinstance(names, list) or not isinstance(digests, dict):
+                        raise AgentboxError(
+                            "Expected local image names and digests", code="invalid_request"
+                        )
+                    for digest in digests.values():
+                        images.checked_digest(digest)
                     return {
-                        config.name(name): images.inspect(self.docker, data["installation"], name)
+                        config.name(name): images.inspect(
+                            self.docker,
+                            data["installation"],
+                            name,
+                            digest=digests.get(name),
+                            users=False,
+                        )
                         for name in names
                     }
                 name = config.name(request["name"])
                 if operation == "build":
-                    return images.build(self.docker, data["installation"], name, context)
+                    return images.build(
+                        self.docker,
+                        data["installation"],
+                        name,
+                        context,
+                        environments=data["environments"],
+                    )
                 if operation == "inspect":
-                    return images.inspect(self.docker, data["installation"], name)
-                if operation == "rm":
+                    return images.inspect(
+                        self.docker,
+                        data["installation"],
+                        name,
+                        environments=data["environments"],
+                        digest=request.get("digest"),
+                    )
+                if operation == "remove":
                     details = images.managed(self.docker, data["installation"], name)
-                    images.require_idle(self.docker, details)
+                    images.require_recipe_idle(
+                        self.docker,
+                        data["installation"],
+                        name,
+                        details,
+                        data["environments"],
+                        running_only=False,
+                    )
                     self.docker.mutate("image", "rm", images.tag(name))
                     return {"name": name, "status": "removed", "recipe_retained": True}
                 raise AgentboxError("Unknown image operation")
-            if action == "start":
-                return self.start(data, request["config"], request.get("tokens", {}))
+            if action in ("start", "prepare-exec"):
+                return self.start(
+                    data,
+                    request["config"],
+                    request.get("tokens", {}),
+                    recipe_digest=images.checked_digest(request["recipe_digest"]),
+                    reuse_running=action == "prepare-exec",
+                )
             if action == "proxy":
                 operation = request.get("operation")
                 if operation == "build":
@@ -1009,14 +1086,12 @@ class Control:
             if action in ("exec", "logs", "login-api-key"):
                 name = config.name(request["name"])
                 entry = data["environments"].get(name)
-                if not entry or (action != "logs" and entry["status"] != "running"):
+                if not entry or (action == "login-api-key" and entry["status"] != "running"):
                     raise AgentboxError("Environment is not running")
                 if action != "logs" and entry["host_addresses"] != local_addresses():
                     self.stop(data, name)
-                    raise AgentboxError(
-                        "Host addresses changed; environment stopped, start it again"
-                    )
-                role = "proxy" if request.get("proxy") else "agent"
+                    raise AgentboxError("Host addresses changed; environment stopped")
+                role = "proxy" if action == "logs" and request.get("proxy") else "agent"
                 identifier = entry["resources"][role]
                 if identifier not in self.owned(data, name, "container"):
                     raise AgentboxError("Container ownership changed")
@@ -1042,6 +1117,12 @@ class Control:
                     if login.returncode:
                         raise AgentboxError("Codex credential setup failed; output withheld")
                     return {"status": "credentials supplied to Codex via stdin"}
+                if not self.docker.inspect("container", identifier)["State"]["Running"]:
+                    raise AgentboxError("Environment is not running")
+                if request.get("agent") != identifier:
+                    raise AgentboxError(
+                        "Environment changed after command preparation", code="environment_changed"
+                    )
                 command = request.get("command") or entry["config"]["command"]
                 if not isinstance(command, list) or not command:
                     raise AgentboxError("Expected command argument list")

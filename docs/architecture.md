@@ -86,8 +86,10 @@ i en privat midlertidig katalog med datafilter. Docker bygger katalogen og
 behandler .dockerignore. Bygging og henting av baseimages skjer på den
 betrodde kontrollsiden. Installeren bygger proxyimaget når det mangler;
 ombygging gjøres med `proxy build`.
-Bygg og fjerning sperres ved containere med samme eksakte image-ID,
-også stoppede. Se [imagevalgene](decisions.md#lokale-imageoppskrifter).
+Bygg av en oppskrift sperres av kjørende bruk, også etter tagflytting;
+fjerning sperres også av stoppede brukere. Inputdigest fra tar-medlemmer og
+filbytes lagres på imaget. CLI bygger ved manglende/endret input; kontrollstart
+håndhever ønsket digest under lås. Se [imagevalgene](decisions.md#lokale-imageoppskrifter).
 
 ## Livssyklus og sikkerhetsgrense
 
@@ -101,8 +103,11 @@ Med standardverdien `persistent: true` bevarer `stop` containerlaget, inkludert
 verktøyoppsett og innlogging. Med `false` fjerner både avsluttet `shell` og
 `stop` miljøet; neste `start` oppretter en ny container fra imaget.
 Et bevart miljø kan startes igjen med uendret konfigurasjon. Nettverk/tokenregler aktiveres med `proxy apply` uten å
-slette hjemmet. Endret agentprofil eller vertsadresse krever `remove` og ny
-`start`; umontert hjem og innlogging slettes da, mens katalog- og volummounts består.
+slette hjemmet. Endret image, konfigurasjon, klientvariabeltilstand eller
+vertsadresse gir automatisk ny container ved oppstart av stoppet miljø.
+Umontert hjem og innlogging slettes da, mens katalog-/volummounts består.
+Kjørende miljø beholdes med pending-beskjed. Exec på kjørende agent gjenåpner
+ikke en stoppet proxy. Valgt agent-ID binder klargjøring til kommandoen.
 Data i eksplisitte mounts består. Miljøer startes ikke automatisk etter vertsreboot.
 
 Agenten kjører med droppede capabilities, `no-new-privileges`, ressursgrenser
@@ -149,10 +154,10 @@ regelen beholder TLS-avlytting og gir ingen nøkkelinnsetting. Bare proxyen får
 
 Proxyen erstatter en hel plassholder eller Bearer-formen når destinasjon og
 header er autorisert. Andre verdier utløser ingen innsetting. Proxybytte og
-nøkkelrotasjon beholder kartet. Nye variabelnavn krever eksplisitt gjenskaping,
-fordi agentcontainerens miljø er fast. Tom/ikke-tom overgang krever også
-gjenskaping; gammel proxy fjernes før denne overgangen avvises. Ingen egen shell-/exec-mekanisme
-oppdaterer variablene i bakgrunnen.
+nøkkelrotasjon beholder kartet. Nye variabelnavn og tom/ikke-tom overgang
+krever ny container fordi prosessmiljøet er fast. Stoppet miljø erstattes ved
+start; proxy apply fjerner gammel proxy før en slik overgang avvises på
+samme agent. Ingen shell-hook oppdaterer klientvariabler i bakgrunnen.
 
 Interne `AGENTBOX_TOKEN_<n>` beregnes etter sorterte klientnavn både ved
 policygenerering og tokenoverføring. Tomme klientvariabler opptar fortsatt

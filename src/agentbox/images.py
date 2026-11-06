@@ -1,5 +1,7 @@
 """Local Dockerfile recipes and images in the dedicated Docker instance."""
 
+import hashlib
+import json
 import os
 import shlex
 import shutil
@@ -33,20 +35,50 @@ def names():
     )
 
 
-def new(name, template="base"):
+def checked_digest(value):
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(c not in "0123456789abcdef" for c in value)
+    ):
+        raise AgentboxError("Expected a recipe digest", code="invalid_request")
+    return value
+
+
+def bundled():
+    return Path(__file__).parent / "templates"
+
+
+def template_names():
+    return sorted(set(TEMPLATES) | set(names()))
+
+
+def template_path(name):
+    name = config.name(name)
+    local = directory() / name
+    if local.exists() or local.is_symlink():
+        return recipe(name)
+    if name in TEMPLATES:
+        return bundled() / name
+    raise AgentboxError("Unknown image template", code="image_template_not_found")
+
+
+def new(name, template=None):
     path = directory() / config.name(name)
-    if template not in TEMPLATES:
-        raise AgentboxError("Unknown image template")
+    if template is None:
+        default = directory() / "default"
+        template = "default" if default.exists() or default.is_symlink() else "base"
+    source = template_path(template)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
         path.mkdir(mode=0o700)
     except FileExistsError:
         raise AgentboxError(f"Image recipe already exists: {path}") from None
-    source = Path(__file__).parent / "templates" / template
-    for file in source.iterdir():
-        shutil.copyfile(file, path / file.name)
-        (path / file.name).chmod(file.stat().st_mode & 0o777)
-    (path / ".dockerignore").write_text(".git\n.env\n.env.*\n")
+    try:
+        shutil.copytree(source, path, symlinks=True, dirs_exist_ok=True)
+    except OSError:
+        shutil.rmtree(path)
+        raise
     return {"name": name, "path": str(path), "template": template}
 
 
@@ -56,11 +88,19 @@ def edit(name, emit=None):
         os.environ.get("VISUAL", "").strip() or os.environ.get("EDITOR", "").strip() or "editor"
     )
     command = [*shlex.split(editor), str(path / "Dockerfile")]
+    before = fingerprint(name)
     if emit:
         from .process import run
 
-        return run(command, emit, cwd=path)
-    return subprocess.run(command, cwd=path, check=False).returncode
+        code = run(command, emit, cwd=path)
+    else:
+        code = subprocess.run(command, cwd=path, check=False).returncode
+    return {
+        "name": name,
+        "path": str(path),
+        "changed": fingerprint(name) != before,
+        "exit_code": code,
+    }
 
 
 def archive(name, output):
@@ -74,6 +114,40 @@ def archive(name, output):
 
     with tarfile.open(fileobj=output, mode="w", dereference=False) as bundle:
         bundle.add(path, arcname=".", filter=include)
+
+
+def fingerprint_archive(source):
+    digest = hashlib.sha256()
+    offset = source.tell()
+    try:
+        with tarfile.open(fileobj=source, mode="r:") as bundle:
+            for member in bundle:
+                if not (member.isfile() or member.isdir() or member.issym() or member.islnk()):
+                    raise AgentboxError("Invalid or unsafe build context")
+                header = [
+                    member.name,
+                    member.type.decode("ascii"),
+                    member.mode & 0o777,
+                    member.linkname,
+                    member.size if member.isfile() else 0,
+                ]
+                digest.update(json.dumps(header, ensure_ascii=True).encode() + b"\0")
+                if member.isfile():
+                    with bundle.extractfile(member) as content:
+                        while block := content.read(65536):
+                            digest.update(block)
+    except (tarfile.TarError, OSError):
+        raise AgentboxError("Invalid or unsafe build context") from None
+    finally:
+        source.seek(offset)
+    return digest.hexdigest()
+
+
+def fingerprint(name):
+    with tempfile.TemporaryFile() as context:
+        archive(name, context)
+        context.seek(0)
+        return fingerprint_archive(context)
 
 
 def tag(name):
@@ -106,7 +180,7 @@ def profile(details):
     if details.get("Architecture") not in ("amd64", "arm64"):
         raise AgentboxError("Only 64-bit amd64 and arm64 image profiles are supported")
     if details["Config"].get("Volumes"):
-        raise AgentboxError("Image declares implicit VOLUME mounts; use explicit mount mounts")
+        raise AgentboxError("Image declares implicit VOLUME mounts; use explicit registered mounts")
 
 
 def managed(docker, installation, name, *, required=True):
@@ -123,20 +197,80 @@ def managed(docker, installation, name, *, required=True):
     return details
 
 
-def inspect(docker, installation, name):
-    details = managed(docker, installation, name, required=False)
-    return {
-        "tag": tag(name),
-        "status": "built" if details else "unbuilt",
-        "id": details["Id"] if details else None,
-        "containers": users(docker, details["Id"]) if details else [],
+def recipe_users(docker, installation, name, details, environments):
+    known = {
+        entry.get("resources", {}).get("agent"): environment
+        for environment, entry in environments.items()
+        if entry["config"]["image"] == name
     }
+    result = []
+    for identifier in docker.run("container", "ls", "-aq", "--no-trunc").stdout.split():
+        container = docker.inspect("container", identifier)
+        profile = container.get("Config", {})
+        labels = profile.get("Labels") or {}
+        own = (
+            labels.get("agentbox.installation") == installation
+            and labels.get("agentbox.image") == name
+            and labels.get("agentbox.role") == "agent"
+            and labels.get("agentbox.environment")
+        )
+        if (
+            identifier in known
+            or own
+            or profile.get("Image") == tag(name)
+            or (details and container["Image"] == details["Id"])
+        ):
+            result.append(
+                {
+                    "id": identifier,
+                    "name": container["Name"].lstrip("/"),
+                    "environment": known.get(identifier)
+                    or (labels.get("agentbox.environment") if own else None),
+                    "running": container["State"]["Running"],
+                }
+            )
+    return result
 
 
-def build(docker, installation, name, source):
+def require_recipe_idle(docker, installation, name, details, environments, *, running_only):
+    used = recipe_users(docker, installation, name, details, environments)
+    blocked = [entry for entry in used if entry["running"] or not running_only]
+    if blocked:
+        raise AgentboxError(
+            "Image is in use: " + ", ".join(entry["name"] for entry in blocked),
+            code="image_in_use",
+            details={"users": blocked},
+        )
+
+
+def inspect(docker, installation, name, *, environments=None, digest=None, users=True):
+    details = managed(docker, installation, name, required=False)
+    built_digest = (
+        (details["Config"].get("Labels") or {}).get("agentbox.recipe-digest") if details else None
+    )
+    result = {
+        "tag": tag(name),
+        "status": "unbuilt"
+        if not details
+        else ("stale" if digest is not None and digest != built_digest else "built"),
+        "id": details["Id"] if details else None,
+        "digest": built_digest,
+    }
+    if users:
+        used = recipe_users(docker, installation, name, details, environments or {})
+        result["containers"] = sorted(entry["name"] for entry in used)
+        result["environments"] = sorted(
+            {entry["environment"] for entry in used if entry["environment"]}
+        )
+    return result
+
+
+def build(docker, installation, name, source, *, environments=None):
     if source is None:
         raise AgentboxError("Image build requires a local build context")
-    require_idle(docker, managed(docker, installation, name, required=False))
+    details = managed(docker, installation, name, required=False)
+    require_recipe_idle(docker, installation, name, details, environments or {}, running_only=True)
+    digest = fingerprint_archive(source)
     # A directory context lets Docker apply .dockerignore itself. BuildKit's
     # uploaded tar context bypasses that filtering.
     with tempfile.TemporaryDirectory(prefix="agentbox-build-") as context:
@@ -155,9 +289,15 @@ def build(docker, installation, name, source):
             f"agentbox.installation={installation}",
             "--label",
             f"agentbox.image={name}",
+            "--label",
+            "agentbox.role=",
+            "--label",
+            "agentbox.environment=",
+            "--label",
+            f"agentbox.recipe-digest={digest}",
             context,
             timeout=900,
         )
     details = managed(docker, installation, name)
     profile(details)
-    return inspect(docker, installation, name)
+    return inspect(docker, installation, name, environments=environments)
