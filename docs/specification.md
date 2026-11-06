@@ -8,6 +8,9 @@ Dette er produktkontrakten for Agentbox. [Bruksveiledningen](usage.md)
 beskriver kommandoene, [arkitekturen](architecture.md) forklarer oppbygningen,
 og [teststatus](test-results.md) avgrenser hva som er verifisert.
 
+Planlagte endringer i CLI og livssyklus står i [egen kravspesifikasjon](features/session-lifecycle/spec.md)
+og er ikke del av kontrakten nedenfor.
+
 Kommandonavnet er `abx`, både ved pakkeinstallasjon og vertsinstallasjon.
 Hjelp, feilmeldinger og Bash-completion bruker dette navnet.
 
@@ -24,8 +27,9 @@ Hjelp, feilmeldinger og Bash-completion bruker dette navnet.
 
 Agenten og kode den kjører behandles som upålitelige. Utvikleren,
 kontrollkoden, Docker, proxyen, valgte images og vertsadministrasjon er betrodd.
-Miljøfiler oppbevares utenfor mapper agenten kan redigere. Kontrollkode og
-kontrolltilstand monteres ikke inn i agentcontaineren.
+Miljøfiler oppbevares utenfor mapper agenten kan redigere. Kontrollkode og privat
+kontrolltilstand monteres ikke inn i agentcontaineren. Bare miljøets offentlige
+CA-katalog deles skrivebeskyttet inn fra kontrollsiden.
 
 Rootless-containere deler vertens kjerne. Utbrudd med tjenestebrukerens
 rettigheter kan gi tilgang til alle registrerte prosjekter og andre filer som
@@ -94,14 +98,15 @@ tilbakekalling.
 
 `abx start FIL.yaml` leser miljønavnet fra `name` i miljøfilen.
 Kommandoer mot eksisterende miljøer, som `shell` og `stop`, bruker miljønavnet.
-`start` og `validate` støtter også kortnavn uten filending fra
+`start`, `run`, `validate` og `proxy apply` støtter også kortnavn uten filending fra
 `~/.config/agentbox/environments/` (eller `$XDG_CONFIG_HOME/agentbox/environments/`).
 `.yaml` og `.yml` støttes. Hvis begge matcher, kreves eksplisitt filvalg.
 Lokale filer uten filending overstyrer ikke kortnavn; bruk eksplisitt sti for slike filer.
 
 YAML-filen avviser ukjente felter og dupliserte nøkler. Verdier for hemmeligheter,
 vilkårlige Docker-flagg og automatisk hjemmedeling inngår ikke i skjemaet.
-Prosjekt- og miljønavn bruker små bokstaver, tall og bindestrek, maksimalt 48 tegn.
+Prosjekt-, miljø- og imagenavn starter med en liten bokstav og bruker deretter
+små bokstaver, tall og bindestrek, maksimalt 48 tegn.
 
 | Felt | Kontrakt og standardverdi |
 | --- | --- |
@@ -109,8 +114,10 @@ Prosjekt- og miljønavn bruker små bokstaver, tall og bindestrek, maksimalt 48 
 | `image` | Påkrevd lokalt oppskriftsnavn, for eksempel `codex` eller `js` |
 | `mounts` | 1 til 32 registrerte prosjekter, hvert med `project`, absolutt `target` og `mode` (`rw` som standard eller `ro`) |
 | `workdir` | Sti inne i et prosjektmount; standard er første mountmål. Må finnes ved start |
-| `command` | Ikke-tom argumentliste; standard `["bash"]`. Kjøres av `shell` |
+| `persistent` | Boolsk, standard `true`. Med `false` fjerner `shell` miljøet etter kommandoen; `stop` fjerner det også |
+| `command` | 1 til 128 ikke-tomme argumenter; standard `["bash"]`. Kjøres av `shell` og `run`, uten shelltolking |
 | `network.allow` | Liste over eksakte `host`/`port`-par, maksimalt 128. Tom som standard |
+| `credentials` | Maksimalt 32 regler med `host`, `port: 443`, `header` og `env`; tom som standard. Se [tokenreglene](#api-tokens-på-proxysiden) |
 | `resources.cpus` | 0,1 til 128; standard 2 CPU |
 | `resources.memory` | Positiv størrelse med `m` eller `g`; standard `4g` |
 | `resources.pids` | 16 til 65536; standard 512 |
@@ -130,7 +137,8 @@ Imagevalg endrer ikke ACL-, nettverks- eller isoleringsmekanismene.
 Alle agentimages har en lokal Dockerfile under `~/.config/agentbox/images/`
 (eller `$XDG_CONFIG_HOME/agentbox/images/`). `image new NAVN` lager en ny
 katalog med Dockerfile og .dockerignore uten overskriving. Standardmalen er
-et generelt Linux-miljø; `--template codex` inkluderer Codex 0.166.0.
+et generelt Linux-miljø. Eksempelmaler finnes for Codex 0.166.0
+(`codex`), OpenCode 1.19.5 (`opencode`) og Claude Code 2.1.316 (`claude-code`).
 Malene følger programmet; det finnes ingen separat standardkatalog i /usr/share.
 
 `image ls` lister lokale oppskrifter, også ubygde, med status og image-ID.
@@ -213,25 +221,46 @@ velges eksplisitt for trafikk fra miljøet.
 | Operasjon | Oppførsel |
 | --- | --- |
 | `start FIL.yaml` | Leser miljønavnet fra filen, validerer miljø og mounts, oppretter nettverk og proxy før agent; uendret kjørende miljø gjenbrukes |
-| `shell` | Kjører miljøets konfigurerte kommando i en terminalsesjon |
+| `run FIL.yaml` | Kjører command én gang i terminalen i et nytt miljø; fjerner containere, nettverk og containerlag ved avslutning eller Ctrl-C; prosjektfiler beholdes |
+| `shell` | Kjører miljøets konfigurerte kommando; med `persistent: false` fjernes miljøet etterpå, også ved feil eller Ctrl-C |
 | `exec` | Kjører eksplisitt argumentliste i eksisterende miljø |
-| `stop` | Stopper agent og proxy, bevarer containerlaget og registreringene |
+| `stop` | Med `persistent: true` stoppes agent og proxy og containerlaget beholdes; med `false` fjernes miljøet. Prosjektregistreringer beholdes |
 | `remove` | Fjerner miljøets containere, nettverk og logger; prosjektfiler og ACL-er beholdes |
 | `status` | Viser registrert miljøoppsett og observert containertilstand |
 | `logs` | Viser et begrenset utsnitt av agentutdata eller proxylogg med `--proxy` |
 
 Et stoppet miljø gjenopptas med uendret konfigurasjon og vertsadresser.
-Containerens `/home/agent`, innlogging og installerte filer beholdes, også
-ved manuell gjenopptak etter daemonrestart. Automatisk oppstart av miljøer
+
+Med `persistent: true` beholdes containerens `/home/agent`, innlogging og
+installerte filer, også ved manuell gjenopptak etter daemonrestart. Automatisk oppstart av miljøer
 etter vertsreboot finnes ikke.
 
 Endret agentprofil eller vertsadresse krever eksplisitt `remove` og ny
 `start`. Da slettes containerlaget, inkludert innlogging og verktøyoppsett.
 Montert kode består. Nettverk/tokenregler endres med proxy apply uten å slette
-agentlaget. Gjenopptak av stoppet Go-miljø og apply validerer DNS på nytt.
+agentlaget. Gjenopptak av stoppet miljø og apply validerer DNS på nytt.
 
-Terminalsesjoner har separat levetid fra miljøet. Størrelse og størrelsesendringer
-videresendes. Kontrolloperasjoner låses, tilstand skrives atomisk, og opprydding
+`persistent: false` gir ingen bevart container mellom shell-økter. Start
+klargjør i bakgrunnen og varsler om miljøets levetid. Shell varsler før
+kommandoen kjøres og reserverer én økt under lås. Flere shell-forsøk avvises uten opprydding av
+den aktive økten. Reservasjonen beholdes ved start/proxy apply; etter et
+hardt prosessavbrudd kreves eksplisitt remove. Exec er en ekstra kommando
+og utløser ikke opprydding, men prosessen fjernes sammen med miljøet.
+
+`run` er alltid midlertidig og avviser eksisterende miljønavn. Kommandoens
+exitkode returneres etter vellykket opprydding; oppryddingsfeil gir feilstatus. Opprettelse og fjerning
+bruker vanlig daemonverifikasjon og lås, mens kommandoen kjøres uten global
+lås. Opprydding etter run og ikke-persistent shell sjekker valgt agent-ID
+mot ny tilstand, slik at et gjenskapt miljø med samme navn ikke fjernes. SIGINT utsettes under kritiske mutasjoner.
+SIGKILL og vertskrasj kan etterlate ressurser som må fjernes eksplisitt.
+
+Terminalsesjoner i vedvarende miljøer har separat levetid fra miljøet.
+`start` starter oppholdsprosessen, ikke `command`. `run`, `shell` og `exec`
+bruker terminal bare når både CLI-ens stdin og stdout er terminaler. Ellers
+er kommandoens stdin lukket; pipet input støttes ikke. Kommandoens stdout og
+stderr samles i CLI-ens stdout.
+Størrelse og størrelsesendringer videresendes. Kontrolloperasjoner låses,
+tilstand skrives atomisk, og opprydding
 avgrenses med ressurs-ID-er og installasjons-/miljøetiketter. Global Docker-
 prune brukes ikke. Testavgrensninger for krasj og samtidighet står i teststatus.
 

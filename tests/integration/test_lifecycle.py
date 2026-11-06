@@ -17,6 +17,16 @@ def python(env, source, *arguments):
     return cli("exec", env, "--", "python3", "-c", f"exec({source!r})", *arguments)
 
 
+@pytest.mark.parametrize(
+    "image,tool,version",
+    [("opencode", "opencode", "1.19.5"), ("claude-code", "claude", "2.1.316")],
+)
+def test_example_agent_version_in_isolation(lab, image, tool, version):
+    project, _ = lab.project()
+    env = lab.start(project, image=image, resources={"cpus": 1, "memory": "1g", "pids": 128})
+    assert version in cli("exec", env, "--", tool, "--version").stdout
+
+
 def test_two_images_and_independent_environments(lab):
     first, first_path = lab.project("first")
     second, second_path = lab.project("second")

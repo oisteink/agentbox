@@ -11,6 +11,8 @@ from pathlib import Path
 from . import config
 from .errors import AgentboxError
 
+TEMPLATES = ("base", "codex", "opencode", "claude-code")
+
 
 def directory():
     return config.environment_directory().parent / "images"
@@ -33,7 +35,7 @@ def names():
 
 def new(name, template="base"):
     path = directory() / config.name(name)
-    if template not in ("base", "codex"):
+    if template not in TEMPLATES:
         raise AgentboxError("Unknown image template")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:

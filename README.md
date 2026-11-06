@@ -10,7 +10,8 @@ Prosjektmapper deles med filrettigheter (ACL-er) og eksplisitte monteringer.
 En Go-proxy håndhever tillatte destinasjoner og kan erstatte ufarlige
 plassholdere med API-nøkler. Den ekte nøkkelen ligger bare på den betrodde
 siden; agenten får en generert verdi i klientens miljøvariabel.
-Det medfølgende utviklingsimaget inneholder Codex CLI 0.166.0.
+Eksempelmaler finnes for Codex, OpenCode og Claude Code.
+Se [maler og miljøeksempler](docs/usage.md#bytt-prosjekt-eller-image).
 
 ![Agentbox, utvikleren og eksterne tjenester](docs/diagrams/agentbox-context.svg)
 
@@ -79,6 +80,10 @@ start med Bash for å kontrollere filtilgang. Følg
 hjem og innlogging. `abx remove example-codex` sletter containerlaget,
 inkludert innlogging og verktøyoppsett. Monterte prosjektfiler beholdes.
 
+Sett `persistent: false` i miljøfilen for et rent containerhjem ved hver økt.
+`start` klargjør miljøet; `shell` kjører kommandoen og fjerner deretter miljøet.
+Prosjektfiler beholdes. Se [miljø uten bevart containerlag](docs/usage.md#miljø-uten-bevart-containerlag).
+
 ## API-nøkler via proxyen
 
 `credentials[].env` kobler klientens variabel til en kilde på verten:
@@ -120,6 +125,15 @@ og tom/ikke-tom overgang krever gjenskaping; `remove` sletter hjem og innlogging
 Se [brukerveiledningen](docs/usage.md#api-tokens-i-proxyen) for tilbakekalling
 og begrensninger.
 
+For midlertidig kjøring, bruk en miljøfil med ledig navn:
+
+```sh
+abx run ./task.yaml
+```
+
+Kommandoen kjører i terminalen. Miljøet fjernes ved avslutning; prosjektfiler
+beholdes. Se [midlertidig kjøring](docs/usage.md#midlertidig-kjøring).
+
 ## Dokumentasjon
 
 | Dokument | Bruk det til |
@@ -133,6 +147,7 @@ og begrensninger.
 | [Utvikling](docs/development.md) | Lokale kontroller og disponibel testlab |
 | [Teststrategi](docs/testing.md) | Kravdekning, testansvar og regler for nye tester |
 | [Teststatus](docs/test-results.md) | Observerte resultater og testavgrensninger |
+| [Planlagt CLI](docs/features/session-lifecycle/spec.md) | Vedtatte krav til videre arbeid; ikke implementert |
 
 Full avinstallasjon gjøres med `sudo scripts/uninstall.sh`.
 Kommandoen stopper miljøene, overfører agentbox-eide prosjektfiler til deg og

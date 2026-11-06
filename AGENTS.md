@@ -36,7 +36,9 @@ uv sync --extra dev --locked
 uv run --locked pytest -q
 uv run --locked ruff check src tests scripts
 uv run --locked ruff format --check src tests scripts
-bash -n scripts/*.sh scripts/lab/*.sh src/agentbox/templates/codex/codex src/agentbox/completions/abx.bash
+for script in scripts/*.sh scripts/lab/*.sh src/agentbox/templates/codex/codex src/agentbox/completions/abx.bash; do
+  bash -n "$script" || exit
+done
 (cd proxy && GOTOOLCHAIN=go1.27.3 go test -race ./... && GOTOOLCHAIN=go1.27.3 go vet ./...)
 (cd proxy && GOTOOLCHAIN=go1.27.3 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...)
 test -z "$(gofmt -l proxy/*.go)"
@@ -53,6 +55,9 @@ proxykomponenten eksplisitt. Agentimages
 opprettes med `abx image new NAVN` (eventuelt `--template codex`) og bygges
 med `abx image build NAVN`. Oppskrifter ligger under `~/.config/agentbox/images/`.
 Bygging av images i bruk av eksisterende containere, også stoppede, avvises.
+`abx run MILJØFIL` kjører kommandoen midlertidig i terminalen og fjerner
+miljøet ved avslutning; prosjektmounts beholdes. Med `persistent: false`
+klargjør start i bakgrunnen; shell og stop fjerner miljøet.
 `scripts/lab/check.sh` installerer og bygger aktuell kilde inne i laben og
 kjører livssyklus/proxy sekvensielt. `--uninstall` velger avinstallasjon sist.
 

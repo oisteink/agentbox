@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,19 @@ from .state import Store, atomic_json
 
 def rpc(request, stream=False, context=None):
     command = ["/usr/bin/sudo", "-H", "-u", "agentbox", "/usr/local/libexec/agentbox-control"]
+    if stream and request.get("action") in ("run", "shell"):
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True)
+        try:
+            process.communicate(json.dumps(request))
+        except KeyboardInterrupt:
+            process.send_signal(signal.SIGINT)
+            while True:
+                try:
+                    process.wait()
+                    break
+                except KeyboardInterrupt:
+                    pass  # Let the helper finish cleanup before returning.
+        return process.returncode
     options = {"text": True, "capture_output": not stream, "check": False}
     if context is None:
         completed = subprocess.run(command, input=json.dumps(request), **options)
@@ -155,7 +169,7 @@ def parser():
     image_ops.add_parser("ls")
     new = image_ops.add_parser("new")
     new.add_argument("name", type=config.name)
-    new.add_argument("--template", choices=["base", "codex"], default="base")
+    new.add_argument("--template", choices=images.TEMPLATES, default="base")
     for operation in ("edit", "build", "inspect", "rm"):
         image_ops.add_parser(operation).add_argument("name", type=config.name)
     complete = commands.add_parser("completion", help="Print shell completion setup")
@@ -178,6 +192,8 @@ def parser():
         sub.add_argument("name", type=config.name)
     start = commands.add_parser("start", help="Start an environment from a YAML path or saved name")
     start.add_argument("config", help="YAML path or name from ~/.config/agentbox/environments")
+    run = commands.add_parser("run", help="Run command in a temporary environment and remove it")
+    run.add_argument("config", help="YAML path or saved environment configuration")
     proxy = commands.add_parser("proxy", help="Apply proxy rules or stop API access")
     proxy_ops = proxy.add_subparsers(dest="operation", required=True)
     proxy_ops.add_parser("build", help="Build the internal proxy component")
@@ -255,9 +271,11 @@ def main():
                         result["operator_access_issues"] = projects.access_issues(
                             entry["path"], {settings["operator_uid"], settings["service_uid"]}
                         )
-        elif args.action == "start" or (args.action == "proxy" and args.operation == "apply"):
+        elif args.action in ("start", "run") or (
+            args.action == "proxy" and args.operation == "apply"
+        ):
             environment = config.load(args.config)
-            if args.action == "start":
+            if args.action in ("start", "run"):
                 images.recipe(environment.image)
             payload = environment.to_dict()
             payload["network"] = {"allow": payload.pop("allow")}
@@ -269,9 +287,17 @@ def main():
                 if c.source_env in os.environ
             }
             request = {"action": args.action, "config": payload, "tokens": tokens}
+            if args.action == "run":
+                request["tty"] = sys.stdin.isatty() and sys.stdout.isatty()
+                raise SystemExit(rpc(request, stream=True))
             if args.action == "proxy":
                 request["operation"] = "apply"
             result = rpc(request)
+            if args.action == "start" and not environment.persistent:
+                print(
+                    "abx: Non-persistent environment; shell or stop will remove it.",
+                    file=sys.stderr,
+                )
         elif args.action == "proxy":
             request = {"action": "proxy", "operation": args.operation}
             if hasattr(args, "name"):
@@ -283,7 +309,7 @@ def main():
                 command.pop(0)
             code = rpc(
                 {
-                    "action": "exec",
+                    "action": args.action,
                     "name": args.name,
                     "command": command,
                     "tty": sys.stdin.isatty() and sys.stdout.isatty(),
@@ -341,7 +367,7 @@ def control_main():
             if rest.strip():
                 raise AgentboxError("Unexpected trailing control input")
             result = Control(settings).dispatch(request)
-        if request.get("action") == "exec":
+        if request.get("action") in ("exec", "run", "shell"):
             raise SystemExit(result)
         print(json.dumps(result))
     except (AgentboxError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
@@ -349,3 +375,5 @@ def control_main():
         message = str(exc) if isinstance(exc, AgentboxError) else type(exc).__name__
         print(f"agentbox control: {message}", file=sys.stderr)
         raise SystemExit(2) from None
+    except KeyboardInterrupt:
+        raise SystemExit(130) from None

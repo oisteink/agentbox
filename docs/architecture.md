@@ -19,8 +19,10 @@ og kontrolltilstand under `/var/lib/agentbox/state`. Utviklerens private
 ACL-journal ligger separat i `/var/lib/agentbox-operator`.
 
 Docker-operasjoner bruker fast socket `/run/user/<uid>/docker.sock` og
-kontrollerer daemonidentitet og rootless-modus. Docker-socketen og kontrollfiler
-eksponeres ikke for agenten. Andre Docker-instansers konfigurasjon endres ikke.
+kontrollerer daemonidentitet og rootless-modus. Docker-socketen, kontrollkoden
+og private kontrollfiler eksponeres ikke for agenten. Miljøets offentlige
+CA-katalog er et skrivebeskyttet unntak. Andre Docker-instansers konfigurasjon
+endres ikke.
 
 ## Tilgang til prosjektmapper
 
@@ -77,8 +79,10 @@ Skriptet bruker systemets Python uavhengig av den installerte CLI-en.
 Vanlige kontrolloperasjoner får ikke denne root-tilgangen. Se
 [avinstallasjon](installation.md#avinstallasjon) for omfang og filrydding.
 
-`stop` bevarer containerlaget, inkludert verktøyoppsett og innlogging.
-Uendret konfigurasjon kan startes igjen. Nettverk/tokenregler aktiveres med `proxy apply` uten å
+Med standardverdien `persistent: true` bevarer `stop` containerlaget, inkludert
+verktøyoppsett og innlogging. Med `false` fjerner både avsluttet `shell` og
+`stop` miljøet; neste `start` oppretter en ny container fra imaget.
+Et bevart miljø kan startes igjen med uendret konfigurasjon. Nettverk/tokenregler aktiveres med `proxy apply` uten å
 slette hjemmet. Endret agentprofil eller vertsadresse krever `remove` og ny
 `start`; hjem og innlogging slettes da, mens monterte prosjektfiler består.
 Separat profilvolum og automatisk oppstart av miljøer etter vertsreboot er
@@ -92,6 +96,15 @@ Mountene avgrenser normal filtilgang. Rootless-containerne deler vertens
 kjerne. Ved utbrudd med tjenestebrukerens rettigheter gjelder all tilgang
 `agentbox` har, inkludert andre registrerte prosjekter og allment lesbare filer.
 Felles daemonbruker gir ikke separat vertsisolering mellom prosjektene.
+
+Midlertidig kjøring med `run` bruker samme opprettelse og terminalkjøring som
+`start`/`exec`. `shell` med `persistent: false` deler den samme identitetsbundne
+oppryddingen. Den reserverer én shell-økt under lås; en samtidig shell avvises.
+Kommandoen kjøres uten global lås. Ved hardt avbrudd beholdes reservasjonen
+til eksplisitt fjerning, så et delvis brukt hjem ikke gjenbrukes av ny shell. Kontrollhjelperen fjerner miljøet ved avslutning. Oppryddingen
+leser ny tilstand under lås og verifiserer agent-ID før fjerning. CLI-en venter
+på opprydding ved Ctrl-C; et hardt prosessavbrudd eller vertskrasj kan etterlate
+ressurser som må fjernes eksplisitt.
 
 ## Avgrensninger
 

@@ -40,8 +40,9 @@ tilbakekalling.
 
 Legg miljøfilene utenfor mapper agenten kan skrive til, eksempelvis under
 `~/.config/agentbox/environments/`. Ikke legg hemmeligheter i YAML-filen.
-Les `credentials` før start/apply: en kildehenvisning autoriserer lesing av
-den navngitte vertsvariabelen og bruk mot de oppgitte destinasjonene.
+Les `credentials` før `start`, `run` og `proxy apply`: en kildehenvisning
+autoriserer lesing av den navngitte vertsvariabelen og bruk mot de oppgitte
+destinasjonene.
 Bruk ikke en konfigurasjon agenten kan endre til å styre denne tilgangen.
 
 ```yaml
@@ -83,26 +84,27 @@ abx start example-codex
 abx shell example-codex
 ```
 
-`start` og `validate` finner kortnavn uten filending under
+`start`, `run`, `validate` og `proxy apply` finner kortnavn uten filending under
 `~/.config/agentbox/environments/`, eller under
 `$XDG_CONFIG_HOME/agentbox/environments/` hvis denne variabelen er satt.
 Begge filendingene `.yaml` og `.yml` støttes. Finnes begge for samme kortnavn,
 må du velge en eksplisitt fil. Kortnavn leser ikke lokale filer uten filending.
 
-Eksplisitte stier fungerer fortsatt, eksempelvis `abx start ./agentbox.yaml`.
+Eksplisitte stier fungerer, eksempelvis `abx start ./agentbox.yaml`.
 Et filnavn med ending, som `abx start example-codex.yaml`, bruker en lokal
 fil hvis den finnes, ellers samme filnavn i standardkatalogen.
 
-Miljønavnet hentes fra `name` i YAML-filen. Filnavnet velger du selv. `shell` kjører
-`command` fra filen, som kan være Codex eller Bash. Du kan alltid åpne Bash
+Miljønavnet hentes fra `name` i YAML-filen. Filnavnet velger du selv. `start`
+klargjør miljøet med en oppholdsprosess. `shell` kjører `command` fra miljøets
+lagrede konfigurasjon, som kan være Codex eller Bash. Du kan åpne Bash
 separat uten å endre konfigurasjonen:
 
 ```sh
 abx exec example-codex -- bash
 ```
 
-Avslutt programmet eller skallet for å lukke terminalsesjonen. Miljøet
-fortsetter å kjøre. Åpne det igjen med `abx shell example-codex`.
+Med standardinnstillingen `persistent: true` lukker du terminalsesjonen ved å
+avslutte programmet eller skallet. Miljøet fortsetter å kjøre. Åpne det igjen med `abx shell example-codex`.
 
 ```sh
 abx status
@@ -111,6 +113,72 @@ abx stop example-codex
 
 Et stoppet miljø gjenopptas med samme `start`-kommando og miljøfil.
 Miljøene startes ikke automatisk etter vertsreboot.
+
+## Miljø uten bevart containerlag
+
+Sett dette på toppnivå i miljøfilen:
+
+```yaml
+persistent: false
+```
+
+Standardverdien er `true`. Med `false` klargjør `start` miljøet i bakgrunnen
+og varsler om at det er midlertidig. `shell` varsler før den kjører miljøets
+kommando og fjerner miljøet når kommandoen avsluttes, også ved feil og Ctrl-C:
+
+```sh
+abx start example-codex
+abx shell example-codex
+```
+
+Etter fjerning oppretter neste `start` en ny container fra imaget. Hjem, innlogging,
+installerte filer og logger fra økten slettes; prosjektfilene beholdes.
+`stop` fjerner også et slikt miljø, selv om du ikke har kjørt `shell`.
+
+Bare én `shell` kan kjøre i miljøet om gangen. `exec` kan brukes til ekstra
+kommandoer i det klargjorte miljøet; det utløser ikke opprydding. Når `shell`
+avsluttes, fjernes hele miljøet, inkludert eventuelle ekstra prosesser.
+`run` fjerner alltid miljøet, uansett verdien av `persistent`.
+
+Ved SIGKILL eller vertskrasj kan ressurser gjenstå. En allerede reservert
+shell-økt gjenbrukes ikke; fjern miljøet med `abx remove NAVN` og start på nytt.
+Endring av `persistent` for et eksisterende miljø krever også `remove` og ny
+`start`. Da slettes containerlaget; monterte prosjektfiler består.
+
+## Midlertidig kjøring
+
+`abx run FIL.yaml` kjører miljøfilens `command` én gang i terminalen og
+fjerner deretter agent, proxy, nettverk og containerlag. Monterte prosjektfiler
+beholdes. Lagre dette som `task.yaml`; det bruker lokalt `codex`-image og
+registrert prosjekt `example`:
+
+```yaml
+name: example-task
+image: codex
+command: ["bash"]
+mounts:
+  - project: example
+    target: /workspace
+```
+
+```sh
+abx run ./task.yaml
+```
+
+`run` støtter samme kortnavn og miljøfiler som `start`. Kommandoen kjøres i
+forgrunnen med automatisk opprydding.
+
+Bruk et ledig miljønavn. Et eksisterende miljø med samme navn avvises uten
+endringer. Kommandoens exitkode returneres etter opprydding. Ctrl-C avbryter
+kjøringen og venter på oppryddingen; oppryddingsfeil gir feilstatus.
+Containerlaget, innloggingen og miljøets logger slettes. Legg filer som
+skal beholdes i prosjektmountene. Ved SIGKILL eller vertskrasj kan ressurser
+gjenstå; kontroller `abx status` og fjern miljøet med `abx remove NAVN`.
+
+Når både stdin og stdout er terminaler, brukes en interaktiv terminal. Ellers
+kjøres kommandoen uten terminal og med lukket stdin; pipet innhold sendes ikke
+inn i agenten. Stdout og stderr fra kommandoen samles i CLI-ens stdout. Dette
+gjelder også `shell` og `exec`.
 
 ## Innlogging og verktøyoppsett
 
@@ -312,16 +380,21 @@ abx proxy apply example-codex
 
 | Handling | Prosjektfiler på verten | Containerens hjem, innlogging og installerte filer |
 | --- | --- | --- |
-| Avslutte terminalsesjonen | Beholdes | Beholdes; miljøet kjører videre |
-| `stop` og `start` med uendret oppsett | Beholdes | Beholdes |
-| Restart av Docker og manuell gjenopptak | Beholdes | Beholdes |
+| Avslutte `shell` med `persistent: true` | Beholdes | Beholdes; miljøet kjører videre |
+| Avslutte `exec` | Beholdes | Beholdes til miljøet fjernes |
+| Avslutte `shell` med `persistent: false` | Beholdes | Slettes sammen med miljøet og dets logger |
+| Avslutte `run`, også med Ctrl-C | Beholdes | Slettes sammen med miljøet og dets logger |
+| `stop` og `start` med `persistent: true` og uendret oppsett | Beholdes | Beholdes |
+| `stop` med `persistent: false` | Beholdes | Slettes |
+| Restart av Docker og manuell gjenopptak av vedvarende miljø | Beholdes | Beholdes |
 | `remove` og ny `start` | Beholdes | Slettes og opprettes på nytt |
 | `proxy apply` eller `proxy stop` | Beholdes | Beholdes |
 
-Hvert miljø har egen innlogging; separat profilvolum støttes ikke.
+Vedvarende miljøer beholder egen innlogging; separat profilvolum støttes ikke.
 Endret agentimage, mounts, arbeidsprofil eller vertsadresse krever fjerning
 og ny opprettelse. Nettverk/tokenregler kan endres med proxy apply. Start av
-et stoppet Go-miljø og proxy apply validerer DNS på nytt. Prosjektregistreringer og ACL-er består til du tilbakekaller dem.
+et stoppet miljø og proxy apply validerer DNS på nytt. Prosjektregistreringer
+og ACL-er består til du tilbakekaller dem.
 
 ## Bytt prosjekt eller image
 
@@ -346,6 +419,41 @@ nettverksverktøy. Bytt eller utvid Dockerfilen med verktøyene du trenger;
 `FROM node:22-bookworm-slim` kan for eksempel brukes som utgangspunkt.
 Codex-malen velges med `abx image new codex --template codex` og inkluderer
 Codex CLI 0.166.0 og launcheren med `--no-daemon`.
+
+Eksempelmaler og miljøfiler:
+
+| Verktøy | Mal | Kommando | Miljøfil |
+| --- | --- | --- | --- |
+| Codex 0.166.0 | `codex` | `codex` | [codex.yaml](../environments/codex.yaml) |
+| OpenCode 1.19.5 | `opencode` | `opencode` | [opencode.yaml](../environments/opencode.yaml) |
+| Claude Code 2.1.316 | `claude-code` | `claude` | [claude-code.yaml](../environments/claude-code.yaml) |
+
+Opprett og bygg ønsket image, for eksempel:
+
+```sh
+abx image new opencode --template opencode
+abx image build opencode
+```
+
+Kopier miljøfilen til `~/.config/agentbox/environments/` og endre
+`mounts[].project` til et registrert prosjekt. Eksemplene bruker API-nøkler:
+Codex trenger `OPENAI_API_KEY` i vertens miljø; OpenCode og Claude Code
+trenger `ANTHROPIC_API_KEY`. Eksporter nøkkelen før `abx start` eller `abx run`,
+slik at proxyen kan erstatte agentens plassholder. OpenCode-eksemplet bruker
+Anthropic; velg en Anthropic-modell med `/models` i verktøyet.
+
+Eksemplene tillater bare leverandørens API på port 443. Abonnementsinnlogging,
+andre modelltilbydere, MCP, pakkeregistre og verktøyenes tilleggstjenester
+krever egne tillatte domener. [OpenCode](https://opencode.ai/docs/) og
+[Claude Code](https://code.claude.com/docs/en/setup) installeres via deres
+npm-pakker med versjonen angitt i Dockerfilen. Endre versjonen med
+`abx image edit NAVN` før ny bygging. OpenCode-malen setter `NO_PROXY` for
+loopback fordi terminalgrensesnittet bruker en lokal HTTP-server; dette
+åpner ingen ekstern nettverkstilgang. Claude Code-malen slår av automatisk
+oppdateringssjekk med `DISABLE_AUTOUPDATER=1`.
+
+Malene og miljøfilene er utgangspunkt. Tilpass pakker, versjoner, kommando og
+nettverkspolicy til egen bruk. Prøveomfanget står i [teststatus](test-results.md).
 
 `edit NAVN` åpner Dockerfilen i `$VISUAL`, deretter `$EDITOR`, eller `editor`
 hvis ingen er satt. Editorargumenter støttes, for eksempel `VISUAL="code --wait"`.
@@ -380,11 +488,22 @@ Deklarerte `VOLUME`-mounts avvises. Alle images bruker samme nettverks- og
 syscallbegrensninger; se [arkitekturvalg](decisions.md#lokale-imageoppskrifter).
 
 Proxyimaget er en intern komponent som installeren bygger når det mangler.
-`abx proxy build` bygger det på nytt fra installert kilde. Det vises ikke i `image ls`, og har ingen brukeroppskrift. Bygging
-avvises hvis proxyimaget har eksisterende containere. `abx proxy stop MILJØ`
-fjerner miljøets proxycontainer, men beholder agenten og hjemmet; neste start
-eller `proxy apply` oppretter proxyen på nytt. Stopp agentmiljøene før en
-komponentoppgradering.
+`abx proxy build` bygger det på nytt fra installert kilde. Det vises ikke i
+`image ls` og har ingen brukeroppskrift. Alle containere med samme proxyimage-ID
+må fjernes før bygging; stopp alene frigjør ikke imaget. For hvert berørt miljø:
+
+```sh
+abx stop example-codex
+abx proxy stop example-codex
+# Når alle berørte proxycontainere er fjernet:
+abx proxy build
+abx start example-codex
+```
+
+`proxy stop` fjerner proxycontaineren og dens tokenmetadata, mens agentens
+containerlag beholdes. Neste `start` eller `proxy apply` oppretter proxyen på
+nytt. Eksporter nødvendige tokenvariabler før gjenopptak. Oppdatering av
+kontrollkoden gjøres med installeren etter at miljøene er stoppet.
 
 ## Reparer eller tilbakekall prosjekttilgang
 
@@ -417,7 +536,8 @@ source <(abx completion bash)
 Installeren legger inn completion for nye skall med `bash-completion` aktivert.
 Tab foreslår kommandoer, flagg, eksisterende miljønavn, registrerte prosjekter
 og lokale imageoppskrifter etter `image edit`, `build`, `inspect` og `rm`.
-Etter `start` og `validate` foreslås lagrede kortnavn og lokale filstier.
+Etter `start`, `run`, `validate` og `proxy apply` foreslås lagrede kortnavn og
+lokale filstier.
 Filstier fullføres også etter `--key-file`, og kataloger etter `--path`.
 Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.
 

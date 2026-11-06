@@ -100,7 +100,8 @@ miljøene stoppes og at containerhjem, innlogging og images slettes. Deretter:
 4. Fjernes tjenestebrukeren, dens egne UID/GID-områder, udelte gruppe,
    systemd-oppsett, sudo-regel, programmer, completion og Agentbox sine data.
 
-Prosjektinnhold og miljøfiler utenfor installasjonen beholdes. Andre
+Prosjektinnhold, miljøfiler og lokale Dockerfile-oppskrifter utenfor
+installasjonen beholdes. Bygde images i Agentbox-daemonen slettes. Andre
 Docker-instansers brukere, konfigurasjon og data berøres ikke. Docker-pakkene
 avinstalleres ikke.
 

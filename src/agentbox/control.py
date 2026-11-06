@@ -4,14 +4,32 @@ import ipaddress
 import json
 import os
 import shutil
+import signal
 import subprocess
+import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from . import config, images, policy, projects
 from .errors import AgentboxError
 from .runtime import Docker, local_addresses
 from .state import Store, atomic_json
+
+
+@contextmanager
+def defer_interrupts():
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+    try:
+        yield
+    except BaseException:
+        try:
+            signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+        except KeyboardInterrupt:
+            pass  # Preserve a mutation/cleanup failure over a queued interrupt.
+        raise
+    else:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
 
 
 class Control:
@@ -36,6 +54,97 @@ class Control:
         images.require_idle(self.docker, details)
         self.docker.mutate("build", "--tag", image, "/opt/agentbox/proxy", timeout=900)
         return {"image": image}
+
+    def run(self, payload, tokens, *, tty=False):
+        environment = config.parse(payload)
+        name = environment.name
+        identifier = None
+        try:
+            with defer_interrupts(), self.store.locked() as data:
+                self.verified(data)
+                if name in data["environments"]:
+                    raise AgentboxError("Environment already exists; choose a new temporary name")
+                try:
+                    entry = self.start(data, payload, tokens)
+                except Exception:
+                    try:
+                        self.remove(data, name)
+                    except Exception:
+                        raise AgentboxError(
+                            "Temporary environment setup and cleanup failed; resources may remain"
+                        ) from None
+                    raise
+                identifier = entry["resources"]["agent"]
+                daemon_id = data["daemon_id"]
+            return self.execute(name, identifier, list(environment.command), tty, daemon_id)
+        finally:
+            if identifier is not None:
+                self.remove_temporary(name, identifier)
+
+    def remove_temporary(self, name, identifier):
+        try:
+            with defer_interrupts(), self.store.locked() as current:
+                self.verified(current)
+                entry = current["environments"].get(name)
+                if entry is not None:
+                    if entry["resources"].get("agent") != identifier:
+                        raise AgentboxError(
+                            "Temporary environment name was reused; replacement kept"
+                        )
+                    self.remove(current, name)
+        except Exception as exc:
+            detail = str(exc) if isinstance(exc, AgentboxError) else type(exc).__name__
+            raise AgentboxError(
+                f"Temporary environment cleanup failed: {detail}. Check 'abx status'"
+            ) from None
+
+    def execute(self, name, identifier, command, tty, daemon_id):
+        self.docker.verify(daemon_id)
+        terminal = open("/dev/tty") if tty else None
+        try:
+            return self.docker.exec_stream(
+                identifier, command, self.store.root / "environments" / name, terminal=terminal
+            )
+        finally:
+            if terminal:
+                terminal.close()
+
+    def shell(self, request):
+        name = config.name(request["name"])
+        identifier = None
+        try:
+            with defer_interrupts(), self.store.locked() as data:
+                self.verified(data)
+                entry = data["environments"].get(name)
+                if not entry or entry["status"] != "running":
+                    raise AgentboxError("Environment is not running")
+                persistent = entry["config"].get("persistent", True)
+                if not persistent and entry.get("shell_active"):
+                    raise AgentboxError(
+                        "Non-persistent shell already claimed; after a hard interruption, "
+                        f"use 'abx remove {name}' before starting again"
+                    )
+                if entry["host_addresses"] != local_addresses():
+                    self.stop(data, name)
+                    raise AgentboxError("Host addresses changed; remove and recreate explicitly")
+                agent = entry["resources"]["agent"]
+                if agent not in self.owned(data, name, "container"):
+                    raise AgentboxError("Container ownership changed")
+                command = [config.text(arg) for arg in entry["config"]["command"]]
+                daemon_id = data["daemon_id"]
+                if not persistent:
+                    entry["shell_active"] = True
+                    identifier = agent
+                    self.save(data)
+            if not persistent:
+                print(
+                    "abx: Non-persistent environment; removed when this shell exits.",
+                    file=sys.stderr,
+                )
+            return self.execute(name, agent, command, request.get("tty") is True, daemon_id)
+        finally:
+            if identifier is not None:
+                self.remove_temporary(name, identifier)
 
     def labels(self, data, environment):
         return {"agentbox.installation": data["installation"], "agentbox.environment": environment}
@@ -564,6 +673,12 @@ class Control:
 
     def dispatch(self, request, context=None):
         action = request["action"]
+        if action == "shell":
+            return self.shell(request)
+        if action == "run":
+            return self.run(
+                request["config"], request.get("tokens", {}), tty=request.get("tty") is True
+            )
         with self.store.locked() as data:
             info = self.verified(data)
             if action == "doctor":
@@ -647,6 +762,9 @@ class Control:
                 return result
             if action in ("stop", "remove"):
                 name = config.name(request["name"])
+                entry = data["environments"].get(name)
+                if action == "stop" and entry and not entry["config"].get("persistent", True):
+                    action = "remove"
                 getattr(self, action)(data, name)
                 return {"name": name, "status": "stopped" if action == "stop" else "removed"}
             if action in ("exec", "logs", "login-api-key"):
@@ -693,13 +811,4 @@ class Control:
             else:
                 raise AgentboxError("Unknown control operation")
         # Do not hold the global operation lock for the duration of a shell session.
-        self.docker.verify(data["daemon_id"])
-        terminal = open("/dev/tty") if tty else None
-        try:
-            # stdin is the completed JSON request pipe unless a TTY is selected.
-            return self.docker.exec_stream(
-                identifier, command, self.store.root / "environments" / name, terminal=terminal
-            )
-        finally:
-            if terminal:
-                terminal.close()
+        return self.execute(name, identifier, command, tty, data["daemon_id"])

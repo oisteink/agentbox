@@ -107,9 +107,9 @@ sekund og deler operasjonslås med kontrollverktøyet. Dette er ingen atomisk
 brannmurregel for samtidige nettverksendringer; vertens nettverksadministrasjon
 er betrodd, og stabil vertskonfigurasjon er forutsetningen under normal kjøring.
 
-Den interne Docker-resolveren er testet mot en kontrollert DNS-tjeneste uten
-observert ekstern videresending. Oppgraderinger av Docker/RootlessKit krever
-ny gjennomkjøring av denne prøven.
+Agentcontaineren opprettes med `--dns 127.0.0.1` på det lukkede nettverket.
+Ekstern DNS-videresending gjennom Docker-resolveren trenger en oppdatert
+mottakerprøve på aktuell Docker/RootlessKit; se [teststrategien](testing.md#åpne-verifikasjonshull).
 
 ## Codex-oppstart
 
@@ -123,13 +123,27 @@ Kontrollverktøyet logger ikke forespørsler eller nøkkelverdier. Proxyens
 tilgangslogg viser bare destinasjon og resultat. Agentens egne utdata streames
 og lagres i private, roterte logger; de kan inneholde det agenten skriver.
 
-Stopp og gjenopptak med uendret konfigurasjon bevarer containerlaget og
-verktøyoppsett og innlogging. Separat profilvolum er ikke implementert.
+Med `persistent: true` bevarer stopp og gjenopptak med uendret konfigurasjon
+containerlaget, verktøyoppsett og innlogging. Separat profilvolum er ikke implementert.
 Endret agentprofil eller vertsadresse krever eksplisitt fjerning og ny
 opprettelse. Nettverk/tokenregler aktiveres med proxy apply; gjenopptak av
-stoppet Go-miljø validerer og fastlåser DNS på nytt.
+stoppet miljø validerer og fastlåser DNS på nytt.
 Fjerning sletter laget og miljøets logger. Prosjektfiler, registreringer og ACL-er består til egne
 operasjoner endrer dem. Kjøremiljøer gjenopptas ikke automatisk etter vertsreboot.
+
+## Midlertidige miljøer
+
+`run` gjenbruker opprettelse, terminalkjøring og fjerning. Miljøfiler med
+`persistent: false` bruker samme opprydding etter shell. Start klargjør
+fortsatt i bakgrunnen, mens stop fjerner miljøet. En shell-reservasjon under
+lås forhindrer at to shell-sesjoner deler ansvaret for opprydding. Reservasjonen
+nullstilles ikke ved start eller proxy apply; hardt avbrudd krever eksplisitt
+fjerning. Ingen ny daemon eller filkopiering er nødvendig. Kommandoen kjører
+uten global operasjonslås; oppryddingen verifiserer opprettet agent-ID mot
+ny tilstand under lås. Dermed kan andre miljøer brukes samtidig, uten at
+en samtidig remove/gjenskaping med samme navn rammes av feil opprydding.
+SIGINT utsettes under opprettelse og fjerning. CLI-en venter på
+hjelperens opprydding ved avbrudd. Ingen ekstra daemon er nødvendig.
 
 ## Go-proxy og miljøbaserte tokens
 
