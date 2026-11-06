@@ -15,14 +15,32 @@ import yaml
 
 
 def cli(*arguments, check=True, **kwargs):
-    return subprocess.run(
-        ["/usr/local/bin/abx", *arguments],
-        check=check,
+    """Use the public machine interface for metadata; preserve process assertions."""
+    metadata = arguments[0] not in ("run", "shell", "exec", "logs", "completion") and not (
+        arguments[:2] == ("image", "edit")
+    )
+    result = subprocess.run(
+        ["/usr/local/bin/abx", *(["--json"] if metadata else []), *arguments],
+        check=False,
         text=True,
         capture_output=True,
         timeout=kwargs.pop("timeout", 120),
         **kwargs,
     )
+    if metadata:
+        frames = [json.loads(line) for line in result.stdout.splitlines()]
+        final = frames[-1]
+        assert final["type"] == "result", frames
+        result.stdout = json.dumps(final.get("data"))
+        result.stderr += "".join(
+            frame["data"] for frame in frames[:-1] if frame["type"] == "output"
+        )
+        if not final["ok"]:
+            result.returncode = 2
+            result.stderr += final["error"]["message"]
+    if check:
+        result.check_returncode()
+    return result
 
 
 class Lab:

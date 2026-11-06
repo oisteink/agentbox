@@ -13,7 +13,12 @@ Linux-brukeren `agentbox` eier daemon, images og containerdata. Hjemmet
 Containerens hjem er `/home/agent` i dens skrivbare lag.
 
 Utvikleren bruker Python-CLI-en `abx`. En fast administratorinstallert hjelper
-kjører som `agentbox` via en avgrenset sudo-regel og mottar JSON på stdin.
+kjører som `agentbox` via en avgrenset sudo-regel. Den leser en newline-avsluttet
+JSON-header fra ubufret stdin; resten er byggkontekst eller kommandoens input.
+Svar er JSON Lines med separate output-hendelser og ett terminalresultat.
+CLI-en viser disse som menneskeutskrift eller sender dem videre med `--json`.
+En poll-basert pumpe drenerer begge utstrømmer mens stdin videresendes.
+Agentutdata er innrammede data og tolkes aldri som kontrollmeldinger.
 Kontrollkoden ligger under `/opt/agentbox`, innstillinger under `/etc/agentbox`,
 og kontrolltilstand under `/var/lib/agentbox/state`. Utviklerens private
 ACL-journal ligger separat i `/var/lib/agentbox-operator`.

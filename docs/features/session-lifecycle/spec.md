@@ -15,7 +15,6 @@ fortsatt må fastsettes i research og plan.
 | Erstatt prosjekter med mounts og Docker-volumer | [#13](https://github.com/oisteink/agentbox/issues/13) |
 | Utvid imagemaler og bygg ved behov | [#14](https://github.com/oisteink/agentbox/issues/14) |
 | Administrer miljøfiler, status og logger | [#15](https://github.com/oisteink/agentbox/issues/15) |
-| Gi CLI-en menneskeutskrift og strukturert JSON | [#16](https://github.com/oisteink/agentbox/issues/16) |
 | Samle diagnose og reparasjon i doctor | [#17](https://github.com/oisteink/agentbox/issues/17) |
 
 Felles utskriftskontrakt etableres tidlig. Livssyklus, nødstopp og container-
@@ -272,32 +271,12 @@ erstatning samordnes; doctor gjenbruker operasjonene fra mounts og images.
 
 ## Utskrift for mennesker og agenter
 
-Felles kontrakt for alle kommandoer; konkrete JSON-felter fastsettes før implementasjon.
-
-- Standardutskrift er for mennesker: tabeller for oversikter, lesbare detaljer
-  og konkrete feilmeldinger der det passer kommandoen.
-- `--json` gir strukturert utskrift for agenter. Både resultat og feil skal
-  kunne forstås fra JSON uten tolking av mennesketekst eller exitkoder.
-- I JSON-modus rapporteres håndterte feil i JSON med exitkode 0. Vanlig
-  menneskemodus beholder exitkoder for feil.
-- JSON-resultatet må skille entydig mellom suksess og feil og gi en stabil
-  feilkategori samt forståelig forklaring. Det konkrete skjemaet er ikke valgt.
-- Løpende utdata i --json bruker JSON Lines: én JSON-verdi per linje.
-  Logger og programutdata sendes fortløpende som hendelser. Ved avslutning
-  sendes et strukturert sluttresultat med kommandoens exitstatus eller feil.
-  Mennesketekst blandes ikke inn i JSON-strømmen. Klienten kan reagere på
-  kjente feilkategorier og styre egen timeout; dette innfører ikke et eget
-  timeout-flagg i abx.
-- Vanlig kjøring velger interaktiv TTY automatisk når stdin og stdout er
-  terminaler. JSON-modus kjører uten TTY, men videresender fortsatt stdin
-  til kommandoen. Kommandoens stdout og stderr sendes som separate
-  JSON-hendelser. Interaktive agentgrensesnitt brukes gjennom vanlig modus.
-- Handlinger som krever bekreftelse spør brukeren i interaktiv menneskemodus.
-  JSON-modus spør aldri interaktivt; uten samtykke returneres et strukturert
-  resultat om at bekreftelse kreves, med hvilke miljøer som berøres.
-  --yes gir samtykke på forhånd. --force gjelder tvungen nødstopp og er ikke
-  et synonym for --yes. Bekreftelseskrav følger øvrig JSON-feilkontrakt.
-- Kommandoenes menneskeutskrift og JSON-data skal beskrive samme resultat.
+Alle nye kommandoer bruker felles menneskeutskrift og
+[JSON-kontrakt](../../usage.md#utskrift-og-automatisering). Ingen egen timeout-
+opsjon innføres; klienten styrer sin timeout. Destruktive handlinger bruker
+felles bekreftelse med `--yes`, også i JSON-modus. `--force` velger tvungen
+nødstopp og erstatter ikke samtykke. Logger med follow bruker output-hendelser
+og ett sluttresultat når visningen avsluttes.
 
 ## Åpent før implementasjon
 
@@ -311,9 +290,6 @@ Felles kontrakt for alle kommandoer; konkrete JSON-felter fastsettes før implem
   eksplisitt proxy apply som mulighet for nettverk/tokens underveis.
 - Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
   avklares i research/plan.
-- Detaljskjema for JSON-hendelser avklares i research/plan. JSON Lines med
-  hendelser og sluttresultat, separat stdout/stderr og stdin uten TTY i
-  JSON-modus er valgt.
 - Mekanisme for å oppdage endret proxykode og ta nytt proxyimage i bruk ved
   oppgradering er ikke valgt. Den må håndtere at gamle proxycontainere finnes.
 - Mount remove må bevare grunnlaget for sikker rettighets-/eierskapsrydding

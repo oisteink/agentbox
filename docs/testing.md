@@ -73,7 +73,7 @@ dekningsprosent er ikke et akseptansekriterium.
 Testnavnene nedenfor viser kjørbare observasjoner. De innebærer ikke at hele
 kravet er uttømmende verifisert. Installerte scenarier ligger i
 `tests/integration/test_lifecycle.py`, `test_temporary_run.py`,
-`test_installation.py` og `test_uninstall.py` og bruker installert CLI.
+`test_installation.py`, `test_json.py` og `test_uninstall.py` og bruker installert CLI.
 
 | Krav | Konkret prøve | Avgrensning |
 | --- | --- | --- |
@@ -108,7 +108,7 @@ kravet er uttømmende verifisert. Installerte scenarier ligger i
 | --- | --- |
 | `tests/unit/test_config.py`, `test_policy.py` | YAML-/skjemagrenser, kortnavn, DNS-validering og generert domene/port-policy; DNS-svar er kontrollerte |
 | `test_proxy_credentials.py`, `test_credentials.py` | Tokenreferanser, alias, plassholdere, hemmelighetsfrie argumenter/feil og avslag ved overganger; enkelte eksterne kontrolloperasjoner erstattes |
-| `test_cli.py`, `test_control_entry.py` | Utvalgte CLI-forespørsler, identitet før dispatch og avvisning av feil input uten ekko av hemmeligheter |
+| `test_cli.py`, `test_control_entry.py`, `test_output_process.py` | Utvalgte CLI-forespørsler, identitet før dispatch og avvisning av feil input uten ekko av hemmeligheter |
 | `test_runtime.py` | Daemonkrav og renset miljø med simulerte Docker-svar; ekte PTY/prosess for utdata og initial størrelse |
 | `test_images.py` | Ekte lokale oppskrifter, editorprosesser, tar og utpakking; binær kontrollprotokoll og avslag før Docker-mutasjon |
 | `test_projects.py`, `test_uninstall.py` | ACL-transformasjoner, lenker, identitet og filsystemopprydding; smale mocks for eksterne ACL-operasjoner |
@@ -147,3 +147,10 @@ plattformstøtte. De er ikke beståtte prøver:
    ressursendringer. Bruk eksplisitte feilpunkter og ettertilstand.
 5. Prioritet middels: vertsreboot, signaler i vedvarende shell/exec og dynamisk terminalstørrelse,
    arbeidskatalog som mangler/erstattes, privat loggmodus/rotasjon og CPU/OOM.
+
+Maskinprotokollen prøves med reelle prosesser for store toveis strømmer,
+tidlig stdin-stenging, ugyldig/delt UTF-8, parserfeil og avbrudd mens input
+venter. `test_json.py` prøver installert CLI gjennom sudo: mennesketabell,
+JSON-feil, adskilte utstrømmer, stdin, logger og identitetsbundet opprydding
+etter Ctrl-C. En JSON-exitkode 0 er utilstrekkelig; sluttresultatet må finnes
+og undersøkes.

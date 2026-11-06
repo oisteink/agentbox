@@ -71,7 +71,8 @@ def main():
         env.pop("EMPTY_TOKEN", None)
         if token is not None:
             env["FIXTURE_TOKEN"] = token
-        return run(
+        metadata = args[0] not in ("exec", "shell", "run", "logs", "completion")
+        result = run(
             "runuser",
             "-u",
             "developer",
@@ -79,10 +80,23 @@ def main():
             "env",
             "HOME=/home/developer",
             "/usr/local/bin/abx",
+            *(["--json"] if metadata else []),
             *args,
-            check=check,
+            check=False,
             env=env,
         )
+        if metadata:
+            frames = [json.loads(line) for line in result.stdout.splitlines()]
+            final = frames[-1]
+            assert final["type"] == "result", frames
+            result.stdout = json.dumps(final.get("data"))
+            result.stderr += "".join(frame["data"] for frame in frames[:-1])
+            if not final["ok"]:
+                result.returncode = 2
+                result.stderr += final["error"]["message"]
+        if check:
+            result.check_returncode()
+        return result
 
     def http_events():
         return [

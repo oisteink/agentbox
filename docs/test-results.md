@@ -1,18 +1,18 @@
 # Teststatus for Agentbox
 
-Resultater fra 2. og 3. november 2026. Kravdekning og åpne verifikasjonshull står i
+Resultater fra 6. november 2026. Kravdekning og åpne verifikasjonshull står i
 [teststrategien](testing.md). Beståtte prøver gjelder det angitte oppsettet.
 
 ## Plattform og resultater
 
 Lab: Ubuntu 24.04.5 amd64, kernel 6.8.0-147-generic, systemd/cgroup v2,
-rootless Docker 29.9.2, Python 3.12.3 og pytest 9.0.3. Proxyimaget bruker
+rootless Docker 29.9.3, Python 3.12.3 og pytest 9.0.3. Proxyimaget bruker
 Debian 13, Go 1.27.3 og goproxy v1.9.2. Laben bygger Codex 0.166.0,
 OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 
 | Kontroll | Resultat |
 | --- | --- |
-| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 201 bestått |
+| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 218 bestått |
 | Ruff lint/format, Bash-syntaks og gofmt | Bestått |
 | Go race og vet | Bestått, HTTP/1 og HTTP/2 |
 | govulncheck v1.9.0, Go 1.27.3 | Ingen sårbarheter som kan nås |
@@ -20,9 +20,13 @@ OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 | Dokumentasjon | CLI, skjema, lagring, proxybygg, installasjon og C4 kontrollert mot kode; lokale lenker og eksempler validert |
 | Wheel | Dockerfile-maler og Codex-launcher inkludert |
 | Installasjon og imagebygg i VM | Bestått; installerte filer sammenlignet med kilde |
-| Installert CLI og oppsett | 27 scenarier bestått, ingen skips |
+| Installert CLI og oppsett | 31 scenarier bestått, ingen skips |
 | Installert proxy | 24 kontroller bestått, ingen oppryddingsfeil |
 | Avinstallasjon | Bestått; annen rootful Docker-instans bevart |
+
+Installert kildehash: `b5c93cca1b27237fd2b5ce613749521daaa2e2c481a67a03e23ec66e3ee75b94`.
+Test-/skripthash: `3b41e7fd95d868b8a231dbd68fcad6b247fada819e27328911691af7b6be5838`.
+Hashene beregnes av labskriptets plattformkontroll.
 
 Lokale kontroller bruker `scripts/check.sh`; laben bruker `scripts/lab/check.sh`
 og avinstallasjonsprøven til slutt med `AGENTBOX_UNINSTALL_LAB=1`.
@@ -48,6 +52,11 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
   innlesing, Ctrl-C gjennom PTY og signal direkte til CLI for run og ikke-persistent shell, frigitt lås,
   full ressursfjerning og bevarte prosjektfiler. Lokale feilprøver dekker
   delvis oppstart, oppryddingsfeil og gjenskapt miljø med samme navn.
+- Utskrift: mennesketabell, JSON-parserfeil/hjelp, konfigurasjonsfeil og
+  kommandofeil med exitkode i sluttresultatet. Installert stdin/stdout/stderr
+  med 200 kB i begge retninger, tidlig stdin-stenging, delt/ugyldig UTF-8,
+  editor med input/exitstatus og Ctrl-C gjennom sudo med full opprydding.
+  Lokale prosesser dekker ventende input og ugyldig/ufullstendig protokoll.
 - Livssyklus: containerlag ved stopp/start og daemonrestart, prosjektfiler
   ved remove, samt eierskap/ACL ved avinstallasjon. Nestede mounts og
   beskyttede filer utenfor prosjektet inngår i prøvene.

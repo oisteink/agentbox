@@ -1,10 +1,12 @@
 """Pinned local daemon access. All subprocesses use a clean environment and argv."""
 
+import codecs
 import errno
 import fcntl
 import json
 import os
 import pty
+import selectors
 import signal
 import stat
 import subprocess
@@ -35,6 +37,8 @@ class Docker:
         self.home = home
         self.socket = Path(f"/run/user/{uid}/docker.sock")
         self.expected_id = None
+        self.input_source = None
+        self.output = None
 
     def run(
         self,
@@ -129,7 +133,11 @@ class Docker:
             return self._exec_stream(identifier, command, log_directory, terminal, output, reader)
 
     def _exec_stream(self, identifier, command, log_directory, terminal, output, reader):
-        arguments = ["exec"] + (["-it"] if terminal else []) + [identifier, *command]
+        arguments = (
+            ["exec"]
+            + (["-it"] if terminal else (["-i"] if self.input_source is not None else []))
+            + [identifier, *command]
+        )
         env = {
             "PATH": "/usr/bin:/bin",
             "HOME": self.home,
@@ -139,9 +147,9 @@ class Docker:
         process = subprocess.Popen(
             ["/usr/bin/docker", "--host", f"unix://{self.socket}", *arguments],
             env=env,
-            stdin=terminal or subprocess.DEVNULL,
+            stdin=terminal or self.input_source or subprocess.DEVNULL,
             stdout=output,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.STDOUT if terminal else subprocess.PIPE,
         )
         if reader is not None:
             # Only the child keeps the writer open; EOF arrives when Docker exits.
@@ -149,17 +157,32 @@ class Docker:
         else:
             reader = process.stdout.fileno()
         directory = Path(log_directory)
+        selector = selectors.PollSelector()
+        selector.register(reader, selectors.EVENT_READ, "stdout")
+        if not terminal:
+            selector.register(process.stderr, selectors.EVENT_READ, "stderr")
+        decoders = {
+            name: codecs.getincrementaldecoder("utf-8")("replace") for name in ("stdout", "stderr")
+        }
         try:
-            while True:
+            while selector.get_map():
+                key = selector.select()[0][0]
                 try:
-                    block = os.read(reader, 4096)
+                    block = os.read(key.fd, 4096)
                 except OSError as exc:
                     if terminal and exc.errno == errno.EIO:
-                        break
-                    raise
+                        block = b""
+                    else:
+                        raise
+                if self.output:
+                    text = decoders[key.data].decode(block, final=not block)
+                    if text:
+                        self.output(key.data, text)
+                elif block:
+                    os.write(2 if key.data == "stderr" else 1, block)
                 if not block:
-                    break
-                os.write(1, block)
+                    selector.unregister(key.fileobj)
+                    continue
                 # Agent output is untrusted and can contain credentials. This
                 # bounded log lives only in the private service state directory.
                 lock = os.open(
@@ -184,5 +207,6 @@ class Docker:
             process.terminate()
             raise
         finally:
+            selector.close()
             process.wait()
         return process.returncode

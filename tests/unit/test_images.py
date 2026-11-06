@@ -144,19 +144,27 @@ def test_only_local_names_are_accepted(recipes, name):
 def test_rpc_transfers_json_header_and_complete_binary_tar(recipes, monkeypatch):
     images.new("js")
     (recipes / "js/binary").write_bytes(b"\xff\x00\x80")
-    seen = []
+    import subprocess
+    import sys
 
-    def run(command, *, stdin, **kwargs):
+    popen = subprocess.Popen
+
+    def child(command, **kwargs):
         assert command[-1] == "/usr/local/libexec/agentbox-control"
-        seen.append(json.loads(stdin.readline()))
-        with tarfile.open(fileobj=stdin) as archive:
-            assert archive.extractfile("./binary").read() == b"\xff\x00\x80"
-        return SimpleNamespace(returncode=0, stdout='{"status":"built"}')
+        program = (
+            "import sys,json,tarfile; source=sys.stdin.buffer; "
+            "assert json.loads(source.readline()) == "
+            "{'action':'image','operation':'build','name':'js'}; "
+            "bundle=tarfile.open(fileobj=source,mode='r|'); "
+            "member=next(m for m in bundle if m.name == './binary'); "
+            "assert bundle.extractfile(member).read() == b'\\xff\\x00\\x80'; "
+            "print(json.dumps({'type':'result','ok':True,'data':{'status':'built'}}))"
+        )
+        return popen([sys.executable, "-c", program], **kwargs)
 
-    monkeypatch.setattr(cli.subprocess, "run", run)
+    monkeypatch.setattr(cli.subprocess, "Popen", child)
     request = {"action": "image", "operation": "build", "name": "js"}
     assert cli.rpc(request, context="js") == {"status": "built"}
-    assert seen == [request]
 
 
 def test_control_reads_binary_context_after_authentication(monkeypatch, capsys):
@@ -176,7 +184,7 @@ def test_control_reads_binary_context_after_authentication(monkeypatch, capsys):
     monkeypatch.setattr(cli.Control, "__init__", lambda self, settings: None)
     monkeypatch.setattr(cli.Control, "dispatch", dispatch)
     cli.control_main()
-    assert json.loads(capsys.readouterr().out) == {"status": "built"}
+    assert json.loads(capsys.readouterr().out)["data"] == {"status": "built"}
 
 
 class ImageDocker:

@@ -50,14 +50,17 @@ def new(name, template="base"):
     return {"name": name, "path": str(path), "template": template}
 
 
-def edit(name):
+def edit(name, emit=None):
     path = recipe(name).resolve()
     editor = (
         os.environ.get("VISUAL", "").strip() or os.environ.get("EDITOR", "").strip() or "editor"
     )
-    return subprocess.run(
-        [*shlex.split(editor), str(path / "Dockerfile")], cwd=path, check=False
-    ).returncode
+    command = [*shlex.split(editor), str(path / "Dockerfile")]
+    if emit:
+        from .process import run
+
+        return run(command, emit, cwd=path)
+    return subprocess.run(command, cwd=path, check=False).returncode
 
 
 def archive(name, output):
