@@ -18,8 +18,9 @@ def main():
         try:
             with control.store.locked() as data:
                 control.verified(data)
+                control.reap_sessions(data)
                 addresses = local_addresses()
-                for name, environment in data["environments"].items():
+                for name, environment in list(data["environments"].items()):
                     if (
                         environment["host_addresses"] != addresses
                         and environment["status"] != "stopped-host-address-change"

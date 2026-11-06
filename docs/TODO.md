@@ -12,7 +12,7 @@ De viktigste gjenstående verifikasjonene er:
 - Oppdater kontrollert UDP/DNS- og vert/LAN-prøve før nettverksplattformen
   oppgraderes. Gjenta alternative socketsyscalls ved endring av seccomp.
 - Prøv avbrudd under oppstart, samtidige kontrolloperasjoner og ACL-konflikter.
-- Prøv signaler i vedvarende shell/exec, dynamisk terminalstørrelse, privat
+- Prøv signaler i vedvarende start/exec, dynamisk terminalstørrelse, privat
   loggmodus/rotasjon, vertsreboot og faktisk CPU-/minnehåndheving.
 
 Konsekvens og nødvendig prøve for hvert hull står under

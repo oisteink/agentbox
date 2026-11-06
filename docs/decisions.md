@@ -163,19 +163,40 @@ stoppet miljø validerer og fastlåser DNS på nytt.
 Fjerning sletter laget og miljøets logger. Filer i katalogmounts, registreringer og ACL-er består til egne
 operasjoner endrer dem. Kjøremiljøer gjenopptas ikke automatisk etter vertsreboot.
 
-## Midlertidige miljøer
+## Automatisk livssyklus
 
-`run` gjenbruker opprettelse, terminalkjøring og fjerning. Miljøfiler med
-`persistent: false` bruker samme opprydding etter shell. Start klargjør
-fortsatt i bakgrunnen, mens stop fjerner miljøet. En shell-reservasjon under
-lås forhindrer at to shell-sesjoner deler ansvaret for opprydding. Reservasjonen
-nullstilles ikke ved start eller proxy apply; hardt avbrudd krever eksplisitt
-fjerning. Ingen ny daemon eller filkopiering er nødvendig. Kommandoen kjører
-uten global operasjonslås; oppryddingen verifiserer opprettet agent-ID mot
-ny tilstand under lås. Dermed kan andre miljøer brukes samtidig, uten at
-en samtidig remove/gjenskaping med samme navn rammes av feil opprydding.
-SIGINT utsettes under opprettelse og fjerning. CLI-en venter på
-hjelperens opprydding ved avbrudd. Ingen ekstra daemon er nødvendig.
+Start/exec bruker én kontrolloperasjon for klargjøring og registrering under
+samme lås. Hver kjøring har en egen sesjon; en tilfeldig generation-ID skiller
+kjøreperioder selv når Docker beholder container-ID ved restart. Siste
+avslutning leser aktuell sessions-map og keep-running-latch. Dermed kan enhver
+kjøring sette flagget sent, og en tidligere avslutning kan ikke overstyre det.
+Stop invaliderer perioden før Docker-stopp. Finally og watcher bruker samme
+reap/finalize og starter aldri nye ressurser.
+
+Klient og helper identifiseres med PID, starttime, boot-ID og UID. Dette kan
+lagres atomisk og observeres av eksisterende watcher; en ny tjeneste for
+pidfd-er eller refcount er unødvendig. Ukjent proc-observasjon bevarer sesjonen.
+Kravet om lesbar proc-metadata begrenser bruk med restriktiv hidepid.
+Keep-running bevarer containeren også ved klientkrasj; det lover ikke individuell
+stopp av alle agentprosesser. Run bruker samme mekanisme med unik instans og
+persistent=false, så parallelle kjøringer ikke deler oppryddingsansvar.
+
+En kort launchfase under vanlig lås bekrefter konkret Docker-exec-PID eller
+endelig ExitCode før låsen slippes. Docker sender exec_start før prosessen
+finnes; eventet brukes bare til å finne ID ved rask exit. En liten read-only
+klient mot fast verifisert Unixsocket leser rå JSON og beholder nullable
+ExitCode. Eksisterende DockerCLI håndterer fortsatt PTY, resize og strømming.
+Dette krever mindre ny transportkode enn ExecCreate/Start-hijack i Python.
+[Moby exec](https://raw.githubusercontent.com/moby/moby/master/daemon/exec.go),
+[Docker 28 inspect](https://raw.githubusercontent.com/moby/moby/v28.0.0/daemon/inspect.go).
+
+Separat launch-intent før Popen dekker helperkrasj og uklart backendutfall.
+Docker-routerens hijack bruker en bakgrunnskontekst; terminert DockerCLI er
+derfor ikke et kanselleringsbevis. Ukjent utfall stopper miljøet og sperrer
+samme container-ID frem til bekreftelse eller faktisk fjerning. Persistent
+lag slettes ikke automatisk for å komme rundt usikkerhet. Loggkatalog-FD
+binder senere skriving til riktig katalog selv etter remove/gjenskaping.
+[Moby-router](https://raw.githubusercontent.com/moby/moby/master/daemon/server/router/container/exec.go).
 
 ## Go-proxy og miljøbaserte tokens
 

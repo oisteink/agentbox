@@ -50,9 +50,9 @@ def test_completion_timeout_is_ignored(monkeypatch):
 @pytest.mark.parametrize(
     "words,expected",
     [
-        (["abx", "sh"], ["shell"]),
+        (["abx", "sh"], []),
         (["abx", "--js"], ["--json"]),
-        (["abx", "--json", "sh"], ["shell"]),
+        (["abx", "--json", "sh"], []),
         (["abx", "--json", "--yes", "image", "b"], ["build"]),
         (["abx", "image", "b"], ["build"]),
         (["abx", "image", "build", "j"], ["js"]),
@@ -61,7 +61,8 @@ def test_completion_timeout_is_ignored(monkeypatch):
         (["abx", "image", "new", "js", "--template", "c"], ["claude-code", "codex"]),
         (["abx", "image", "new", "js", "--template", "o"], ["opencode"]),
         (["abx", "proxy", "b"], ["build"]),
-        (["abx", "shell", "exa"], ["example-codex"]),
+        (["abx", "start", "example-codex", "--k"], ["--keep-running"]),
+        (["abx", "exec", "example-codex", "--k"], ["--keep-running"]),
         (["abx", "logs", "example-codex", "--p"], ["--proxy"]),
         (["abx", "mount", "re"], ["revoke", "remove"]),
         (["abx", "mount", "check", "--fix", "exa"], ["example"]),

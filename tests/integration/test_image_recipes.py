@@ -81,10 +81,12 @@ def test_exec_does_not_reopen_stopped_proxy_and_pending_keeps_it_missing(lab):
     name = lab.start(source, image=recipe)
     agent = lab.state(name)["resources"]["agent"]
     cli("proxy", "stop", name)
+    cli("start", str(lab.environments[name]))
+    assert "proxy" not in lab.state(name)["resources"]
     assert cli("exec", name, "--", "echo", "offline").stdout == "offline\n"
     assert "proxy" not in lab.state(name)["resources"]
     (path / "marker").write_text("pending")
-    pending = cli("start", str(lab.environments[name]))
+    pending = cli("start", "--keep-running", str(lab.environments[name]))
     assert "next startup" in pending.stderr
     assert lab.state(name)["resources"]["agent"] == agent
     assert "proxy" not in lab.state(name)["resources"]
@@ -108,7 +110,7 @@ def test_invalid_new_mount_keeps_stopped_layer(lab):
     assert not machine("start", str(path))[-1]["ok"]
     assert lab.state(name)["resources"]["agent"] == agent
     path.write_text(original)
-    cli("start", str(path))
+    cli("start", "--keep-running", str(path))
     assert cli("exec", name, "--", "cat", "/home/agent/marker").stdout == "retained\n"
 
 

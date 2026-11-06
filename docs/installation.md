@@ -18,6 +18,8 @@ på verten. Tokens bygges ikke inn i imaget.
 Debian er målplattformen. Ubuntu 24.04 brukes som disponibel labplattform;
 utvikleren har også prøvd installasjonen på Debian. Systemd, cgroup v2,
 POSIX ACL, user namespaces og rootless Docker kreves, med Python 3.12 eller nyere.
+Tjenestebrukeren må kunne lese operatørens prosessidentitet under `/proc`;
+restriktiv hidepid kan hindre registrering og observasjon av aktive kjøringer.
 Koden krever Docker 28 eller nyere; 29.9.3 er testet. Installer
 [Docker Engine og rootless extras](https://docs.docker.com/engine/security/rootless/)
 før prosjektets installer kjøres. Andre nødvendige pakker på Debian/Ubuntu:

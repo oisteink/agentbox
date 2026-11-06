@@ -50,6 +50,8 @@ def human(data, *, table=False):
         rows = (
             [["NAME", "TYPE", "STATUS", "PATH"]] if table == "mount" else [["NAME", "STATUS", last]]
         )
+        if table == "status":
+            rows[0].extend(["ACTIVE", "KEEP RUNNING"])
         for name, entry in data.items():
             value = (
                 entry.get("config", {}).get("image", "—")
@@ -59,6 +61,14 @@ def human(data, *, table=False):
             row = [name, str(entry.get("status", "—")), str(value)]
             if table == "mount":
                 row.insert(1, entry["type"])
+            if table == "status":
+                runtime = entry.get("runtime") or {}
+                row.extend(
+                    [
+                        str(len(runtime.get("sessions", {}))),
+                        "yes" if runtime.get("keep_running") else "no",
+                    ]
+                )
             rows.append(row)
         widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
         for row in rows:

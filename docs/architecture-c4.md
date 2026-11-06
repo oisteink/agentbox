@@ -71,11 +71,11 @@ System_Boundary(agentbox, "Agentbox") {
     Container(cli, "abx", "Python; utviklerens UID", "Validerer miljøfiler, velger lokale/medfølgende maler og klargjør imagebygg. Administrerer utviklerens ACL-endringer.")
     ContainerDb(recipes, "Miljøfiler og lokale imageoppskrifter", "Utviklerens filer", "~/.config/agentbox; YAML og lokale Dockerfiles med byggkontekst.")
     ContainerDb(journal, "ACL-journal", "Private JSON-filer", "/var/lib/agentbox-operator; eies av utvikleren.")
-    Container(control, "Kontrollhjelper", "Python; agentbox UID", "Bygger images og administrerer mounts, miljøer, proxy og terminaler.")
+    Container(control, "Kontrollhjelper", "Python; agentbox UID", "Bygger images, registrerer aktive kjøringer og styrer miljøer, proxy og terminaler.")
     Container(uninstall, "Avinstallering", "scripts/uninstall.sh; Bash / Python; root", "Kjøres fra repoet. Rydder ACL-er og overfører filer i katalogmounts til utvikleren før installasjonen fjernes. ")
-    Container(watch, "Adressevakt", "Python / systemd; agentbox UID", "Stopper miljøer ved endrede vertsadresser.")
+    Container(watch, "Adresse- og øktvakt", "Python / systemd; agentbox UID", "Stopper ved adresseendring og rydder døde kjøringer.")
     ContainerDb(volumes, "Navngitte Docker-volumer", "Rootless Docker-lagring", "Registrerte, delbare kilder. Beholdes ved miljøfjerning; mount remove sletter volum og data.")
-    ContainerDb(state, "Kontrolltilstand og policy", "Private filer; agentbox UID", "/var/lib/agentbox/state; miljøregister, proxyregler, miljø-CA og logger.")
+    ContainerDb(state, "Kontrolltilstand og policy", "Private filer; agentbox UID", "/var/lib/agentbox/state; miljøregister, aktive kjøringer, launch-intents, proxyregler, miljø-CA og logger.")
     Container(docker, "Rootless Docker-instans", "Docker Engine / RootlessKit", "Egen daemon som agentbox; administrerer containere, nettverk og images.")
 
     Boundary(environment, "Arbeidsmiljø - ett av flere", "Agent og proxy per miljø") {
@@ -99,7 +99,7 @@ Rel(uninstall, journal, "Avstemmer og rydder foreldrenes ACL-er", "Privat journa
 Rel(control, directories, "Reparerer ACL på filer eid av agentbox", "POSIX ACL")
 Rel(control, state, "Lagrer tilstand, policy og agentutdata", "Filsystem")
 Rel(watch, state, "Leser miljøer og oppdaterer status", "Filsystem og felles lås")
-Rel(control, docker, "Bygger images og styrer containere; gir kun proxyen tokenmiljø", "Docker CLI; fast Unix-socket")
+Rel(control, docker, "Bygger images og styrer containere; gir kun proxyen tokenmiljø", "Docker CLI / read-only Engine API; fast Unix-socket")
 Rel(watch, docker, "Stopper berørte containere", "Docker CLI; samme socket")
 Rel(docker, agent, "Oppretter og styrer livssyklus", "Docker runtime")
 Rel(docker, proxy, "Oppretter og styrer livssyklus", "Docker runtime")
@@ -138,9 +138,12 @@ SHOW_LEGEND()
 - Vertskataloger og navngitte volumer overlever miljøfjerning. Volumer slettes
   eksplisitt med mount remove. Hjem/profiler ligger i containerlaget med mindre
   brukeren har valgt et eget katalog-/volummount.
-  Midlertidige miljøer fra `run` fjernes når kommandoen avsluttes. Med
-  `persistent: false` fjernes miljøet etter `shell` eller ved `stop`; neste
-  `start` gir et nytt containerlag.
+  Run har unike midlertidige instanser. Start/exec stopper etter siste
+  automatiske kjøring uten keep-running. Persistent false fjerner runtime
+  ved stopp; neste start gir et nytt lag.
+- Aktive kjøringer bindes til generation, agent-ID og prosessidentiteter.
+  Watcher og normal avslutning deler finalize. Launch-intent overlever stopp
+  ved ukjent backendutfall; konkret exec-inspeksjon er oppstartsbeviset.
 - Rootless-containerne deler vertens kjerne. Ved et utbrudd med `agentbox`
   sine rettigheter gjelder brukerens samlede vertstilgang, også til andre registrerte mounts.
   Agentens UID 0 mappes til tjenestebrukeren på verten; proxyen bruker en egen

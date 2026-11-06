@@ -98,3 +98,18 @@ def test_exec_stream_preserves_terminal_size_and_logs(monkeypatch, tmp_path, cap
         assert (tmp_path / "agent.log").read_text() == expected
     finally:
         os.close(master)
+
+
+def test_removed_log_directory_does_not_write_into_replacement(tmp_path):
+    from agentbox.runtime import append_log
+
+    path = tmp_path / "environment"
+    path.mkdir()
+    directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        path.rmdir()
+        path.mkdir()
+        append_log(directory, b"output from an old environment")
+        assert list(path.iterdir()) == []
+    finally:
+        os.close(directory)

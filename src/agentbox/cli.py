@@ -7,9 +7,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
+from dataclasses import replace
 from pathlib import Path
 
-from . import completion, config, images, mounts
+from . import completion, config, images, mounts, sessions
 from .control import Control
 from .errors import AgentboxError
 from .output import Output, confirm, failure, success, write_frame
@@ -387,44 +389,30 @@ def ensure_image(environment, *, temporary=False):
     if built["status"] != "built" and not running:
         _output.event("stderr", f"abx: Building image {environment.image}.\n")
         built = rpc(
-            {"action": "image", "operation": "build", "name": environment.image},
+            {"action": "image", "operation": "build", "name": environment.image, "if_needed": True},
             context=environment.image,
         )
         digest = built["digest"]
     return digest
 
 
-def prepared_environment(environment, *, execute=False):
-    request = environment_request(environment, "prepare-exec" if execute else "start")
-    for attempt in range(3):
-        digest = ensure_image(environment)
-        try:
-            result = rpc(request | {"recipe_digest": digest})
-            environment_notice(environment.name, result)
-            return result
-        except AgentboxError as exc:
-            if exc.code != "image_outdated" or attempt == 2:
-                raise
-    raise AssertionError("Unreachable preparation state")
-
-
-def environment_notice(name, result):
-    if result.get("pending_changes"):
-        _output.event(
-            "stderr",
-            f"abx: {name} is running; recipe/configuration changes apply at next startup.\n",
+def run_environment(environment, *, action="run", command=None, keep_running=False):
+    if action == "run":
+        environment = replace(
+            environment,
+            name=environment.name[:31] + "-run-" + uuid.uuid4().hex[:12],
+            persistent=False,
         )
-    if result.get("recreated"):
-        _output.event("stderr", f"abx: {name} recreated; explicit mounts retained.\n")
-    if result.get("proxy_active") is False:
-        _output.event("stderr", f"abx: {name} proxy is stopped; traffic remains blocked.\n")
-
-
-def run_environment(environment):
-    request = environment_request(environment, "run")
-    request["tty"] = not _output.json_mode and sys.stdin.isatty() and sys.stdout.isatty()
+    request = environment_request(environment, action)
+    request.update(
+        tty=not _output.json_mode and sys.stdin.isatty() and sys.stdout.isatty(),
+        client=sessions.identity(),
+        keep_running=keep_running,
+    )
+    if action == "exec":
+        request["command"] = command
     for attempt in range(3):
-        digest = ensure_image(environment, temporary=True)
+        digest = ensure_image(environment, temporary=action == "run")
         result = rpc(request | {"recipe_digest": digest}, stream=True)
         retry = (
             not result["ok"]
@@ -434,7 +422,7 @@ def run_environment(environment):
         )
         if not retry or attempt == 2:
             return result
-    raise AssertionError("Unreachable run state")
+    raise AssertionError("Unreachable session state")
 
 
 class HelpRequested(Exception):
@@ -473,20 +461,8 @@ class Parser(argparse.ArgumentParser):
 
 
 def json_requested(arguments):
-    # exec owns everything after its environment name, including flags.
-    action = next((value for value in arguments if not value.startswith("-")), None)
-    command_started = False
-    for argument in arguments:
-        if argument == "--":
-            return False
-        if argument == "--json":
-            return True
-        if action == "exec":
-            if command_started and not argument.startswith("-"):
-                return False
-            if argument == "exec":
-                command_started = True
-    return False
+    boundary = arguments.index("--") if "--" in arguments else len(arguments)
+    return "--json" in arguments[:boundary]
 
 
 def parser():
@@ -530,6 +506,9 @@ def parser():
             sub.add_argument("--fix", action="store_true")
     start = commands.add_parser("start", help="Start an environment from a YAML path or saved name")
     start.add_argument("config", help="YAML path or name from ~/.config/agentbox/environments")
+    start.add_argument(
+        "--keep-running", action="store_true", help="Keep the container until explicit stop"
+    )
     run = commands.add_parser("run", help="Run command in a temporary environment and remove it")
     run.add_argument("config", help="YAML path or saved environment configuration")
     proxy = commands.add_parser("proxy", help="Apply proxy rules or stop API access")
@@ -540,7 +519,7 @@ def parser():
     for operation in ("stop", "rotate-ca"):
         operation_parser = proxy_ops.add_parser(operation)
         operation_parser.add_argument("name", type=config.name)
-    for action in ("stop", "remove", "shell", "logs", "login-api-key", "exec"):
+    for action in ("stop", "remove", "logs", "login-api-key", "exec"):
         sub = commands.add_parser(action)
         if action == "exec":
             sub.add_argument("config", help="YAML path or saved configuration name")
@@ -549,7 +528,8 @@ def parser():
         if action == "logs":
             sub.add_argument("--proxy", action="store_true")
         if action == "exec":
-            sub.add_argument("command", nargs=argparse.REMAINDER)
+            sub.add_argument("--keep-running", action="store_true")
+            sub.add_argument("command", nargs="+")
         if action == "login-api-key":
             sub.add_argument("--key-file", required=True)
     return cli
@@ -639,41 +619,26 @@ def main():
                 result = rpc({"action": "mount", "operation": "list"})
             if not _output.json_mode and args.operation in ("add", "revoke"):
                 result = f"{args.name}: {'OK' if args.operation == 'add' else 'revoked'} ({result['type']})"
-        elif args.action in ("start", "run") or (
-            args.action == "proxy" and args.operation == "apply"
-        ):
+        elif args.action in ("start", "run", "exec"):
             environment = config.load(args.config)
-            if args.action == "run":
-                raise SystemExit(_output.finish(run_environment(environment)))
-            if args.action == "start":
-                result = prepared_environment(environment)
-                if not environment.persistent:
-                    _output.event(
-                        "stderr", "abx: Non-persistent environment; shell or stop will remove it.\n"
+            raise SystemExit(
+                _output.finish(
+                    run_environment(
+                        environment,
+                        action=args.action,
+                        command=getattr(args, "command", None),
+                        keep_running=getattr(args, "keep_running", False),
                     )
-            else:
-                result = rpc(environment_request(environment, "proxy") | {"operation": "apply"})
+                )
+            )
+        elif args.action == "proxy" and args.operation == "apply":
+            environment = config.load(args.config)
+            result = rpc(environment_request(environment, "proxy") | {"operation": "apply"})
         elif args.action == "proxy":
             request = {"action": "proxy", "operation": args.operation}
             if hasattr(args, "name"):
                 request["name"] = args.name
             result = rpc(request)
-        elif args.action in ("shell", "exec"):
-            command = getattr(args, "command", [])
-            if command and command[0] == "--":
-                command.pop(0)
-            request = {
-                "action": args.action,
-                "command": command,
-                "tty": not _output.json_mode and sys.stdin.isatty() and sys.stdout.isatty(),
-            }
-            if args.action == "exec":
-                environment = config.load(args.config)
-                entry = prepared_environment(environment, execute=True)
-                request.update(name=environment.name, agent=entry["resources"]["agent"])
-            else:
-                request["name"] = args.name
-            raise SystemExit(_output.finish(rpc(request, stream=True)))
         elif args.action == "login-api-key":
             path = Path(args.key_file)
             metadata = path.stat()
@@ -731,7 +696,7 @@ def control_main():
         if not isinstance(request, dict) or not isinstance(request.get("action"), str):
             raise AgentboxError("Expected a structured control operation", code="invalid_request")
         control = Control(settings)
-        streaming = request["action"] in ("exec", "run", "shell")
+        streaming = request["action"] in ("start", "exec", "run")
         if streaming:
             control.docker.input_source = source
             control.docker.ready = lambda: write_frame({"type": "input_ready"})
@@ -749,7 +714,11 @@ def control_main():
                 if len(raw) + len(rest) > 1048576 or rest.strip():
                     raise AgentboxError("Unexpected trailing control input", code="invalid_request")
             result = control.dispatch(request)
-        write_frame(success(exit_code=result) if streaming else success(result))
+        write_frame(
+            success({"name": request["config"]["name"]}, exit_code=result)
+            if streaming
+            else success(result)
+        )
     except (AgentboxError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         message = str(exc) if isinstance(exc, AgentboxError) else type(exc).__name__
         code = exc.code if isinstance(exc, AgentboxError) else "control_failed"

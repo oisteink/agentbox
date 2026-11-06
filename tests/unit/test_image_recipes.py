@@ -115,13 +115,13 @@ def test_pending_snapshot_then_stopped_rebuilds_in_same_action(monkeypatch):
             return {"digest": digest}
         starts.append(request)
         if len(starts) == 1:
-            raise AgentboxError("Stopped after pending snapshot", code="image_outdated")
-        return {"resources": {"agent": "new"}}
+            return cli.StreamResult(failure("image_outdated", "Stopped after pending snapshot"))
+        return cli.StreamResult(success({"name": "example"}, exit_code=0), input_ready=True)
 
     monkeypatch.setattr(images, "fingerprint", lambda name: digest)
     monkeypatch.setattr(cli, "rpc", rpc)
     monkeypatch.setattr(cli, "_output", Output(False))
-    assert cli.prepared_environment(env())["resources"]["agent"] == "new"
+    assert cli.run_environment(env(), action="start")["data"]["name"] == "example"
     assert builds == ["recipe"] and len(starts) == 2
     assert all(request["recipe_digest"] == digest for request in starts)
 

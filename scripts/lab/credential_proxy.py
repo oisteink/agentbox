@@ -84,7 +84,9 @@ def main():
             env["FIXTURE_TOKEN"] = token
         if args[0] == "exec":
             args = ("exec", str(probe_config(args[1])), *args[2:])
-        metadata = args[0] not in ("exec", "shell", "run", "logs", "completion")
+        if args[0] == "start":
+            args = ("start", "--keep-running", *args[1:])
+        metadata = args[0] not in ("exec", "run", "logs", "completion")
         result = run(
             "runuser",
             "-u",
@@ -97,6 +99,7 @@ def main():
             *args,
             check=False,
             env=env,
+            input="" if args[0] == "start" else None,
         )
         if metadata:
             frames = [json.loads(line) for line in result.stdout.splitlines()]
@@ -107,6 +110,8 @@ def main():
             if not final["ok"]:
                 result.returncode = 2
                 result.stderr += final["error"]["message"]
+            elif args[0] == "start":
+                result.stdout = json.dumps(json.loads(app("status").stdout)[final["data"]["name"]])
         if check:
             result.check_returncode()
         return result
@@ -512,6 +517,13 @@ def main():
         checks["missing_token_removes_old_proxy"] = True
         checks["alias_and_short_form_source_lookup"] = True
         app("start", str(configs[0][0]))
+        unchanged = json.loads(app("status").stdout)[first]
+        assert unchanged["resources"]["agent"] == agent_id and "proxy" not in unchanged["resources"]
+        before = len(http_events())
+        assert request(first, check=False).returncode != 0
+        assert len(http_events()) == before
+        checks["start_preserves_proxy_stop"] = True
+        app("proxy", "apply", str(configs[0][0]))
         request(first)
         # Persisted pin survives host lookup change. Control-side apply rejects the new private IP.
         Path("/etc/hosts").write_text(
@@ -523,7 +535,7 @@ def main():
             hosts_before
             + "\n93.184.216.34 allowed.agentbox.test tunnel.agentbox.test denied.agentbox.test\n"
         )
-        app("start", str(configs[0][0]))
+        app("proxy", "apply", str(configs[0][0]))
         checks["pinned_dns_and_private_resolution_rejected"] = True
         # Compare timestamps in the same VM while reading stdout incrementally.
         arguments = [

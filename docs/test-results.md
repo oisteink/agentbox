@@ -12,21 +12,21 @@ OpenCode 1.19.5, Claude Code 2.1.316 og smoke-imaget.
 
 | Kontroll | Resultat |
 | --- | --- |
-| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 265 bestått |
+| Python-enhetstester, Python 3.13 / pytest 9.0.3 | 294 testtilfeller bestått |
 | Ruff lint/format, Bash-syntaks og gofmt | Bestått |
 | Go race og vet | Bestått, HTTP/1 og HTTP/2 |
 | govulncheck v1.9.0, Go 1.27.3 | Ingen sårbarheter som kan nås |
 | C4-kilde og bilder | SVG/PNG rendret; etiketter, lesbarhet og lenker kontrollert |
 | Dokumentasjon | CLI, skjema, lagring, proxybygg, installasjon og C4 kontrollert mot kode; lokale lenker og eksempler validert |
-| Wheel | Dockerfile-maler, .dockerignore, launcher og CLI-moduler verifisert |
+| Wheel | Dockerfile-maler, .dockerignore, launcher og sesjonsmodul verifisert |
 | Installasjon og imagebygg i VM | Bestått; installerte filer sammenlignet med kilde |
 | Mounts/volumer | Katalog-ACL, ro/rw, profil/HOME-volumer, revoke/fix, samtykke, stoppede brukere og retry bestått |
-| Installert CLI og oppsett | 45 scenarier bestått, ingen skips |
-| Installert proxy | 24 kontroller bestått, ingen oppryddingsfeil |
+| Installert CLI og oppsett | 60 scenarier bestått: 59 i hovedløp og én målrettet prøve, ingen skips |
+| Installert proxy | 25 kontroller bestått, ingen oppryddingsfeil |
 | Avinstallasjon | Bestått; annen rootful Docker-instans og kontrollvolum bevart |
 
-Installert kildehash: `487cf755bd5a4afe2bbada1279be8df365af791ea417a2c1f520414faa7d59d8`.
-Test-/skripthash: `33f2bc0f798c32f12651d397ecd3a887391e5936b586c0bf49739f38686207a5`.
+Installert kildehash: `af9655e720eedba4537ceae7801f33dc50ec590f7f7575a465e8172086d75bed`.
+Test-/skripthash: `17be1c21e74c258e46695f73b1afa14e784db904a5a2ba9651af022ccdac926e`.
 Hashene beregnes av labskriptets plattformkontroll.
 
 Lokale kontroller bruker `scripts/check.sh`; laben bruker `scripts/lab/check.sh`
@@ -50,15 +50,19 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
 - Installert CLI: to images/miljøer, COPY/.dockerignore, bygg/fjerning under
   kjørende og stoppet bruk, editorens inn-/utdata og exitkode, mounts,
   read-only, ACL/tilbakekalling, socketvern, ressursgrenser og exec-logger.
-- Ikke-persistent miljø: start i bakgrunnen, shell med exitkode 0/17, nytt
-  container-ID og rent hjem ved neste start, bevarte filer i katalogmounts og stop-fjerning.
-  Konkurrerende shell avvises; start og proxy apply beholder shell-reservasjonen.
-  Lokale prøver dekker ventende SIGINT etter reservasjon og valgt agent-ID
-  ved samtidig erstatning av et vedvarende miljø.
-- Midlertidig kjøring: exitkode 0/17, stdout/stderr, terminalstørrelse og
-  innlesing, Ctrl-C gjennom PTY og signal direkte til CLI for run og ikke-persistent shell, frigitt lås,
-  full ressursfjerning og bevarte filer i katalogmounts. Lokale feilprøver dekker
-  delvis oppstart, oppryddingsfeil og gjenskapt miljø med samme navn.
+- Automatisk livssyklus: start og exec kjører i terminalen, begge
+  avslutningsrekkefølger for to aktive kjøringer, sent og repetert keep-running,
+  og eksplisitt stop med en forsinket gammel finally. Ny kjøreperiode med
+  samme container-ID beholdes. Klient-/helperkrasj oppdages av watcher;
+  keep-running bevares, øvrige siste kjøringer stoppes eller fjernes.
+- Ikke-persistent miljø: exitkode 0/17, rent hjem ved neste start, bevarte
+  mountfiler, delte aktive kjøringer og stop-fjerning. Stoppet lag etter avbrutt
+  fjerning erstattes. Lokale feilprøver dekker startup, queued SIGINT,
+  generation-binding, ukjent proc-observasjon og launch_unknown som overlever stop.
+- Run: parallelle unike instanser sammen med ordinært miljø, status/logs/stop,
+  exitkode 0/17, stdout/stderr, PTY, input og Ctrl-C. Bare egen instans fjernes;
+  registrerte katalog-/volumdata beholdes. Katalog-FD-prøve viser at gammel
+  output ikke skriver i et fjernet og gjenskapt miljøs katalog.
 - Utskrift: mennesketabell, JSON-parserfeil/hjelp, konfigurasjonsfeil og
   kommandofeil med exitkode i sluttresultatet. Installert stdin/stdout/stderr
   med 200 kB i begge retninger, tidlig stdin-stenging, delt/ugyldig UTF-8,
@@ -79,7 +83,8 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
   HTTP/1 og HTTP/2, auth-headere/trailere, Host/SNI, upstream-sertifikater,
   DNS-pinning, private adresser, direkte tilgang og proxybortfall.
 - Proxyens klientintegrasjon: CA for curl/Python/Node, SSE, CA- og nøkkelrotasjon,
-  logginnhold og bevart agenthjem ved proxybytte.
+  logginnhold og bevart agenthjem ved proxybytte. Start etter proxy-stopp
+  beholder avvist trafikk til eksplisitt apply.
 
 ## Begrensninger
 
@@ -87,8 +92,11 @@ uten ekte nøkler eller modellkall. En separat manuell Codex/Context7-prøve
   Go-proxyen på Debian og arm64 gjenstår.
 - Kontrollert UDP/DNS, vert/LAN, alternative socketsyscalls, mount-forsøk og
   skriving til alle kontrollfiler trenger oppdaterte prøver.
-- Krasj, samtidige låser/ACL-endringer, adressevakt, vertsreboot, signaler i vedvarende shell/exec,
-  dynamisk terminalstørrelse og CPU-/OOM-oppførsel er ikke uttømmende prøvd.
+- Vertsreboot, alle delvise oppstartssteg, eventhistorikk under press,
+  samtidige ACL-endringer, adressevakt, signaler med keep-running, dynamisk
+  terminalstørrelse og CPU-/OOM-oppførsel er ikke uttømmende prøvd.
+- Ukjent launch og prosessobservasjonsfeil er feilinjisert lokalt. Full VM-
+  feilinjeksjon av backend-launch og samtidige nødstoppsgarantier gjenstår.
 - Adressevakten reagerer etter oppdaget endring; den er ikke atomisk med
   nettverksendringen. H1-headergrensen kontrolleres etter parsing, med
   ressursgrenser som vern mot resterende tjenestenektrisiko.

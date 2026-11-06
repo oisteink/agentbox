@@ -3,6 +3,7 @@
 import io
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -63,7 +64,9 @@ def test_control_subprocess_failure_does_not_echo_request_or_output(monkeypatch,
         raise subprocess.CalledProcessError(1, ["client", secret], output=secret, stderr=secret)
 
     # Only the external operation fails; use the actual entry point/error handler.
-    monkeypatch.setattr(Control, "__init__", lambda self, settings: None)
+    monkeypatch.setattr(
+        Control, "__init__", lambda self, settings: setattr(self, "docker", SimpleNamespace())
+    )
     monkeypatch.setattr(Control, "dispatch", fail_dispatch)
     with pytest.raises(SystemExit) as error:
         cli.control_main()

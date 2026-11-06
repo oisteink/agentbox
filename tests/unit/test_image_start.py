@@ -83,16 +83,8 @@ def test_pending_keeps_agent_and_absent_proxy(prepared):
 
 def test_exec_preparation_never_reopens_proxy_on_running_agent(prepared):
     control, data, payload, _, _, mutations = prepared
-    result = control.start(data, payload, recipe_digest=DIGEST, reuse_running=True)
+    result = control.start(data, payload, recipe_digest=DIGEST)
     assert not result["pending_changes"] and not result["proxy_active"] and not mutations
-
-
-def test_explicit_unchanged_start_can_restore_proxy(prepared, monkeypatch):
-    control, data, payload, _, _, mutations = prepared
-    applied = []
-    monkeypatch.setattr(control, "apply_proxy", lambda *a: applied.append(True))
-    assert control.start(data, payload, recipe_digest=DIGEST)["proxy_active"]
-    assert applied == [True] and not mutations
 
 
 def test_stopped_start_rechecks_digest_under_control_lock(prepared):
@@ -145,13 +137,18 @@ def test_invalid_new_profile_is_rejected_before_layer_removal(prepared, monkeypa
     assert data["environments"]["example"]["resources"]["agent"] == "agent"
 
 
-def test_exec_rejects_selected_generation_change_before_ready(prepared, monkeypatch):
-    control, data, _, _, _, mutations = prepared
-    with control.store.locked() as stored:
-        stored.update(data)
-    monkeypatch.setattr(control, "execute", lambda *a: pytest.fail("Wrong generation executed"))
-    with pytest.raises(AgentboxError) as error:
-        control.dispatch(
-            {"action": "exec", "name": "example", "agent": "replaced-agent", "command": ["true"]}
-        )
-    assert error.value.code == "environment_changed" and not mutations
+def test_stopped_nonpersistent_layer_is_never_reused_after_incomplete_cleanup(
+    prepared, monkeypatch
+):
+    control, data, payload, _, actual, mutations = prepared
+    payload["persistent"] = False
+    data["environments"]["example"]["config"]["persistent"] = False
+    actual["State"]["Running"] = False
+
+    def replacing(*args, **kwargs):
+        raise AgentboxError("Validated replacement required")
+
+    monkeypatch.setattr(control, "remove", replacing)
+    with pytest.raises(AgentboxError, match="Validated replacement required"):
+        control.start(data, payload, recipe_digest=DIGEST)
+    assert not mutations

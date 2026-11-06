@@ -92,10 +92,10 @@ kravet er uttømmende verifisert. Installerte scenarier ligger i
 | A12: ressurser | `test_socket_capability_and_cgroup_enforcement` leser CPU/minne/PID og fyller PID-grensen; lokal daemonprøve av manglende støtte | Ingen ny CPU-belastnings- eller OOM-prøve |
 | A13: tilbakekalling | `test_acl_repair_and_revocation_leave_other_mount_working`: varsling under read-only bruk, EACCES som tjenestebruker og annet mount fortsetter; ACL-unitprøver | Konkurrerende manuelle ACL-endringer mangler |
 | Installasjon | `test_install` validerer operatørvalg; `test_proxy_image_installation_and_build_failure` prøver proxybygg, gjenbruk og feilstatus; laben sammenligner installerte filer | Minste Debian er ikke fastsatt |
-| Shell, exec og terminal | `test_exec_exit_status_and_configured_shell`, `test_terminal_reads_input_and_preserves_size`, lokal PTY-prøve | Dynamisk størrelsesendring og signaler i vedvarende shell/exec trenger egne prøver; midlertidig run/shell har Ctrl-C-prøver |
+| Start, exec og terminal | `test_exec_exit_status_and_configured_start`, `test_terminal_reads_input_and_preserves_size`, lokal PTY-prøve og test_temporary_run | Dynamisk størrelsesendring trenger egne prøver |
 | Stopp/start og endret profil | `test_stop_start_preserves_container_and_home`, `test_changed_profile_waits_for_restart_and_recreates_container` | Home-markør og samme container-ID; full innlogging er ikke utført her |
-| Ikke-persistent miljø | `test_temporary_run.py`: start/shell, rent hjem ved neste start, ny ID, stop, mount-bevaring og konkurrerende shell; `test_run.py`: reservasjon, signalgap og identitetsbinding | Hardt avbrudd krever eksplisitt remove |
-| Midlertidig kjøring | `test_temporary_run.py`: exitkode, terminal, Ctrl-C, ressursfjerning og mount-bevaring; `test_run.py`: feilbaner og identitetsbinding | SIGKILL/vertskrasj krever eksplisitt opprydding |
+| Ikke-persistent miljø | `test_temporary_run.py` og `test_sessions.py`: rent hjem, stop, mountbevaring, samtidige økter og keep-running; `test_run.py`: signalgap og generation-binding | Vertsreboot og alle delvise oppstartssteg er ikke fullstendig prøvd |
+| Midlertidig kjøring | `test_temporary_run.py`, `test_sessions.py`: exitkode, PTY, Ctrl-C, uavhengige parallelle run, logs/status/stop og mountbevaring | Vertsreboot og alle backendfeil krever flere prøver |
 | Eksempelmaler | `test_example_agent_version_in_isolation`, `test_agent_examples_match_cli_templates_and_archive` | Bygg og versjonskommando er prøvd; ikke TUI, innlogging eller modelltrafikk |
 | Daemonrestart | `test_daemon_restart_preserves_home` | Ikke vertsreboot eller avbrudd ved hvert oppstartssteg |
 | Tokenlivssyklus | `test_proxy_credentials`, Go-testene og `credential_proxy.py` med syntetiske tokens | Nye prøver bruker ingen ekte nøkler eller modellkall |
@@ -145,7 +145,7 @@ plattformstøtte. De er ikke beståtte prøver:
 4. Prioritet middels: avbrudd mellom hver varig oppstartsoperasjon, samtidig
    start/stop/revoke, manuelle ACL-endringer og gjenoppretting uten fremmede
    ressursendringer. Bruk eksplisitte feilpunkter og ettertilstand.
-5. Prioritet middels: vertsreboot, signaler i vedvarende shell/exec og dynamisk terminalstørrelse,
+5. Prioritet middels: vertsreboot, signaler i vedvarende start/exec og dynamisk terminalstørrelse,
    arbeidskatalog som mangler/erstattes, privat loggmodus/rotasjon og CPU/OOM.
 
 Maskinprotokollen prøves med reelle prosesser for store toveis strømmer,
@@ -169,3 +169,11 @@ stoppede containere. Preflight-feil skal beholde gammelt stoppet lag.
 Run-retry må bevare stor pipet input, aldri skje etter input_ready/Ctrl-C,
 og fortsatt gi ett offentlig sluttresultat. Installert exec prøves med
 CONFIG, automatisk bygg/start, valgt ID og proxy som forblir stoppet.
+
+Aktive kjøringer dekkes av `test_run.py`, `test_sessions.py` og den installerte
+`test_sessions.py`: begge avslutningsrekkefølger, sen/repetert latch, eksplisitt
+stop med forsinket gammel finally og klient-/helperkrasj. `test_launch.py`
+kontrollerer rå nullable exec-status, eksakte ID-er, event-replay og tvetydighet.
+Lokale feilprøver dekker launch_unknown som overlever stop, sperret restart,
+prosessobservasjonsfeil og delvis startup. Full labfeilinjeksjon under launch,
+eventhistorikk under press og samtidig nødstoppsperre trenger særskilt bevis.

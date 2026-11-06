@@ -1,18 +1,18 @@
 """Service-user operations behind the fixed local sudo control entry point."""
 
+import http.client
 import ipaddress
 import json
 import os
 import shutil
 import signal
 import subprocess
-import sys
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
-from . import config, images, mounts, policy
+from . import config, images, mounts, policy, sessions
 from .errors import AgentboxError
 from .runtime import Docker, local_addresses
 from .state import Store, atomic_json
@@ -56,99 +56,207 @@ class Control:
         self.docker.mutate("build", "--tag", image, "/opt/agentbox/proxy", timeout=900)
         return {"image": image}
 
-    def run(self, payload, tokens, *, tty=False, recipe_digest=None):
-        environment = config.parse(payload)
-        name = environment.name
-        identifier = None
-        try:
-            with defer_interrupts(), self.store.locked() as data:
-                self.verified(data)
-                if name in data["environments"]:
-                    raise AgentboxError("Environment already exists; choose a new temporary name")
-                try:
-                    entry = self.start(data, payload, tokens, recipe_digest=recipe_digest)
-                except Exception:
-                    try:
-                        self.remove(data, name)
-                    except Exception:
-                        raise AgentboxError(
-                            "Temporary environment setup and cleanup failed; resources may remain"
-                        ) from None
-                    raise
-                identifier = entry["resources"]["agent"]
-                daemon_id = data["daemon_id"]
-            return self.execute(name, identifier, list(environment.command), tty, daemon_id)
-        finally:
-            if identifier is not None:
-                self.remove_temporary(name, identifier)
+    def notice(self, text):
+        if self.docker.output:
+            self.docker.output("stderr", "abx: " + text + "\n")
 
-    def remove_temporary(self, name, identifier):
-        try:
-            with defer_interrupts(), self.store.locked() as current:
-                self.verified(current)
-                entry = current["environments"].get(name)
-                if entry is not None:
-                    if entry["resources"].get("agent") != identifier:
-                        raise AgentboxError(
-                            "Temporary environment name was reused; replacement kept"
-                        )
-                    self.remove(current, name)
-        except Exception as exc:
-            detail = str(exc) if isinstance(exc, AgentboxError) else type(exc).__name__
-            raise AgentboxError(
-                f"Temporary environment cleanup failed: {detail}. Check 'abx status'"
-            ) from None
+    def claim_session(self, entry, session, *, running):
+        if session is None:
+            return
+        runtime = entry.get("runtime") if running else None
+        agent = entry["resources"].get("agent")
+        if not runtime or runtime.get("agent") != agent:
+            runtime = {
+                "generation": session["generation"],
+                "agent": agent,
+                "keep_running": running,
+                "sessions": {},
+            }
+            entry["runtime"] = runtime
+        session["generation"], session["agent"] = runtime["generation"], agent
+        runtime["keep_running"] |= session["keep_running"]
+        runtime["sessions"][session["id"]] = {
+            "client": session["client"],
+            "helper": session["helper"],
+        }
 
-    def execute(self, name, identifier, command, tty, daemon_id):
-        self.docker.verify(daemon_id)
-        terminal = open("/dev/tty") if tty else None
-        try:
-            if getattr(self.docker, "ready", None):
-                self.docker.ready()
-            return self.docker.exec_stream(
-                identifier, command, self.store.root / "environments" / name, terminal=terminal
-            )
-        finally:
-            if terminal:
-                terminal.close()
+    def finish_idle(self, data, name):
+        entry = data["environments"].get(name)
+        runtime = entry.get("runtime") if entry else None
+        if not runtime or runtime["sessions"]:
+            return
+        if entry.get("launches"):
+            self.stop(data, name)
+            if name in data["environments"]:
+                data["environments"][name]["status"] = "launch-unknown"
+                self.save(data)
+        elif not runtime["keep_running"]:
+            if runtime["agent"] is None or entry["status"] == "replacing":
+                self.remove(data, name)
+            else:
+                self.stop(data, name)
 
-    def shell(self, request):
-        name = config.name(request["name"])
-        identifier = None
-        try:
-            with defer_interrupts(), self.store.locked() as data:
-                self.verified(data)
-                entry = data["environments"].get(name)
-                if not entry or entry["status"] != "running":
-                    raise AgentboxError("Environment is not running")
-                persistent = entry["config"].get("persistent", True)
-                if not persistent and entry.get("shell_active"):
-                    raise AgentboxError(
-                        "Non-persistent shell already claimed; after a hard interruption, "
-                        f"use 'abx remove {name}' before starting again"
-                    )
-                if entry["host_addresses"] != local_addresses():
-                    self.stop(data, name)
-                    raise AgentboxError("Host addresses changed; remove and recreate explicitly")
-                agent = entry["resources"]["agent"]
-                if agent not in self.owned(data, name, "container"):
-                    raise AgentboxError("Container ownership changed")
-                command = [config.text(arg) for arg in entry["config"]["command"]]
-                daemon_id = data["daemon_id"]
-                if not persistent:
-                    entry["shell_active"] = True
-                    identifier = agent
-                    self.save(data)
-            if not persistent:
-                notice = "abx: Non-persistent environment; removed when this shell exits.\n"
-                if getattr(self.docker, "output", None):
-                    self.docker.output("stderr", notice)
+    def reap_sessions(self, data, name=None):
+        names = [name] if name is not None else list(data["environments"])
+        for current in names:
+            entry = data["environments"].get(current)
+            runtime = entry.get("runtime") if entry else None
+            if runtime:
+                dead = sessions.prune(runtime)
+                self.save(data)
+                pending = set(dead) & set(entry.get("launches", {}))
+                if pending:
+                    self.quarantine_launch(data, current, entry["launches"][next(iter(pending))])
                 else:
-                    print(notice, file=sys.stderr, end="")
-            return self.execute(name, agent, command, request.get("tty") is True, daemon_id)
-        finally:
-            if identifier is not None:
-                self.remove_temporary(name, identifier)
+                    self.finish_idle(data, current)
+
+    def release_session(self, name, session):
+        with defer_interrupts(), self.store.locked() as data:
+            self.verified(data)
+            entry = data["environments"].get(name)
+            runtime = entry.get("runtime") if entry else None
+            if not runtime or runtime["generation"] != session["generation"]:
+                return
+            if session.get("agent") is not None and runtime["agent"] != session["agent"]:
+                return
+            runtime["sessions"].pop(session["id"], None)
+            sessions.prune(runtime)
+            self.save(data)
+            self.finish_idle(data, name)
+
+    def quarantine_launch(self, data, name, intent):
+        intent["state"] = "unknown"
+        self.save(data)
+        self.stop(data, name)
+        if name in data["environments"]:
+            data["environments"][name]["status"] = "launch-unknown"
+            self.save(data)
+            self.notice(f"{name}: exec startup unconfirmed; container stopped and layer retained.")
+
+    def resolve_launches(self, data, name):
+        entry = data["environments"][name]
+        for key, intent in list(entry.get("launches", {}).items()):
+            try:
+                self.docker.confirm_launch(intent, time.monotonic() + 10, lambda: self.save(data))
+            except (
+                AgentboxError,
+                OSError,
+                ValueError,
+                KeyError,
+                subprocess.SubprocessError,
+                http.client.HTTPException,
+            ):
+                self.stop(data, name)
+                if name in data["environments"]:
+                    data["environments"][name]["status"] = "launch-unknown"
+                    self.save(data)
+                raise AgentboxError(
+                    "Previous exec outcome is unknown; this container cannot restart until "
+                    "Docker confirms the outcome or the container is removed",
+                    code="launch_unknown",
+                ) from None
+            del entry["launches"][key]
+            self.save(data)
+
+    def session(self, request):
+        environment = config.parse(request["config"])
+        name = environment.name
+        temporary = request["action"] == "run"
+        if temporary and environment.persistent:
+            raise AgentboxError(
+                "Run requires its own temporary configuration", code="invalid_request"
+            )
+        keep = request.get("keep_running", False)
+        if type(keep) is not bool:
+            raise AgentboxError("Expected keep_running boolean", code="invalid_request")
+        explicit = request.get("command") if request["action"] == "exec" else None
+        if request["action"] == "exec":
+            if not isinstance(explicit, list) or not 1 <= len(explicit) <= 128:
+                raise AgentboxError("Expected command argument list", code="invalid_request")
+            explicit = [config.text(arg) for arg in explicit]
+        session = {
+            "id": uuid.uuid4().hex,
+            "generation": uuid.uuid4().hex,
+            "client": sessions.client(request.get("client"), self.settings["operator_uid"]),
+            "helper": sessions.identity(),
+            "keep_running": keep,
+        }
+        digest = images.checked_digest(request["recipe_digest"])
+        with ExitStack() as resources:
+            try:
+                with self.store.locked() as data:
+                    self.verified(data)
+                    if temporary and name in data["environments"]:
+                        raise AgentboxError(
+                            "Temporary instance name already exists", code="environment_exists"
+                        )
+                    with defer_interrupts():
+                        self.reap_sessions(data, name)
+                        if name in data["environments"]:
+                            self.resolve_launches(data, name)
+                        result = self.start(
+                            data,
+                            request["config"],
+                            request.get("tokens", {}),
+                            recipe_digest=digest,
+                            session=session,
+                        )
+                        entry = data["environments"][name]
+                        identifier = entry["resources"]["agent"]
+                        command = explicit if explicit is not None else entry["config"]["command"]
+                        if result.get("pending_changes"):
+                            self.notice(
+                                f"{name} is running; configuration changes apply at next startup."
+                            )
+                        if result.get("recreated"):
+                            self.notice(f"{name} recreated; explicit mounts retained.")
+                        if result.get("proxy_active") is False:
+                            self.notice(f"{name} proxy is stopped; traffic remains blocked.")
+                        if temporary:
+                            self.notice(f"Temporary instance: {name}.")
+                        elif not entry["config"].get("persistent", True):
+                            self.notice(f"{name}: non-persistent; removed when stopped.")
+                        directory = os.open(
+                            self.store.root / "environments" / name,
+                            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        )
+                        resources.callback(os.close, directory)
+                        terminal = (
+                            resources.enter_context(open("/dev/tty"))
+                            if request.get("tty") is True
+                            else None
+                        )
+                    deadline = time.monotonic() + 10
+                    intent = self.docker.launch_intent(identifier, deadline)
+                    intent["generation"] = session["generation"]
+                    entry.setdefault("launches", {})[session["id"]] = intent
+                    self.save(data)
+                    try:
+                        execution = resources.enter_context(
+                            self.docker.execution(identifier, command, terminal)
+                        )
+                    except OSError:
+                        del entry["launches"][session["id"]]
+                        self.save(data)
+                        raise
+                    except BaseException:
+                        self.quarantine_launch(data, name, intent)
+                        raise
+                    try:
+                        self.docker.confirm_launch(intent, deadline, lambda: self.save(data))
+                    except BaseException:
+                        self.quarantine_launch(data, name, intent)
+                        raise AgentboxError(
+                            "Exec launch outcome is unknown; environment stopped",
+                            code="launch_unknown",
+                        ) from None
+                    del entry["launches"][session["id"]]
+                    self.save(data)
+                if self.docker.ready:
+                    self.docker.ready()
+                return execution.drain(directory)
+            finally:
+                self.release_session(name, session)
 
     def labels(self, data, environment):
         return {"agentbox.installation": data["installation"], "agentbox.environment": environment}
@@ -171,15 +279,29 @@ class Control:
                 raise AgentboxError("Resource ownership labels disagree")
         return identifiers
 
-    def stop(self, data, environment):
+    def _stop_containers(self, data, environment, *, invalidate=True):
+        entry = data["environments"].get(environment)
+        if entry:
+            if invalidate:
+                entry.pop("runtime", None)
+            else:
+                entry["status"] = "replacing"
+            self.save(data)
         for identifier in self.owned(data, environment, "container"):
             self.docker.mutate("container", "stop", "--time", "2", identifier)
-        if environment in data["environments"]:
-            data["environments"][environment]["status"] = "stopped"
+        if entry and invalidate:
+            entry["status"] = "stopped"
         self.save(data)
 
-    def remove(self, data, environment):
-        self.stop(data, environment)
+    def stop(self, data, environment):
+        entry = data["environments"].get(environment)
+        if entry and not entry["config"].get("persistent", True):
+            self.remove(data, environment)
+        else:
+            self._stop_containers(data, environment)
+
+    def remove(self, data, environment, *, replacing=False):
+        self._stop_containers(data, environment, invalidate=not replacing)
         for kind in ("container", "network"):
             for identifier in self.owned(data, environment, kind):
                 self.docker.mutate(kind, "rm", identifier)
@@ -737,7 +859,7 @@ class Control:
             self.drop_proxy(data, name)
             raise
 
-    def start(self, data, payload, tokens=None, *, recipe_digest=None, reuse_running=False):
+    def start(self, data, payload, tokens=None, *, recipe_digest=None, session=None):
         self.check_guard()
         environment = config.parse(payload)
         name = environment.name
@@ -759,6 +881,9 @@ class Control:
             previous["status"] = "stopped-host-address-change"
             self.save(data)
             running = False
+            previous = data["environments"].get(name)
+            if previous is None:
+                agent_details = None
         desired_clients = {
             credential.client_env: bool(tokens.get(credential.source_env))
             for credential in environment.credentials
@@ -785,11 +910,9 @@ class Control:
             proxy_active = bool(
                 proxy in owned and self.docker.inspect("container", proxy)["State"]["Running"]
             )
-            if reuse_running or pending:
-                return dict(previous, pending_changes=pending, proxy_active=proxy_active)
-            if not proxy_active:
-                self.apply_proxy(data, environment, tokens)
-            return dict(previous, pending_changes=False, proxy_active=True)
+            self.claim_session(previous, session, running=True)
+            self.save(data)
+            return dict(previous, pending_changes=pending, proxy_active=proxy_active)
         if not image:
             raise AgentboxError("Recipe image is missing", code="image_outdated")
         images.profile(image)
@@ -799,7 +922,8 @@ class Control:
         mounts = self.check_mounts(data, environment)
         policy.token_environment(environment, tokens)
         can_reuse = (
-            previous
+            environment.persistent
+            and previous
             and agent_details
             and previous["config"] == normalized
             and agent_details["Image"] == image["Id"]
@@ -808,6 +932,8 @@ class Control:
             and previous["status"] != "stopped-host-address-change"
         )
         if can_reuse:
+            self.claim_session(previous, session, running=False)
+            self.save(data)
             self.apply_proxy(data, environment, tokens)
             self.docker.mutate("container", "start", previous["resources"]["agent"])
             previous["status"] = "running"
@@ -824,10 +950,10 @@ class Control:
         )
         recreated = previous is not None
         if previous:
-            self.remove(data, name)
+            self.claim_session(previous, session, running=False)
+            self.remove(data, name, replacing=session is not None)
         directory = self.store.root / "environments" / name
         directory.mkdir(parents=True, mode=0o700)
-        self.prepare_pki(directory)
         atomic_json(directory / "policy.json", json.loads(rendered))
         (directory / "policy.json").chmod(0o444)
         prefix = "ab-" + data["installation"][:8] + "-" + name
@@ -843,8 +969,10 @@ class Control:
             "resources": {},
         }
         data["environments"][name] = entry
+        self.claim_session(entry, session, running=False)
         self.save(data)
         try:
+            self.prepare_pki(directory)
             for role, subnet in (("inside", inside_subnet), ("outside", outside_subnet)):
                 args = [
                     "network",
@@ -934,6 +1062,8 @@ class Control:
             command.extend(["--entrypoint", "/bin/sh", image["Id"], "-c", "exec sleep infinity"])
             agent = self.docker.mutate(*command).stdout.strip()
             entry["resources"]["agent"] = agent
+            if session is not None:
+                entry["runtime"]["agent"] = session["agent"] = agent
             self.save(data)
             self.docker.mutate("container", "start", agent)
             entry["status"] = "running"
@@ -950,15 +1080,8 @@ class Control:
 
     def dispatch(self, request, context=None):
         action = request["action"]
-        if action == "shell":
-            return self.shell(request)
-        if action == "run":
-            return self.run(
-                request["config"],
-                request.get("tokens", {}),
-                tty=request.get("tty") is True,
-                recipe_digest=images.checked_digest(request["recipe_digest"]),
-            )
+        if action in ("start", "exec", "run"):
+            return self.session(request)
         with self.store.locked() as data:
             info = self.verified(data)
             if action == "doctor":
@@ -1001,6 +1124,7 @@ class Control:
                         name,
                         context,
                         environments=data["environments"],
+                        if_needed=request.get("if_needed") is True,
                     )
                 if operation == "inspect":
                     return images.inspect(
@@ -1023,14 +1147,6 @@ class Control:
                     self.docker.mutate("image", "rm", images.tag(name))
                     return {"name": name, "status": "removed", "recipe_retained": True}
                 raise AgentboxError("Unknown image operation")
-            if action in ("start", "prepare-exec"):
-                return self.start(
-                    data,
-                    request["config"],
-                    request.get("tokens", {}),
-                    recipe_digest=images.checked_digest(request["recipe_digest"]),
-                    reuse_running=action == "prepare-exec",
-                )
             if action == "proxy":
                 operation = request.get("operation")
                 if operation == "build":
@@ -1047,6 +1163,8 @@ class Control:
                     self.drop_proxy(data, name)
                 elif operation == "rotate-ca":
                     self.stop(data, name)
+                    if name not in data["environments"]:
+                        return {"name": name, "status": "removed", "ca": "new on next startup"}
                     self.drop_proxy(data, name)
                     directory = self.store.root / "environments" / name
                     for part in ("key", "pem"):
@@ -1083,7 +1201,7 @@ class Control:
                     action = "remove"
                 getattr(self, action)(data, name)
                 return {"name": name, "status": "stopped" if action == "stop" else "removed"}
-            if action in ("exec", "logs", "login-api-key"):
+            if action in ("logs", "login-api-key"):
                 name = config.name(request["name"])
                 entry = data["environments"].get(name)
                 if not entry or (action == "login-api-key" and entry["status"] != "running"):
@@ -1117,18 +1235,5 @@ class Control:
                     if login.returncode:
                         raise AgentboxError("Codex credential setup failed; output withheld")
                     return {"status": "credentials supplied to Codex via stdin"}
-                if not self.docker.inspect("container", identifier)["State"]["Running"]:
-                    raise AgentboxError("Environment is not running")
-                if request.get("agent") != identifier:
-                    raise AgentboxError(
-                        "Environment changed after command preparation", code="environment_changed"
-                    )
-                command = request.get("command") or entry["config"]["command"]
-                if not isinstance(command, list) or not command:
-                    raise AgentboxError("Expected command argument list")
-                command = [config.text(arg) for arg in command]
-                tty = request.get("tty") is True
             else:
                 raise AgentboxError("Unknown control operation")
-        # Do not hold the global operation lock for the duration of a shell session.
-        return self.execute(name, identifier, command, tty, data["daemon_id"])
