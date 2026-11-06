@@ -34,10 +34,10 @@ def main():
     namespace, veth, peer = "abc" + suffix, "abh" + suffix, "abp" + suffix
     base = Path(tempfile.mkdtemp(prefix="credential-fixture-"))
     base.chmod(0o755)
-    project = Path(tempfile.mkdtemp(prefix="credential-project-", dir="/home/developer"))
-    os.chown(project, operator.pw_uid, operator.pw_gid)
+    mount = Path(tempfile.mkdtemp(prefix="credential-mount-", dir="/home/developer"))
+    os.chown(mount, operator.pw_uid, operator.pw_gid)
     names = ["credential-first-" + suffix, "credential-second-" + suffix]
-    registered = "credential-project-" + suffix
+    registered = "credential-mount-" + suffix
     settings_path = Path("/etc/agentbox/settings.json")
     settings_before = settings_path.read_text()
     hosts_before = Path("/etc/hosts").read_text()
@@ -226,14 +226,14 @@ def main():
             hosts_before
             + "\n93.184.216.34 allowed.agentbox.test tunnel.agentbox.test denied.agentbox.test\n"
         )
-        app("project", "add", registered, "--path", str(project))
+        app("mount", "add", registered, str(mount))
         configs = []
         for index, name in enumerate(names):
             data = {
                 "name": name,
                 "image": "codex",
                 "command": ["bash"],
-                "mounts": [{"project": registered, "target": "/workspace"}],
+                "mounts": [{"source": registered, "target": "/workspace"}],
                 "network": {
                     "allow": [
                         {"host": "allowed.agentbox.test", "port": 443},
@@ -250,7 +250,7 @@ def main():
                     }
                 ],
             }
-            path = project / (name + ".yaml")
+            path = mount / (name + ".yaml")
             path.write_text(yaml.safe_dump(data))
             os.chown(path, operator.pw_uid, operator.pw_gid)
             started = json.loads(
@@ -609,7 +609,7 @@ req.end();
         assert "synthetic-token" not in logs and "private-query" not in logs
         checks["safe_proxy_logs"] = True
         old_ca = app("exec", first, "--", "cat", "/run/agentbox-ca/ca.pem").stdout
-        old_ca_path = project / "old-ca.pem"
+        old_ca_path = mount / "old-ca.pem"
         old_ca_path.write_text(old_ca)
         os.chown(old_ca_path, operator.pw_uid, operator.pw_gid)
         app("proxy", "rotate-ca", first)
@@ -644,7 +644,7 @@ req.end();
         empty_config["credentials"].append(
             empty_config["credentials"][0] | {"header": "X-API-Key", "env": "EMPTY_TOKEN"}
         )
-        empty_path = project / (empty_name + ".yaml")
+        empty_path = mount / (empty_name + ".yaml")
         empty_path.write_text(yaml.safe_dump(empty_config))
         os.chown(empty_path, operator.pw_uid, operator.pw_gid)
         empty_state = json.loads(app("start", str(empty_path), token=None).stdout)
@@ -717,11 +717,11 @@ req.end();
             cleanup(lambda name=name: app("remove", name))
         # Setup can fail before registration; an absent registration is not a leak.
         try:
-            entries = json.loads(app("project", "list").stdout)
+            entries = json.loads(app("mount", "list").stdout)
             if registered in entries and entries[registered]["status"] != "revoked":
-                cleanup(lambda: app("project", "revoke", registered))
+                cleanup(lambda: app("mount", "revoke", registered))
         except Exception as exc:
-            errors.append(f"project list: {exc}")
+            errors.append(f"mount list: {exc}")
         cleanup(lambda: settings_path.write_text(settings_before))
         cleanup(lambda: Path("/etc/hosts").write_text(hosts_before))
         if fixture:
@@ -739,7 +739,7 @@ req.end();
             errors.append(f"netns list: {exc}")
         if not errors:
             cleanup(lambda: shutil.rmtree(base))
-            cleanup(lambda: shutil.rmtree(project))
+            cleanup(lambda: shutil.rmtree(mount))
         result["cleanup_errors"] = errors
         result["passed"] = bool(result.get("checks_passed")) and not errors
         print(json.dumps(result, indent=2, sort_keys=True))

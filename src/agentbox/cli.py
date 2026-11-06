@@ -9,10 +9,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import completion, config, images, projects
+from . import completion, config, images, mounts
 from .control import Control
 from .errors import AgentboxError
-from .output import Output, failure, success, write_frame
+from .output import Output, confirm, failure, success, write_frame
 from .process import pump
 from .settings import load_settings
 from .state import Store, atomic_json
@@ -90,111 +90,257 @@ def _fd(path):
     return os.open(path, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW)
 
 
-def project_update(settings, name, source):
-    root = projects.validate_root(source, settings["operator_uid"])
-    uids = {settings["operator_uid"], settings["service_uid"]}
-    nodes = projects.scan(root, uids)
-    existing = rpc({"action": "project", "operation": "list"}).get(name)
-    if (
-        existing
-        and existing["status"] == "active"
-        and existing["path"] == str(root)
-        and existing["identity"] == projects.identity(root)
-    ):
-        checked = rpc({"action": "project", "operation": "check", "name": name})
-        if not checked["service_access_issues"] and not projects.access_issues(root, uids):
-            return checked
-    # Validate every ACL change for files owned by this process before applying any.
-    for node in nodes:
-        if node["uid"] == os.getuid():
-            with projects.node_fd(root, node) as fd:
-                projects.grant_acl(
-                    projects.read_acl(fd),
-                    settings["service_uid"],
-                    settings["operator_uid"],
-                    node["directory"],
-                    node["executable"],
-                )
+def _mount_root(settings, entry):
+    root = mounts.validate_root(entry["path"], settings["operator_uid"])
+    if mounts.identity(root) != entry["identity"]:
+        raise AgentboxError("Mount root identity changed", code="mount_identity_changed")
+    return root
+
+
+def mount_update(settings, name, source):
+    root = mounts.validate_root(source, settings["operator_uid"])
+    existing = rpc({"action": "mount", "operation": "list"}).get(name)
+    if existing:
+        if existing["status"] == "removing":
+            raise AgentboxError(
+                "Mount removal is incomplete; retry mount remove", code="mount_removing"
+            )
+        if (
+            existing["type"] != "directory"
+            or existing["path"] != str(root)
+            or existing["identity"] != mounts.identity(root)
+        ):
+            raise AgentboxError(
+                "Mount name is registered to a different source", code="mount_conflict"
+            )
+        if existing["status"] == "active":
+            checked = mount_check(settings, name)
+            if not checked["issues"]:
+                return checked | {"changed": False}
     local = Store(settings["operator_state"])
     with local.locked() as journal:
-        rpc(
+        entry = rpc(
             {
-                "action": "project",
+                "action": "mount",
                 "operation": "prepare",
                 "name": name,
                 "path": str(root),
-                "identity": projects.identity(root),
+                "identity": mounts.identity(root),
             }
         )
         journal.setdefault("parents", {})
-        journal["projects"][name] = {"path": str(root), "status": "pending"}
+        journal["mounts"][name] = {"path": str(root), "status": "adding"}
         atomic_json(local.root / "state.json", journal)
-        for parent in reversed(root.parents):
-            if parent.stat().st_uid != os.getuid():
-                continue
-            fd = _fd(parent)
-            try:
-                before = projects.read_acl(fd)
-                after = projects.named_acl(before, settings["service_uid"], "--x")
-                record = journal["parents"].setdefault(
-                    str(parent),
-                    {
-                        "before": before,
-                        "identity": projects.identity(parent),
-                        "projects": [],
-                    },
-                )
-                if name not in record["projects"]:
-                    record["projects"].append(name)
-                atomic_json(local.root / "state.json", journal)
-                projects.write_acl(fd, after)
-                record["after"] = projects.read_acl(fd)
-                atomic_json(local.root / "state.json", journal)
-            finally:
-                os.close(fd)
-        projects.apply_owned(root, nodes, settings["service_uid"], settings["operator_uid"])
-        result = rpc({"action": "project", "operation": "finish", "name": name})
-        journal["projects"][name]["status"] = "active"
-        return result
-
-
-def project_revoke(settings, name):
-    local = Store(settings["operator_state"])
-    with local.locked() as journal:
-        entry = rpc({"action": "project", "operation": "prepare-revoke", "name": name})
-        root = projects.validate_root(entry["path"], settings["operator_uid"])
-        if projects.identity(root) != entry["identity"]:
-            raise AgentboxError("Project root changed; refusing ACL mutation")
-        fd = _fd(root)
-        try:
-            projects.write_acl(
-                fd, projects.named_acl(projects.read_acl(fd), settings["service_uid"], "---")
+        _mount_attach_parents(settings, journal, local, name, root)
+        _mount_grant_root(settings, root, entry["identity"])
+        rpc(
+            {
+                "action": "mount",
+                "operation": "prepare-repair",
+                "name": name,
+                "registration": entry["registration"],
+            }
+        )
+        nodes = mounts.scan(root, {settings["operator_uid"], settings["service_uid"]})
+        # Preflight all owned changes before touching descendant ACLs.
+        for node in nodes:
+            if node["uid"] == os.getuid():
+                with mounts.node_fd(root, node) as fd:
+                    mounts.grant_acl(
+                        mounts.read_acl(fd),
+                        settings["service_uid"],
+                        settings["operator_uid"],
+                        node["directory"],
+                        node["executable"],
+                    )
+        mounts.apply_owned(root, nodes, settings["service_uid"], settings["operator_uid"])
+        issues = mounts.access_issues(root, {settings["operator_uid"], settings["service_uid"]})
+        if issues:
+            raise AgentboxError(
+                "Operator access remains incomplete: " + "; ".join(issues),
+                code="mount_check_failed",
             )
+        result = rpc(
+            {
+                "action": "mount",
+                "operation": "finish",
+                "name": name,
+                "registration": entry["registration"],
+            }
+        )
+        journal["mounts"][name]["status"] = "active"
+        return result | {"changed": True}
+
+
+def _mount_attach_parents(settings, journal, local, name, root):
+    journal.setdefault("parents", {})
+    for parent in reversed(root.parents):
+        if parent.stat().st_uid != os.getuid():
+            continue
+        fd = _fd(parent)
+        try:
+            before = mounts.read_acl(fd)
+            after = mounts.named_acl(before, settings["service_uid"], "--x")
+            record = journal["parents"].setdefault(
+                str(parent),
+                {
+                    "before": before,
+                    "identity": mounts.identity(parent),
+                    "mounts": [],
+                },
+            )
+            if name not in record["mounts"]:
+                record["mounts"].append(name)
+            atomic_json(local.root / "state.json", journal)
+            mounts.write_acl(fd, after)
+            record["after"] = mounts.read_acl(fd)
+            atomic_json(local.root / "state.json", journal)
         finally:
             os.close(fd)
-        conflicts = []
-        for path, record in list(journal.get("parents", {}).items()):
-            if name not in record["projects"]:
-                continue
-            record["projects"].remove(name)
-            if record["projects"]:
-                continue
-            fd = _fd(path)
+
+
+def _mount_grant_root(settings, root, identity):
+    fd = _fd(root)
+    try:
+        if mounts.fd_identity(fd) != identity:
+            raise AgentboxError("Mount root identity changed", code="mount_identity_changed")
+        mounts.write_acl(
+            fd,
+            mounts.grant_acl(
+                mounts.read_acl(fd), settings["service_uid"], settings["operator_uid"], True
+            ),
+        )
+    finally:
+        os.close(fd)
+
+
+def _mount_detach_parents(settings, journal, name):
+    for path, record in list(journal.get("parents", {}).items()):
+        if name not in record["mounts"]:
+            continue
+        remaining = [value for value in record["mounts"] if value != name]
+        if remaining:
+            record["mounts"] = remaining
+            continue
+        fd = _fd(path)
+        try:
+            if mounts.fd_identity(fd) != record["identity"]:
+                raise AgentboxError("Ancestor identity changed; refusing ACL cleanup")
+            current = mounts.read_acl(fd)
+            desired = record["before"] if current == record.get("after") else current
+            mounts.write_acl(fd, mounts.remove_service_acl(desired, settings["service_uid"]))
+            del journal["parents"][path]
+        finally:
+            os.close(fd)
+
+
+def mount_revoke(settings, name):
+    local = Store(settings["operator_state"])
+    with local.locked() as journal:
+        entry = rpc({"action": "mount", "operation": "prepare-revoke", "name": name})
+        if entry["active_users"]:
+            _output.event(
+                "stderr",
+                "Warning: active mount users: "
+                + ", ".join(entry["active_users"])
+                + ". Existing mounts and open file handles can retain access; no environment is stopped.\n",
+            )
+        if entry["type"] == "directory":
+            root = _mount_root(settings, entry)
+            fd = _fd(root)
             try:
-                if projects.identity(path) == record["identity"] and projects.read_acl(
-                    fd
-                ) == record.get("after"):
-                    projects.write_acl(fd, record["before"])
-                    del journal["parents"][path]
-                else:
-                    conflicts.append(path)
+                mounts.write_acl(
+                    fd, mounts.named_acl(mounts.read_acl(fd), settings["service_uid"], "---")
+                )
             finally:
                 os.close(fd)
-        result = rpc({"action": "project", "operation": "revoked", "name": name})
-        journal["projects"].setdefault(name, {})["status"] = "revoked"
-        result["ancestor_acl_conflicts"] = conflicts
-        result["note"] = "Root deny retained; descendant ACLs and file owners are unchanged"
-        return result
+            _mount_detach_parents(settings, journal, name)
+            journal["mounts"].setdefault(name, {"path": str(root)})["status"] = "revoked"
+            atomic_json(local.root / "state.json", journal)
+        return rpc(
+            {
+                "action": "mount",
+                "operation": "revoked",
+                "name": name,
+                "registration": entry["registration"],
+            }
+        ) | {
+            "note": "Existing mounts/open handles may retain access; data and registration retained",
+        }
+
+
+def mount_check(settings, name, *, fix=False):
+    entry = rpc({"action": "mount", "operation": "list"}).get(name)
+    if not entry:
+        raise AgentboxError("Unknown mount", code="mount_not_found")
+    changed = False
+    if fix:
+        if entry["status"] == "removing":
+            raise AgentboxError(
+                "Mount removal is incomplete; retry mount remove", code="mount_removing"
+            )
+        before = mount_check(settings, name)
+        if before["issues"]:
+            if entry["status"] == "revoked":
+                mount_revoke(settings, name)
+            elif entry["type"] == "directory":
+                mount_update(settings, name, entry["path"])
+            else:
+                return before | {"changed": False}
+            changed = True
+    result = rpc({"action": "mount", "operation": "check", "name": name})
+    operator_issues = []
+    if entry["type"] == "directory":
+        try:
+            root = _mount_root(settings, entry)
+            operator_issues = mounts.access_issues(
+                root, {settings["operator_uid"], settings["service_uid"]}
+            )
+        except (OSError, AgentboxError) as exc:
+            operator_issues = [str(exc) if isinstance(exc, AgentboxError) else type(exc).__name__]
+    result["operator_access_issues"] = operator_issues
+    result["issues"] = result["service_access_issues"] + operator_issues
+    return result | {"changed": changed}
+
+
+def mount_remove(settings, name, *, yes=False):
+    request = {"action": "mount", "operation": "prepare-remove", "name": name, "yes": yes}
+    local = Store(settings["operator_state"])
+    with local.locked() as journal:
+        try:
+            entry = rpc(request)
+        except AgentboxError as exc:
+            if exc.code != "confirmation_required" or _output.json_mode or not sys.stdin.isatty():
+                raise
+            confirm(str(exc), exc.details["affected"])
+            entry = rpc(request | {"approval": exc.details["approval"]})
+        if entry["type"] == "volume":
+            return entry
+        root = _mount_root(settings, entry)
+        journal["mounts"][name] = {"path": str(root), "status": "removing"}
+        atomic_json(local.root / "state.json", journal)
+        _mount_attach_parents(settings, journal, local, name, root)
+        _mount_grant_root(settings, root, entry["identity"])
+        base = {"action": "mount", "name": name, "registration": entry["registration"]}
+        rpc(base | {"operation": "prepare-clean"})
+        nodes = mounts.scan(root, {settings["operator_uid"], settings["service_uid"]})
+        digest = mounts.inventory(nodes)
+        rpc(base | {"operation": "clean-owned", "inventory": digest})
+        if (
+            mounts.inventory(mounts.scan(root, {settings["operator_uid"], settings["service_uid"]}))
+            != digest
+        ):
+            raise AgentboxError("Mount inventory changed during cleanup")
+        mounts.clean_owned(root, nodes, settings["service_uid"])
+        if (
+            mounts.inventory(mounts.scan(root, {settings["operator_uid"], settings["service_uid"]}))
+            != digest
+        ):
+            raise AgentboxError("Mount inventory changed during cleanup")
+        _mount_detach_parents(settings, journal, name)
+        del journal["mounts"][name]
+        atomic_json(local.root / "state.json", journal)
+        return rpc(base | {"operation": "forget", "inventory": digest})
 
 
 class HelpRequested(Exception):
@@ -266,20 +412,28 @@ def parser():
     complete.add_argument("shell", choices=["bash"], nargs="?", default="bash")
     complete.add_argument(
         "--names",
-        choices=["environments", "projects", "configs", "images"],
+        choices=["environments", "mounts", "configs", "images"],
         help=argparse.SUPPRESS,
     )
     validate = commands.add_parser("validate")
     validate.add_argument("config", help="YAML path or name from the user environment directory")
-    project = commands.add_parser("project")
-    operations = project.add_subparsers(dest="operation", required=True)
+    mount = commands.add_parser("mount", help="Register directories and named Docker volumes")
+    operations = mount.add_subparsers(dest="operation", required=True)
     operations.add_parser("list")
     add = operations.add_parser("add")
     add.add_argument("name", type=config.name)
-    add.add_argument("--path", required=True)
-    for operation in ("check", "repair", "revoke"):
-        sub = operations.add_parser(operation)
+    add.add_argument("path", nargs="?", help="Directory to register")
+    add.add_argument("--volume", action="store_true", help="Create a named local Docker volume")
+    for operation in ("check", "revoke", "remove"):
+        help_text = (
+            "Keep directory files after ACL cleanup; delete volume and its data"
+            if operation == "remove"
+            else None
+        )
+        sub = operations.add_parser(operation, help=help_text)
         sub.add_argument("name", type=config.name)
+        if operation == "check":
+            sub.add_argument("--fix", action="store_true")
     start = commands.add_parser("start", help="Start an environment from a YAML path or saved name")
     start.add_argument("config", help="YAML path or name from ~/.config/agentbox/environments")
     run = commands.add_parser("run", help="Run command in a temporary environment and remove it")
@@ -348,27 +502,31 @@ def main():
                     rpc(request, context=args.name) if args.operation == "build" else rpc(request)
                 )
                 result["path"] = str(path)
-        elif args.action == "project":
+        elif args.action == "mount":
             if args.operation == "add":
-                result = project_update(settings, args.name, args.path)
+                if bool(args.path) == args.volume:
+                    raise AgentboxError("Choose a directory or --volume", code="invalid_arguments")
+                result = (
+                    rpc({"action": "mount", "operation": "add-volume", "name": args.name})
+                    if args.volume
+                    else mount_update(settings, args.name, args.path)
+                )
             elif args.operation == "revoke":
-                result = project_revoke(settings, args.name)
+                result = mount_revoke(settings, args.name)
+            elif args.operation == "remove":
+                result = mount_remove(settings, args.name, yes=getattr(args, "yes", False))
+            elif args.operation == "check":
+                result = mount_check(settings, args.name, fix=args.fix)
+                if result["issues"]:
+                    raise AgentboxError(
+                        "; ".join(result["issues"]), code="mount_check_failed", details=result
+                    )
+                if not _output.json_mode:
+                    result = f"{args.name}: OK" + (" (repaired)" if result["changed"] else "")
             else:
-                entries = rpc({"action": "project", "operation": "list"})
-                if args.operation == "list":
-                    result = entries
-                else:
-                    entry = entries.get(args.name)
-                    if not entry:
-                        raise AgentboxError("Unknown project")
-                    if args.operation == "repair":
-                        rpc({"action": "project", "operation": "prepare-repair", "name": args.name})
-                        result = project_update(settings, args.name, entry["path"])
-                    else:
-                        result = rpc({"action": "project", "operation": "check", "name": args.name})
-                        result["operator_access_issues"] = projects.access_issues(
-                            entry["path"], {settings["operator_uid"], settings["service_uid"]}
-                        )
+                result = rpc({"action": "mount", "operation": "list"})
+            if not _output.json_mode and args.operation in ("add", "revoke"):
+                result = f"{args.name}: {'OK' if args.operation == 'add' else 'revoked'} ({result['type']})"
         elif args.action in ("start", "run") or (
             args.action == "proxy" and args.operation == "apply"
         ):
@@ -435,7 +593,7 @@ def main():
                 _output.event("stdout", result)
                 raise SystemExit(_output.finish(success(exit_code=0)))
         table = args.action == "status" or (
-            args.action in ("project", "image") and args.operation in ("list", "ls")
+            args.action in ("mount", "image") and args.operation in ("list", "ls")
         )
         _output.finish(success(result), table=args.action if table else False)
     except HelpRequested as exc:

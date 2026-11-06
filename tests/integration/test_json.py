@@ -5,27 +5,12 @@ import os
 import signal
 import subprocess
 
-from conftest import cli
-
-
-def machine(*args, **kwargs):
-    result = subprocess.run(
-        ["/usr/local/bin/abx", "--json", *args],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        **kwargs,
-    )
-    assert result.returncode == 0 and result.stderr == "", result
-    frames = [json.loads(line) for line in result.stdout.splitlines()]
-    assert sum(frame["type"] == "result" for frame in frames) == 1
-    assert frames[-1]["type"] == "result"
-    return frames
+from conftest import cli, machine
 
 
 def test_installed_metadata_parser_and_human_table(lab):
-    project, _ = lab.project()
-    name = lab.start(project)
+    mount, _ = lab.mount()
+    name = lab.start(mount)
     assert "NAME" in subprocess.check_output(["abx", "status"], text=True)
     assert machine("status")[-1]["data"][name]["status"] == "running"
     assert machine("unknown-secret")[-1]["error"]["code"] == "invalid_arguments"
@@ -38,8 +23,8 @@ def test_installed_metadata_parser_and_human_table(lab):
 
 
 def test_installed_duplex_json_and_private_logs(lab):
-    project, _ = lab.project()
-    name = lab.start(project)
+    mount, _ = lab.mount()
+    name = lab.start(mount)
     program = (
         "import os,sys; assert not os.isatty(0); assert not os.isatty(1); "
         "os.write(1,b'x'*200000); data=sys.stdin.buffer.read(); os.write(2,data); "
@@ -57,8 +42,8 @@ def test_installed_duplex_json_and_private_logs(lab):
 
 
 def test_installed_json_interrupt_cleans_temporary_environment(lab):
-    project, _ = lab.project()
-    name, config = lab.configuration(project, command=["sh", "-c", "echo ready; cat"])
+    mount, _ = lab.mount()
+    name, config = lab.configuration(mount, command=["sh", "-c", "echo ready; cat"])
     # Keep stdin open while SIGINT passes through the actual sudo chain.
     with subprocess.Popen(
         ["/usr/local/bin/abx", "--json", "run", str(config)],

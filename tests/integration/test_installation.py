@@ -58,7 +58,10 @@ def test_proxy_image_installation_and_build_failure(lab):
     container = None
     try:
         container = docker("container", "create", "--network", "none", image)
+        stale = Path("/opt/agentbox/lib/agentbox/stale_module.py")
+        subprocess.run(["sudo", "touch", str(stale)], check=True, timeout=30)
         assert install(broken).returncode == 0
+        assert not stale.exists()
         assert docker("image", "inspect", "--format", "{{.Id}}", image) == original
         docker("container", "rm", container)
         container = None

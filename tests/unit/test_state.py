@@ -10,14 +10,14 @@ def test_state_persists_and_exception_does_not_commit(tmp_path):
     store = Store(tmp_path / "private")
     with store.locked() as data:
         installation = data["installation"]
-        data["projects"]["example"] = {"path": "/example"}
+        data["mounts"]["example"] = {"path": "/example"}
     with pytest.raises(RuntimeError), store.locked() as data:
-        data["projects"].clear()
+        data["mounts"].clear()
         raise RuntimeError("abort")
     with store.locked() as data:
-        assert "example" in data["projects"]
+        assert "example" in data["mounts"]
         assert data["installation"] == installation
-    assert json.loads((store.root / "state.json").read_text())["schema"] == 1
+    assert json.loads((store.root / "state.json").read_text())["schema"] == 2
 
 
 def test_state_rejects_public_directory(tmp_path):

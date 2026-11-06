@@ -12,7 +12,6 @@ fortsatt må fastsettes i research og plan.
 | --- | --- |
 | Samle start, exec og run med automatisk livssyklus | [#11](https://github.com/oisteink/agentbox/issues/11) |
 | Gjør proxyoppgradering og nødstopp pålitelige | [#12](https://github.com/oisteink/agentbox/issues/12) |
-| Erstatt prosjekter med mounts og Docker-volumer | [#13](https://github.com/oisteink/agentbox/issues/13) |
 | Utvid imagemaler og bygg ved behov | [#14](https://github.com/oisteink/agentbox/issues/14) |
 | Administrer miljøfiler, status og logger | [#15](https://github.com/oisteink/agentbox/issues/15) |
 | Samle diagnose og reparasjon i doctor | [#17](https://github.com/oisteink/agentbox/issues/17) |
@@ -77,7 +76,7 @@ erstatning samordnes; doctor gjenbruker operasjonene fra mounts og images.
   aldri er startet eller har fått containeren fjernet. Oversikten viser
   miljønavn, status (kjører/stoppet/ikke opprettet) og persistens.
 - `abx status NAVN` viser detaljer for ett miljø: tilstand, persistens, image,
-  prosjekter/mounts og nettverkstilganger, også uten opprettet container.
+  mounts/mounts og nettverkstilganger, også uten opprettet container.
 - `abx logs NAVN` viser siste utsnitt av agentloggen; `--proxy` velger
   proxyloggen. `-f` / `--follow` følger nye logghendelser fortløpende for
   begge loggtyper. Ctrl-C avslutter loggvisningen uten å stoppe miljøet.
@@ -129,52 +128,9 @@ erstatning samordnes; doctor gjenbruker operasjonene fra mounts og images.
 
 ## Mounts og volumer
 
-- Registrerte vertskataloger kalles mounts. CLI-gruppen blir `abx mount`:
-  add NAVN MAPPE, list, check, revoke og remove. En registrering
-  godkjenner én katalog og administrerer dens identitet og filtilgang.
-  Katalogen kan inneholde kode, bilder eller andre data.
-- Mount-gruppen skal også håndtere navngitte Docker-volumer, med samme
-  registrerte navnerom og source-referanse i miljøfilen. Agentbox håndterer
-  lagringen i sin dedikerte Docker-instans. Add NAVN --volume er foreslått
-  syntaks for volumopprettelse; vertskataloger bruker add NAVN MAPPE.
-  List skal vise mount-type sammen med navn og registreringsstatus.
-  Volumer beholdes ved miljøstopp, containerfjerning og imagebytte, inkludert
-  avsluttet run; eksplisitt mount remove sletter volumet og volumdataene.
-- `abx mount add NAVN MAPPE` bruker to påkrevde posisjonelle argumenter,
-  uten --name eller --path. Utdata viser at registreringen er OK, eller
-  konkret hva som er feil. Dette gjelder både menneskemodus og --json;
-  JSON følger den felles kontrakten for strukturert suksess eller feil.
-- Mount add kan reaktivere en tilbakekalt registrering med samme navn og
-  samme kilde, både vertskatalog og Docker-volum. Samme navn med en annen
-  kilde gir konflikt. Check --fix og doctor --fix respekterer tilbakekalling
-  og skal ikke automatisk gjenåpne tilgangen.
-- `abx mount list` viser navn, katalogsti og registreringsstatus
-  (aktiv/tilbakekalt) i tabell. --json gir tilsvarende strukturerte data.
-- `abx mount check NAVN` kontrollerer katalogidentitet og rettigheter for
-  operatøren og Agentbox uten å endre noe. --fix reparerer påviste problemer
-  gjennom samme interne reparasjonslogikk som doctor --fix.
-  Begge utskriftsmoduser viser OK eller konkrete feil, og ved --fix hva som
-  er reparert og eventuelt gjenstår.
-- Miljøfilens `mounts` bruker `source: NAVN`, `target: /sti/i/container` og
-  `mode: ro` eller `rw`. Source refererer til registreringen; target og mode
-  velges per miljø. Ett miljø kan bruke flere mounts. Uregistrerte eller
-  tilbakekalte kilder avvises uansett eksisterende filrettigheter.
-- Mount repair tilbys ikke som egen brukerkommando. Reparasjonen er felles
-  intern funksjonalitet bak mount check --fix og doctor --fix.
-- `abx mount revoke NAVN` trekker tilbake tilgang og beholder registreringen.
-  Hvis kjørende miljøer bruker kilden, advares brukeren med navnene på disse
-  miljøene og at åpne filhåndtak kan beholde tilgang. Tilbakekallingen gjennomføres
-  uten automatisk stopp; nye monteringer avvises. Dette lover ikke umiddelbar
-  tilbakekalling av all eksisterende tilgang.
-  `abx mount remove NAVN` avslutter registreringen etter nødvendig rydding
-  av rettigheter og eventuelt eierskap for vertskataloger. Katalogen og filene
-  beholdes. For Docker-volumer sletter remove både volumet og innholdet.
-  Revoke beholder innhold for begge typer. Refererende miljøfiler beholdes,
-  men kilden kan ikke brukes før den igjen er registrert og aktiv.
-- Hvis kjørende miljøer bruker en kilde som skal fjernes med mount remove,
-  vises hvilke miljøer som berøres og brukeren tilbys å stoppe dem og fullføre
-  fjerningen. Ved avslag beholdes registreringen. Opprydding må lykkes før
-  registreringen fjernes; feil beholder grunnlaget for nytt forsøk.
+Nye livssykluser bruker den implementerte
+[mount-kontrakten](../../usage.md#registrer-delingskilder), inkludert eksplisitt
+volumsletting, tilbakekalling og samtykke for fjerning av kildebrukere.
 
 ## Diagnose og reparasjon
 

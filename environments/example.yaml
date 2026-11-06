@@ -1,11 +1,11 @@
-# Offline Bash environment. Register project "example" or change the mount below.
+# Offline Bash environment. Register mount "example" or change the mount below.
 # Codex API key: codex.yaml. Context7 token alias: context7-codex.yaml.
 name: example-dev
 image: codex
 workdir: /home/agent/src/example
 command: ["bash"]
 mounts:
-  - project: example
+  - source: example
     target: /home/agent/src/example
     mode: rw
 network:

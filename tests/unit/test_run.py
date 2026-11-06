@@ -44,7 +44,7 @@ def temporary_control(tmp_path, monkeypatch):
         "name": "temporary",
         "image": "base",
         "command": ["bash"],
-        "mounts": [{"project": "example", "target": "/workspace"}],
+        "mounts": [{"source": "example", "target": "/workspace"}],
     }
     return control, payload, removed
 

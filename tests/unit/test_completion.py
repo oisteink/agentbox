@@ -25,8 +25,8 @@ def test_names_use_read_only_request_without_password_prompt(monkeypatch):
     assert "-n" in seen["command"]
     assert seen["timeout"] == 2
     assert json.loads(seen["input"]) == {"action": "status"}
-    completion.names("projects")
-    assert json.loads(seen["input"]) == {"action": "project", "operation": "list"}
+    completion.names("mounts")
+    assert json.loads(seen["input"]) == {"action": "mount", "operation": "list"}
 
 
 @pytest.mark.parametrize("response", ["invalid json", '["wrong shape"]', '{"bad name": {}}'])
@@ -63,27 +63,27 @@ def test_completion_timeout_is_ignored(monkeypatch):
         (["abx", "proxy", "b"], ["build"]),
         (["abx", "shell", "exa"], ["example-codex"]),
         (["abx", "logs", "example-codex", "--p"], ["--proxy"]),
-        (["abx", "project", "re"], ["repair", "revoke"]),
-        (["abx", "project", "repair", "exa"], ["example"]),
+        (["abx", "mount", "re"], ["revoke", "remove"]),
+        (["abx", "mount", "check", "--fix", "exa"], ["example"]),
         (["abx", "exec", "example-codex", "--", ""], []),
         (["abx", "start", "with"], ["with space.yaml"]),
         (["abx", "start", "exa"], ["example-codex"]),
         (["abx", "run", "exa"], ["example-codex"]),
         (["abx", "validate", "exa"], ["example-codex"]),
         (["abx", "start", "--h"], ["--help"]),
-        (["abx", "project", "add", "example", "--path", "proj"], ["project dir"]),
+        (["abx", "mount", "add", "example", "mou"], ["mount dir"]),
     ],
 )
 def test_bash_completion(words, expected, tmp_path):
     (tmp_path / "with space.yaml").touch()
-    (tmp_path / "project dir").mkdir()
+    (tmp_path / "mount dir").mkdir()
     script = (
         completion.bash_script()
         + """
 abx() {
   case "$*" in
     'completion --names environments') printf '%s\\n' other example-codex ;;
-    'completion --names projects') printf '%s\\n' example ;;
+    'completion --names mounts') printf '%s\\n' example ;;
     'completion --names configs') printf '%s\\n' example-codex ;;
     'completion --names images') printf '%s\\n' js ;;
     *) return 1 ;;

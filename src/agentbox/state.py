@@ -49,13 +49,13 @@ class Store:
                 json.loads(path.read_text())
                 if path.exists()
                 else {
-                    "schema": 1,
+                    "schema": 2,
                     "installation": uuid.uuid4().hex,
-                    "projects": {},
+                    "mounts": {},
                     "environments": {},
                 }
             )
-            if data.get("schema") != 1:
+            if data.get("schema") != 2:
                 raise AgentboxError("Unsupported state schema")
             yield data
             atomic_json(path, data)

@@ -14,7 +14,7 @@ def environment():
     return {
         "name": "test-env",
         "image": "codex",
-        "mounts": [{"project": "test", "target": "/workspace"}],
+        "mounts": [{"source": "test", "target": "/workspace"}],
         "network": {"allow": [{"host": "api.example.com", "port": 443}]},
         "credentials": [
             {"host": "api.example.com", "port": 443, "header": "Authorization", "env": "MY_TOKEN"}

@@ -42,8 +42,17 @@ def test_revocation_requires_loss_of_traversal_not_just_write_permission(tmp_pat
     control = Control(
         {"home": str(tmp_path), "service_uid": os.getuid(), "operator_uid": os.getuid()}
     )
-    state = {"projects": {"test": {"path": str(tmp_path), "status": "pending"}}}
+    state = {
+        "mounts": {
+            "test": {
+                "type": "directory",
+                "path": str(tmp_path),
+                "status": "revoked",
+                "registration": "test",
+            }
+        }
+    }
     monkeypatch.setattr(control, "require_idle", lambda *args: None)
     monkeypatch.setattr("agentbox.control.os.access", lambda path, mode: mode == os.X_OK)
     with pytest.raises(AgentboxError, match="still accessible"):
-        control.project(state, "revoked", {"name": "test"})
+        control.mount(state, "revoked", {"name": "test"})

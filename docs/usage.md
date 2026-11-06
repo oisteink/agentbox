@@ -49,37 +49,103 @@ Kommandoens egne utdata kan inneholde hemmeligheter. JSON-innramming renser
 ikke disse. Ugyldige UTF-8-bytes erstattes med erstatningstegn ved visning;
 den private agentloggen beholder bytes fra kommandoen.
 
-## Prosjekt og miljø
+## Mount og miljø
 
 | Begrep | Eksempel | Betydning |
 | --- | --- | --- |
-| Prosjekt | `example` | Registrert vertsmappe, eksempelvis `~/src/example` |
+| Mount | `example` eller `profile` | Registrert katalog eller navngitt Docker-volum |
 | Miljø | `example-codex` | Agentcontainer, proxy og nettverk med egen livssyklus |
-| Miljøfil | `~/.config/agentbox/environments/example-codex.yaml` | Valgt image, prosjektmonteringer og nettverkspolicy |
+| Miljøfil | `~/.config/agentbox/environments/example-codex.yaml` | Valgt image, mounts og nettverkspolicy |
 | Imageoppskrift | `~/.config/agentbox/images/codex/` | Redigerbar Dockerfile og byggkontekst |
 
-Ett miljø kan montere flere registrerte prosjekter. Samme prosjekt kan brukes
+Ett miljø kan montere flere registrerte mounts. Samme mount kan brukes
 i flere miljøer, men alle med skrivetilgang arbeider på de samme filene.
-Miljønavnet og prosjektets navn trenger ikke være like.
+Miljønavnet og kildens navn trenger ikke være like.
 
-## Registrer en prosjektmappe
+## Registrer delingskilder
 
 ```sh
-abx project add example --path "$HOME/src/example"
-abx project list
-abx project check example
+abx mount add example "$HOME/src/example"
+abx mount add profile --volume
+abx mount list
+abx mount check example
+abx mount check example --fix
 ```
 
-Registrering gir tjenestebrukeren tilgang til mappen. Prosjektroten må eies
-av utvikleren. ACL-er gir begge brukerne tilgang til innholdet og standard-ACL
-for nye filer. Foreldrekataloger får nødvendig traversering, uten listetilgang.
+En registrert kilde har et navn og typen `directory` eller `volume`. Begge
+brukes med `source` i miljøfilen. En vertsmappe må finnes og eies av deg.
+Et volum opprettes av Docker i Agentbox-instansen og har ingen brukerdefinert
+vertssti. List viser type, sti der relevant og registreringsstatus.
 
-Andre brukeres effektive rettigheter bevares når ACL-masken utvides; tidligere
-maskerte biter kan trimmes fra rå oppføringer. Overlappende registreringer,
-hardlenkede filer, spesialfiler og ukjente eiere avvises. Symlinker i innholdet
-følges ikke ved ACL-endring, og nestede mounts utelates.
-Et mislykket oppsett markeres som uferdig; rett årsaken før reparasjon eller
-tilbakekalling.
+Katalogregistrering gir tjenestebrukeren tilgang gjennom ACL-er. Begge brukerne
+får tilgang til innholdet og standard-ACL for nye filer. Foreldrekataloger får
+traversering uten listetilgang. Overlappende røtter, hardlenkede ordinære filer,
+spesialfiler og ukjente eiere avvises. Symlinker følges ikke ved ACL-endring,
+og nestede mountpunkter utelates. Andre brukeres effektive rettigheter bevares.
+
+Samme navn og kilde kan registreres igjen, også etter tilbakekalling.
+Annen type, sti eller katalogidentitet ved samme navn gir konflikt.
+`check` viser OK eller konkrete identitets-/tilgangsfeil. `--fix` reparerer
+katalog-ACL-er med samme operasjoner som registrering og tilbakekalling;
+katalogtildeling krever at brukerne er stoppet. Tilbakekalte kilder gjenåpnes
+ikke av fix. Volumkontroll sjekker driver og eiermerking, og gjenskaper aldri
+et manglende volum. Uferdig tildeling vises som `adding`; rett årsaken og prøv
+`add` igjen (eller `check --fix` for kataloger). Ved ufullstendig fjerning må
+`mount remove` prøves igjen.
+
+### Bevar profiler og hjem
+
+```yaml
+mounts:
+  - source: example
+    target: /workspace
+  - source: profile
+    target: /home/agent/.config/tool
+```
+
+`mode: ro` eller `rw` velges per miljø. Samme volum kan brukes av flere miljøer.
+Navngitte volumer overlever `stop`, `remove`, `run` og imagebytte. Innhold fra
+imaget kopieres ikke automatisk inn i et tomt volum (`volume-nocopy`).
+
+Agentens `HOME` er `/home/agent`. Du kan montere en katalog eller et volum der,
+eller på en verktøyspesifikk understi. Montering på `/root` endrer ikke HOME;
+bruk den profilstien verktøyet faktisk bruker. `~` utvides av det aktuelle
+skallet, og er ingen egen mount-syntaks. Operatørens hjem deles ikke automatisk.
+Montering av hele HOME skjuler imagets opprinnelige hjemmekatalog.
+
+### Tilbakekall eller fjern en kilde
+
+```sh
+abx mount revoke example
+abx mount remove example
+abx mount remove profile --yes
+```
+
+`revoke` beholder registrering og data, og nekter nye monteringer. For en
+katalog legges også en eksplisitt deny-ACL på roten. For et volum er sperren
+registreringsbasert. Kjører miljøer med kilden, vises navnene og en advarsel:
+eksisterende monteringer og åpne filhåndtak kan beholde tilgang. Ingen miljøer
+stoppes automatisk. `add` med samme kilde åpner registreringen igjen.
+
+`mount remove` avregistrerer etter fullført rydding. Kjørende katalogbrukere
+må stoppes; kommandoen ber om samtykke og viser hvilke miljøer som berøres.
+For ikke-persistente miljøer slettes også containerlaget. Volumbrukere må
+fjernes helt, også stoppede containere, før Docker lar volumet slettes.
+Derfor viser samtykket både miljønavn og om de stoppes eller fjernes.
+`--yes` gir samtykke; JSON uten samtykke gir `confirmation_required` før endring.
+
+For kataloger beholdes filer og eierskap. Service-ACL-er og ubrukte
+traverseringsgrants ryddes; operatør-ACL beholdes på agentbox-eide filer.
+Tjenestebrukerens eiertilgang kan derfor bestå. Avregistrerte filer inngår
+heller ikke i en senere avinstallasjons eierskapsrydding. Resultatet oppgir
+rettighets- og eierskapsgrensen. Vanlig kontrollhjelper har ikke root/chown.
+For volumer slettes både Docker-volumet og alt innholdet.
+
+Avslag beholder registreringen. Feil under rydding beholder registreringen
+som `removing`, med identitet og grunnlag for nytt forsøk. Add, revoke og fix
+åpner ikke en slik registrering. Miljøfiler slettes ikke; de kan brukes igjen
+når kilden er registrert og aktiv. Fremmede Docker-containerreferanser sperrer
+fjerning fremfor å bli stoppet eller slettet.
 
 ## Opprett miljøfilen
 
@@ -96,7 +162,7 @@ image: codex
 workdir: /home/agent/src/example
 command: ["codex"]
 mounts:
-  - project: example
+  - source: example
     target: /home/agent/src/example
     mode: rw
 network:
@@ -109,10 +175,10 @@ resources:
   pids: 512
 ```
 
-`mounts[].project` viser til prosjektregisteret. `target` er stien inne i
-containeren; `workdir` må være denne stien eller en eksisterende undermappe.
+`mounts[].source` viser til mount-registeret. `target` er stien inne i
+containeren; `workdir` må ligge i et valgt mount. Katalogmounts krever en eksisterende undermappe.
 Velg `mode: ro` for skrivebeskyttet montering. Legg til flere oppføringer for
-flere prosjekter, med ulike mål som ikke overlapper.
+flere mounts, med ulike mål som ikke overlapper.
 
 Eksempelet tillater bare `api.openai.com:443`. Det er ingen komplett liste
 for alle innloggingsmetoder eller Codex-funksjoner. Velg nødvendige
@@ -176,8 +242,9 @@ abx start example-codex
 abx shell example-codex
 ```
 
-Etter fjerning oppretter neste `start` en ny container fra imaget. Hjem, innlogging,
-installerte filer og logger fra økten slettes; prosjektfilene beholdes.
+Etter fjerning oppretter neste `start` en ny container fra imaget. Containerlag
+og logger fra økten slettes; data i eksplisitte katalog-/volummounts beholdes.
+Det gjelder også hjem og profiler som er montert inn.
 `stop` fjerner også et slikt miljø, selv om du ikke har kjørt `shell`.
 
 Bare én `shell` kan kjøre i miljøet om gangen. `exec` kan brukes til ekstra
@@ -188,21 +255,21 @@ avsluttes, fjernes hele miljøet, inkludert eventuelle ekstra prosesser.
 Ved SIGKILL eller vertskrasj kan ressurser gjenstå. En allerede reservert
 shell-økt gjenbrukes ikke; fjern miljøet med `abx remove NAVN` og start på nytt.
 Endring av `persistent` for et eksisterende miljø krever også `remove` og ny
-`start`. Da slettes containerlaget; monterte prosjektfiler består.
+`start`. Da slettes containerlaget; monterte filer i katalogmounts består.
 
 ## Midlertidig kjøring
 
 `abx run FIL.yaml` kjører miljøfilens `command` én gang i terminalen og
-fjerner deretter agent, proxy, nettverk og containerlag. Monterte prosjektfiler
+fjerner deretter agent, proxy, nettverk og containerlag. Monterte filer i katalogmounts
 beholdes. Lagre dette som `task.yaml`; det bruker lokalt `codex`-image og
-registrert prosjekt `example`:
+registrert mount `example`:
 
 ```yaml
 name: example-task
 image: codex
 command: ["bash"]
 mounts:
-  - project: example
+  - source: example
     target: /workspace
 ```
 
@@ -216,8 +283,8 @@ forgrunnen med automatisk opprydding.
 Bruk et ledig miljønavn. Et eksisterende miljø med samme navn avvises uten
 endringer. Kommandoens exitkode returneres etter opprydding. Ctrl-C avbryter
 kjøringen og venter på oppryddingen; oppryddingsfeil gir feilstatus.
-Containerlaget, innloggingen og miljøets logger slettes. Legg filer som
-skal beholdes i prosjektmountene. Ved SIGKILL eller vertskrasj kan ressurser
+Containerlaget og miljøets logger slettes; eksplisitte mounts består. Legg filer som
+skal beholdes i mountene. Ved SIGKILL eller vertskrasj kan ressurser
 gjenstå; kontroller `abx status` og fjern miljøet med `abx remove NAVN`.
 
 Når både stdin og stdout er terminaler, brukes en interaktiv terminal. Ellers
@@ -318,7 +385,7 @@ codex mcp add context7 --url https://mcp.context7.com/mcp \
 ```
 
 Eksempelkonfigurasjon: [context7-codex.yaml](../environments/context7-codex.yaml).
-Registrer prosjektet og tilpass mounten før start. Gjenta en `credentials`-regel
+Registrer mountet og tilpass mounten før start. Gjenta en `credentials`-regel
 med samme `env` for å bruke nøkkelen mot flere eksplisitt tillatte destinasjoner.
 
 Proxyen erstatter bare en hel plassholder eller plassholderen etter `Bearer `.
@@ -364,7 +431,7 @@ Et nytt klientnavn krever eksplisitt gjenskaping av agentcontaineren.
 Ved tom/ikke-tom overgang stopper apply eller gjenopptak gammel proxy og gir
 beskjed om gjenskaping. Agentens eksisterende miljø endres ikke. Dette gjelder
 også om kilden mangler når du starter et tidligere opprettet, stoppet miljø.
-**`remove` sletter agentens hjem og innlogging; montert prosjekt beholdes.**
+**`remove` sletter containerlaget; data i eksplisitte mounts beholdes.**
 Runtime-navn som `HOME`, `PATH`, proxy- og CA-variabler er reservert på
 klientsiden av et alias. Kilden på verten kan ha et annet navn.
 Velg et rent nøkkelnavn, som `APITOKEN` eller `CONTEXT7_TOKEN`. Listen over
@@ -414,7 +481,7 @@ automatisk. Imagebygging og henting av baseimages skjer på kontrollsiden og bru
 ikke denne listen.
 
 Endret nettverkspolicy eller tokenregel aktiveres med `proxy apply`.
-Agentcontainerens hjem, innlogging og monterte prosjektfiler beholdes.
+Agentcontainerens hjem, innlogging og monterte filer i katalogmounts beholdes.
 
 ```sh
 abx proxy apply example-codex
@@ -422,7 +489,7 @@ abx proxy apply example-codex
 
 ## Hva beholdes?
 
-| Handling | Prosjektfiler på verten | Containerens hjem, innlogging og installerte filer |
+| Handling | Filer i katalogmounts på verten | Containerens hjem, innlogging og installerte filer |
 | --- | --- | --- |
 | Avslutte `shell` med `persistent: true` | Beholdes | Beholdes; miljøet kjører videre |
 | Avslutte `exec` | Beholdes | Beholdes til miljøet fjernes |
@@ -434,17 +501,18 @@ abx proxy apply example-codex
 | `remove` og ny `start` | Beholdes | Slettes og opprettes på nytt |
 | `proxy apply` eller `proxy stop` | Beholdes | Beholdes |
 
-Vedvarende miljøer beholder egen innlogging; separat profilvolum støttes ikke.
+Vedvarende miljøer beholder innlogging i containerlaget. Bruk eksplisitt mount
+på profilstien for å bevare den ved containerfjerning.
 Endret agentimage, mounts, arbeidsprofil eller vertsadresse krever fjerning
 og ny opprettelse. Nettverk/tokenregler kan endres med proxy apply. Start av
-et stoppet miljø og proxy apply validerer DNS på nytt. Prosjektregistreringer
+et stoppet miljø og proxy apply validerer DNS på nytt. Mount-registreringer
 og ACL-er består til du tilbakekaller dem.
 
-## Bytt prosjekt eller image
+## Bytt mount eller image
 
-Registrer neste prosjekt, lag en egen miljøfil og start miljøet med et nytt
+Registrer neste mount, lag en egen miljøfil og start miljøet med et nytt
 navn. Det eksisterende miljøet kan fortsette å kjøre. For et annet verktøy
-mot samme prosjekt bruker du også et nytt miljønavn og velger image i YAML.
+mot samme mount bruker du også et nytt miljønavn og velger image i YAML.
 
 Alle agentimages bygges fra lokale oppskrifter. Opprett for eksempel et
 JavaScript-miljø:
@@ -480,7 +548,7 @@ abx image build opencode
 ```
 
 Kopier miljøfilen til `~/.config/agentbox/environments/` og endre
-`mounts[].project` til et registrert prosjekt. Eksemplene bruker API-nøkler:
+`mounts[].source` til et registrert mount. Eksemplene bruker API-nøkler:
 Codex trenger `OPENAI_API_KEY` i vertens miljø; OpenCode og Claude Code
 trenger `ANTHROPIC_API_KEY`. Eksporter nøkkelen før `abx start` eller `abx run`,
 slik at proxyen kan erstatte agentens plassholder. OpenCode-eksemplet bruker
@@ -523,7 +591,7 @@ Baseimages i `FROM` kan hentes fra registry som ved vanlig Docker-bygging.
 Bygg og `abx image rm js` avvises så lenge en eksisterende container bruker
 samme image-ID, også når containeren er stoppet. Fjern de berørte miljøene
 med `abx remove MILJØ` før ombygging. `remove` sletter containerlaget,
-inkludert hjem og innlogging; behold nødvendige arbeidsfiler i prosjektmounts.
+inkludert hjem og innlogging; behold nødvendige arbeidsfiler i katalogmounts.
 `image rm` fjerner det bygde imagets tag og beholder oppskriften for senere bygg.
 
 Images må være amd64 eller arm64, støtte UID 0 og ha `/bin/sh` og
@@ -549,28 +617,6 @@ containerlag beholdes. Neste `start` eller `proxy apply` oppretter proxyen på
 nytt. Eksporter nødvendige tokenvariabler før gjenopptak. Oppdatering av
 kontrollkoden gjøres med installeren etter at miljøene er stoppet.
 
-## Reparer eller tilbakekall prosjekttilgang
-
-Stopp alle miljøer som bruker prosjektet først, også de med read-only-mounts.
-Velg deretter operasjonen du trenger:
-
-```sh
-abx project check example
-abx project repair example
-# Alternativt, for å avslutte delingen:
-abx project revoke example
-```
-
-`chmod` eller restriktivt opprettede filer kan kreve reparasjon.
-Helt utilgjengelige katalogtrær eller andre eiere kan kreve manuell retting
-fra fileieren før reparasjon kan fullføres.
-
-Tilbakekalling legger en eksplisitt sperre for `agentbox` på prosjektroten.
-Også agentbox-eide filer under roten blokkeres. Filer og eierskap beholdes,
-og innholdets ACL-er blir liggende. Flytting til en ubeskyttet sti kan derfor
-gi tilgang igjen. Foreldrenes administrerte ACL-er gjenopprettes når ingen
-andre prosjekter trenger dem og ingen manuelle konflikter er oppdaget.
-
 ## Tab-completion i Bash
 
 ```sh
@@ -578,11 +624,11 @@ source <(abx completion bash)
 ```
 
 Installeren legger inn completion for nye skall med `bash-completion` aktivert.
-Tab foreslår kommandoer, flagg, eksisterende miljønavn, registrerte prosjekter
+Tab foreslår kommandoer, flagg, eksisterende miljønavn, registrerte mounts
 og lokale imageoppskrifter etter `image edit`, `build`, `inspect` og `rm`.
 Etter `start`, `run`, `validate` og `proxy apply` foreslås lagrede kortnavn og
 lokale filstier.
-Filstier fullføres også etter `--key-file`, og kataloger etter `--path`.
+Filstier fullføres også etter `--key-file`, og kataloger etter navnet i `mount add NAVN MAPPE`.
 Navneoppslag ber ikke om sudo-passord og avbrytes etter to sekunder.
 
 ## Vanlige feil
@@ -600,14 +646,14 @@ abx exec example-codex -- codex --no-daemon
 ```
 
 Gjenoppta en sesjon med `codex --no-daemon resume`. Feilen krever ikke
-fjerning av miljøet; `remove` sletter hjem og innlogging.
+fjerning av miljøet; `remove` sletter containerlaget og umonterte profiler.
 
 ### Andre feil
 
 | Feil | Årsak og neste steg |
 | --- | --- |
-| `Environment is not running` | Prosjektregistrering starter ikke et miljø. Bruk `start FIL.yaml` før `shell` |
-| `Working directory must be inside a mounted project` | Sett `workdir` lik `mounts[].target` eller en eksisterende undermappe |
+| `Environment is not running` | Mount-registrering starter ikke et miljø. Bruk `start FIL.yaml` før `shell` |
+| `Working directory must be inside a registered mount` | Sett `workdir` lik `mounts[].target` eller en eksisterende undermappe |
 | `No two collision-free /28 subnets` | Velg et ledig adresseområde etter [installasjonsveiledningen](installation.md#velg-adresseområde) |
 | `Host addresses changed` | Adressevakten har stoppet miljøet; fjerning og ny opprettelse kreves |
 | Verktøy trenger Unix-sockets | Profilen blokkerer nye Unix-sockets. Velg kompatible verktøy; ikke svekk isoleringen automatisk |

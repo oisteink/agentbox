@@ -29,8 +29,8 @@ En nettverksprøve trenger en fungerende kontrolltjeneste før blokkering kan
 godtas. Skal HTTP aldri nå frem, kontroller også mottakerens observasjoner.
 Ved forventet transportavbrudd kontrolleres tjenesten igjen etterpå.
 
-Bevaring av containerlaget krever en markør utenfor prosjektmountene og
-kontroll av samme agentcontainer. En prosjektfil alene viser bare at mountet
+Bevaring av containerlaget krever en markør utenfor mountene og
+kontroll av samme agentcontainer. En fil i et mount alene viser bare at mountet
 beholder innholdet. Terminalinnlesing må gi et svar fra containerprosessen
 som ikke kan forveksles med terminalekko.
 
@@ -73,14 +73,14 @@ dekningsprosent er ikke et akseptansekriterium.
 Testnavnene nedenfor viser kjørbare observasjoner. De innebærer ikke at hele
 kravet er uttømmende verifisert. Installerte scenarier ligger i
 `tests/integration/test_lifecycle.py`, `test_temporary_run.py`,
-`test_installation.py`, `test_json.py` og `test_uninstall.py` og bruker installert CLI.
+`test_installation.py`, `test_json.py`, `test_mounts.py` og `test_uninstall.py` og bruker installert CLI.
 
 | Krav | Konkret prøve | Avgrensning |
 | --- | --- | --- |
 | A1: riktig daemon | `test_runtime`: rootful, endret ID, cgroupstøtte og renset miljø; labens `doctor` | Socketmodus, versjonsgrenser og fiendtlig Docker-context er ikke alle prøvd på nytt i lab |
 | A2: samtidige miljøer | `test_two_images_and_independent_environments` | To miljøer; ingen stor lastprøve |
 | A3: valgte mapper | `test_mount_visibility_and_readonly` med fungerende valgt mount og skjult søskenmappe | Bredere mount-/symlinkkombinasjoner mangler |
-| A4: samarbeid om filer | `test_project_file_operations_and_remove_preserve_code`, `test_acl_repair_and_revocation_leave_other_project_working`; lokale ACL-regler | Ikke alle kombinasjoner av eierskap, filmoduser og samtidige redigeringer |
+| A4: samarbeid om filer | `test_mount_file_operations_and_remove_preserve_code`, `test_acl_repair_and_revocation_leave_other_mount_working`; lokale ACL-regler | Ikke alle kombinasjoner av eierskap, filmoduser og samtidige redigeringer |
 | A5: read-only og bevart kode | `test_mount_visibility_and_readonly` krever EROFS; filoperasjonstesten leser etter remove; uninstall starter med privat nestet mount | Ikke alle mountkombinasjoner |
 | A6: tillatt/avvist HTTP og HTTPS | `credential_proxy.py`: positiv kontroll, eksakt domene/port, mottakerobservasjon; `TestInterceptPolicy` | Go-testens dialer omdirigeres lokalt; VM kreves for offentlig pinning |
 | A7: direkte nettverk | `test_environment_network_isolation` med kontroll mot faktisk mål-IP før/etter; proxyprøvens direkte TCP-avslag | Kontrollert UDP, ekstern DNS, vert/LAN og aktiv IPv6 krever egne oppdaterte prøver |
@@ -90,17 +90,17 @@ kravet er uttømmende verifisert. Installerte scenarier ligger i
 | A11: to images | `test_two_images_and_independent_environments` med utviklingsimage og uavhengig smoke-image | Andre agentmaler har bare bygg-/versjonsprøve; arm64 er ikke prøvd |
 | Lokale imageoppskrifter | `test_images`: filer, binær protokoll, sikker utpakking, eierskap og eksakt brukssjekk; `test_local_image_build_context_and_use_guard`: COPY/ignore og ombygging | Installert på Ubuntu amd64; andre plattformer er ikke prøvd |
 | A12: ressurser | `test_socket_capability_and_cgroup_enforcement` leser CPU/minne/PID og fyller PID-grensen; lokal daemonprøve av manglende støtte | Ingen ny CPU-belastnings- eller OOM-prøve |
-| A13: tilbakekalling | `test_acl_repair_and_revocation_leave_other_project_working`: avslag under read-only bruk, EACCES som tjenestebruker og annet prosjekt fortsetter; ACL-unitprøver | Konkurrerende manuelle ACL-endringer mangler |
+| A13: tilbakekalling | `test_acl_repair_and_revocation_leave_other_mount_working`: varsling under read-only bruk, EACCES som tjenestebruker og annet mount fortsetter; ACL-unitprøver | Konkurrerende manuelle ACL-endringer mangler |
 | Installasjon | `test_install` validerer operatørvalg; `test_proxy_image_installation_and_build_failure` prøver proxybygg, gjenbruk og feilstatus; laben sammenligner installerte filer | Minste Debian er ikke fastsatt |
 | Shell, exec og terminal | `test_exec_exit_status_and_configured_shell`, `test_terminal_reads_input_and_preserves_size`, lokal PTY-prøve | Dynamisk størrelsesendring og signaler i vedvarende shell/exec trenger egne prøver; midlertidig run/shell har Ctrl-C-prøver |
 | Stopp/start og endret profil | `test_stop_start_preserves_container_and_home`, `test_changed_profile_is_rejected_without_losing_home` | Home-markør og samme container-ID; full innlogging er ikke utført her |
-| Ikke-persistent miljø | `test_temporary_run.py`: start/shell, rent hjem ved neste start, ny ID, stop, prosjektbevaring og konkurrerende shell; `test_run.py`: reservasjon, signalgap og identitetsbinding | Hardt avbrudd krever eksplisitt remove |
-| Midlertidig kjøring | `test_temporary_run.py`: exitkode, terminal, Ctrl-C, ressursfjerning og prosjektbevaring; `test_run.py`: feilbaner og identitetsbinding | SIGKILL/vertskrasj krever eksplisitt opprydding |
+| Ikke-persistent miljø | `test_temporary_run.py`: start/shell, rent hjem ved neste start, ny ID, stop, mount-bevaring og konkurrerende shell; `test_run.py`: reservasjon, signalgap og identitetsbinding | Hardt avbrudd krever eksplisitt remove |
+| Midlertidig kjøring | `test_temporary_run.py`: exitkode, terminal, Ctrl-C, ressursfjerning og mount-bevaring; `test_run.py`: feilbaner og identitetsbinding | SIGKILL/vertskrasj krever eksplisitt opprydding |
 | Eksempelmaler | `test_example_agent_version_in_isolation`, `test_agent_examples_match_cli_templates_and_archive` | Bygg og versjonskommando er prøvd; ikke TUI, innlogging eller modelltrafikk |
 | Daemonrestart | `test_daemon_restart_preserves_home` | Ikke vertsreboot eller avbrudd ved hvert oppstartssteg |
 | Tokenlivssyklus | `test_proxy_credentials`, Go-testene og `credential_proxy.py` med syntetiske tokens | Nye prøver bruker ingen ekte nøkler eller modellkall |
 | Tilstand og logger | `test_state`, kontrollinngangens feilprøver, exec-testens logginnhold og proxyprøvens loggkontroll | Samtidige låser, loggrotasjon og private filmoduser mangler full labdekning |
-| Avinstallasjon | `test_full_uninstall_keeps_projects_and_returns_ownership`, `test_uninstall` | Egen opt-in, rootful kontrollinstans og sist i labløpet |
+| Avinstallasjon | `test_full_uninstall_keeps_mounts_and_returns_ownership`, `test_uninstall` | Egen opt-in, rootful kontrollinstans og sist i labløpet |
 
 ## Testenes ansvar
 
@@ -111,7 +111,7 @@ kravet er uttømmende verifisert. Installerte scenarier ligger i
 | `test_cli.py`, `test_control_entry.py`, `test_output_process.py` | Utvalgte CLI-forespørsler, identitet før dispatch og avvisning av feil input uten ekko av hemmeligheter |
 | `test_runtime.py` | Daemonkrav og renset miljø med simulerte Docker-svar; ekte PTY/prosess for utdata og initial størrelse |
 | `test_images.py` | Ekte lokale oppskrifter, editorprosesser, tar og utpakking; binær kontrollprotokoll og avslag før Docker-mutasjon |
-| `test_projects.py`, `test_uninstall.py` | ACL-transformasjoner, lenker, identitet og filsystemopprydding; smale mocks for eksterne ACL-operasjoner |
+| `test_mounts.py`, `test_uninstall.py` | ACL-transformasjoner, lenker, identitet og filsystemopprydding; smale mocks for eksterne ACL-operasjoner |
 | `test_state.py` | Reell atomisk lagring og avbrutt transaksjon i midlertidig mappe |
 | `test_install.py`, `test_completion.py` | Operatørvalg før privilegier, ekte Bash-completion og kontrollerte navneoppslag |
 | `proxy/proxy_test.go`, `proxy/security_test.go` | Ekte HTTP/TLS, H1/H2, auth-/destinasjonsregler, mottakerobservasjon og positive kontrollrequests |
@@ -154,3 +154,11 @@ venter. `test_json.py` prøver installert CLI gjennom sudo: mennesketabell,
 JSON-feil, adskilte utstrømmer, stdin, logger og identitetsbundet opprydding
 etter Ctrl-C. En JSON-exitkode 0 er utilstrekkelig; sluttresultatet må finnes
 og undersøkes.
+
+Mount-prøvene dekker separate lagringskilder: profilvolum gjennom run,
+containerfjerning og imagebytte; eksplisitt HOME i ikke-persistent miljø;
+ro/rw; revoke med aktiv bruker/åpent håndtak; fix uten reaktivering; navngitt
+samtykke for aktive/stoppede volumbrukere; katalogdata/operatørtilgang etter
+remove; manglende/fremmed volum; og ufullstendig cleanup med retry. Lokale
+feilprøver dekker samtykke ved endret kilde/ressurser og avbrudd mellom ACL-pass,
+før forget og etter volumsletting. Vanlig remove prøves uten root/chown.

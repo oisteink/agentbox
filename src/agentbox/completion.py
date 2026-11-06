@@ -31,9 +31,7 @@ def names(kind):
         except OSError:
             return []
     request = (
-        {"action": "status"}
-        if kind == "environments"
-        else {"action": "project", "operation": "list"}
+        {"action": "status"} if kind == "environments" else {"action": "mount", "operation": "list"}
     )
     try:
         result = subprocess.run(

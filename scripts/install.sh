@@ -61,6 +61,7 @@ install -d -m 0755 /opt/agentbox/lib /opt/agentbox/security /etc/agentbox /usr/l
 if [[ -n $(find "$repo_dir/src" "$repo_dir/security" "$repo_dir/images" "$repo_dir/proxy" -type l -print -quit) ]]; then
   echo 'Refusing installation from a source tree containing symlinks' >&2; exit 1
 fi
+rm -rf -- /opt/agentbox/lib/agentbox /opt/agentbox/proxy
 cp -r -- "$repo_dir/src/agentbox" /opt/agentbox/lib/
 find /opt/agentbox/lib/agentbox -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
 find /opt/agentbox/lib/agentbox -type d -name __pycache__ -empty -delete

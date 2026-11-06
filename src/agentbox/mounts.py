@@ -1,4 +1,4 @@
-"""Unprivileged ACL operations. Never change owners or follow project symlinks."""
+"""Unprivileged ACL operations. Never change owners or follow mount symlinks."""
 
 import os
 import pwd
@@ -64,6 +64,9 @@ def grant_acl(original, service_uid, operator_uid, directory, executable=False):
                 # unrelated effective rights before widening it for the two
                 # collaborating users, rather than reviving masked permissions.
                 entries[key] = bits & old_mask
+        # The owner entry takes precedence over a named entry for the same UID.
+        # Every scanned owner is one of the two explicitly authorized users.
+        entries[prefix + "user:"] |= wanted
         entries[prefix + f"user:{service_uid}"] = wanted
         entries[prefix + f"user:{operator_uid}"] = wanted
         entries[prefix + "mask:"] = new_mask
@@ -159,16 +162,16 @@ def node_fd(root, node):
     try:
         relative = Path(node["relative"])
         if relative.is_absolute() or ".." in relative.parts:
-            raise AgentboxError("Invalid relative project path")
+            raise AgentboxError("Invalid relative mount path")
         for part in relative.parts:
             following = os.open(part, os.O_PATH | os.O_NOFOLLOW, dir_fd=current)
             os.close(current)
             current = following
             if stat.S_ISLNK(os.fstat(current).st_mode):
-                raise AgentboxError("Project path changed into a symlink")
+                raise AgentboxError("Mount path changed into a symlink")
         meta = os.fstat(current)
         if (meta.st_dev, meta.st_ino, meta.st_uid) != (node["device"], node["inode"], node["uid"]):
-            raise AgentboxError("Project tree changed during ACL operation")
+            raise AgentboxError("Mount tree changed during ACL operation")
         if stat.S_ISREG(meta.st_mode) and meta.st_nlink != 1:
             raise AgentboxError("Hard link appeared during ACL operation")
         yield current
@@ -199,8 +202,15 @@ def apply_owned(root, nodes, service_uid, operator_uid):
         raise
 
 
+def fd_identity(fd):
+    return _identity(os.fstat(fd))
+
+
 def identity(path):
-    meta = Path(path).stat()
+    return _identity(Path(path).stat())
+
+
+def _identity(meta):
     return {"device": meta.st_dev, "inode": meta.st_ino, "uid": meta.st_uid}
 
 
@@ -216,9 +226,7 @@ def access_issues(root, allowed_uids):
             )
         ]
     except (OSError, AgentboxError):
-        return [
-            "Project tree cannot be fully inspected; check permissions and supported file types"
-        ]
+        return ["Mount tree cannot be fully inspected; check permissions and supported file types"]
 
 
 def validate_root(path, operator_uid):
@@ -229,9 +237,7 @@ def validate_root(path, operator_uid):
         or "," in str(root)
         or any(ord(char) < 32 for char in str(root))
     ):
-        raise AgentboxError(
-            "Project root must be a directory owned by the developer, without commas"
-        )
+        raise AgentboxError("Mount root must be a directory owned by the developer, without commas")
     for forbidden in (
         "/var/lib/agentbox",
         "/var/lib/agentbox-operator",
@@ -243,7 +249,38 @@ def validate_root(path, operator_uid):
         "/opt/agentbox",
     ):
         if root == Path(forbidden) or Path(forbidden) in root.parents:
-            raise AgentboxError("Project overlaps private or reserved host data")
+            raise AgentboxError("Mount overlaps private or reserved host data")
     if root in (Path("/"), Path("/home"), Path(pwd.getpwuid(operator_uid).pw_dir)):
-        raise AgentboxError("Register a project directory, not an entire home")
+        raise AgentboxError("Register a mount directory, not an entire home")
     return root
+
+
+def remove_service_acl(original, uid):
+    """Remove the dedicated service identity, preserving masks and other entries."""
+    return "".join(
+        line + "\n"
+        for line in original.splitlines()
+        if not line.startswith((f"user:{uid}:", f"default:user:{uid}:"))
+    )
+
+
+def inventory(nodes):
+    """Digest a complete scan; permissions can change without changing identity."""
+    import hashlib
+    import json
+
+    keys = ("relative", "device", "inode", "uid", "directory")
+    rows = [{key: node[key] for key in keys} for node in nodes]
+    return hashlib.sha256(
+        json.dumps(sorted(rows, key=lambda row: row["relative"]), sort_keys=True).encode()
+    ).hexdigest()
+
+
+def clean_owned(root, nodes, service_uid):
+    for node in reversed(nodes):
+        if node["uid"] == os.getuid():
+            with node_fd(root, node) as fd:
+                before = read_acl(fd)
+                after = remove_service_acl(before, service_uid)
+                if after != before:
+                    write_acl(fd, after)

@@ -1,23 +1,23 @@
 # Agentbox
 
-Agentbox lar deg kjøre kodeagenter mot utvalgte prosjektmapper på Linux.
+Agentbox lar deg kjøre kodeagenter mot utvalgte vertskataloger på Linux.
 Du beholder filene i editoren din, mens agenten arbeider i en container og
 bare får utgående nettverkstilgang til destinasjoner du har tillatt.
-Flere prosjekter, miljøer og kompatible images kan brukes samtidig.
+Flere mounts, miljøer og kompatible images kan brukes samtidig.
 
 En egen vertsbruker, `agentbox`, kjører Docker uten root-rettigheter.
-Prosjektmapper deles med filrettigheter (ACL-er) og eksplisitte monteringer.
+Vertskataloger deles med ACL-er; navngitte Docker-volumer kan bevare profiler og data.
 En Go-proxy håndhever tillatte destinasjoner og kan erstatte ufarlige
 plassholdere med API-nøkler. Den ekte nøkkelen ligger bare på den betrodde
 siden; agenten får en generert verdi i klientens miljøvariabel.
 Eksempelmaler finnes for Codex, OpenCode og Claude Code.
-Se [maler og miljøeksempler](docs/usage.md#bytt-prosjekt-eller-image).
+Se [maler og miljøeksempler](docs/usage.md#bytt-mount-eller-image).
 
 ![Agentbox, utvikleren og eksterne tjenester](docs/diagrams/agentbox-context.svg)
 
 [C4-arkitekturen](docs/architecture-c4.md) forklarer systemkonteksten og de
 kjørbare delene. Containerne deler vertens kjerne. Et utbrudd med `agentbox`
-sine rettigheter kan nå alle prosjekter brukeren har fått tilgang til.
+sine rettigheter kan nå alle mounts brukeren har fått tilgang til.
 
 ## Kom i gang
 
@@ -33,16 +33,17 @@ abx image build codex
 source <(abx completion bash)
 ```
 
-Registrer et prosjekt som allerede finnes:
+Registrer en eksisterende katalog:
 
 ```sh
-abx project add example --path "$HOME/src/example"
+abx mount add example "$HOME/src/example"
 mkdir -p "$HOME/.config/agentbox/environments"
 ```
 
-Et prosjekt er en vertsmappe med tildelt tilgang. Et miljø er en navngitt
+Et mount er en registrert vertsmappe eller et navngitt Docker-volum. Et miljø er en navngitt
 container med valgt image, mounts og nettverkspolicy. Registrering av en
-mappe oppretter ikke et miljø.
+mappe oppretter ikke et miljø. For profiler og annen containerlagring kan du
+opprette `abx mount add profile --volume`; se [mounts og volumer](docs/usage.md#registrer-delingskilder).
 
 Lagre dette som `~/.config/agentbox/environments/example-codex.yaml`, utenfor
 mappene agenten kan redigere:
@@ -53,7 +54,7 @@ image: codex
 workdir: /home/agent/src/example
 command: ["bash"]
 mounts:
-  - project: example
+  - source: example
     target: /home/agent/src/example
     mode: rw
 network:
@@ -71,18 +72,19 @@ abx shell example-codex
 Kortnavnet finner `example-codex.yaml` i `~/.config/agentbox/environments/`.
 Du kan også bruke en eksplisitt YAML-sti, som `abx start ./agentbox.yaml`.
 
-Dette åpner Bash i prosjektmappen med nettverket stengt. Endringer i montert
+Dette åpner Bash i vertskatalogn med nettverket stengt. Endringer i montert
 kode lagres direkte på verten. Miljønavnet beskriver planlagt Codex-bruk;
 start med Bash for å kontrollere filtilgang. Følg
 [bruksveiledningen](docs/usage.md) for nettverk, Codex-innlogging og daglig bruk.
 
 `exit` lukker skallet. `abx stop example-codex` stopper miljøet og beholder
 hjem og innlogging. `abx remove example-codex` sletter containerlaget,
-inkludert innlogging og verktøyoppsett. Monterte prosjektfiler beholdes.
+inkludert innlogging og verktøyoppsett. Monterte filer i katalogmounts beholdes.
 
-Sett `persistent: false` i miljøfilen for et rent containerhjem ved hver økt.
+Sett `persistent: false` i miljøfilen for et nytt containerlag ved hver økt.
+Eksplisitte mounts bevares.
 `start` klargjør miljøet; `shell` kjører kommandoen og fjerner deretter miljøet.
-Prosjektfiler beholdes. Se [miljø uten bevart containerlag](docs/usage.md#miljø-uten-bevart-containerlag).
+Filer i katalogmounts beholdes. Se [miljø uten bevart containerlag](docs/usage.md#miljø-uten-bevart-containerlag).
 
 ## API-nøkler via proxyen
 
@@ -104,7 +106,7 @@ En manglende eller tom kilde gir en tom klientvariabel ved ny opprettelse.
 
 Bruk [context7-codex.yaml](environments/context7-codex.yaml) som komplett
 miljøfil. Kopier den til `~/.config/agentbox/environments/`. Filen bruker
-prosjektet `example` som ble registrert over; tilpass `mounts[].project` hvis
+mountet `example` som ble registrert over; tilpass `mounts[].source` hvis
 du bruker et annet navn. Nettverkstillatelsene og aliaset er allerede lagt inn.
 
 ```sh
@@ -121,7 +123,7 @@ abx shell context7-codex
 Codex sin egen kontoinnlogging gjøres separat med
 [device-login](docs/usage.md#innlogging-og-verktøyoppsett). Etter endring av en
 ikke-tom nøkkel brukes `abx proxy apply context7-codex`. Nye klientnavn
-og tom/ikke-tom overgang krever gjenskaping; `remove` sletter hjem og innlogging.
+og tom/ikke-tom overgang krever gjenskaping; `remove` sletter containerlaget; eksplisitte mounts beholdes.
 Se [brukerveiledningen](docs/usage.md#api-tokens-i-proxyen) for tilbakekalling
 og begrensninger.
 
@@ -131,7 +133,7 @@ For midlertidig kjøring, bruk en miljøfil med ledig navn:
 abx run ./task.yaml
 ```
 
-Kommandoen kjører i terminalen. Miljøet fjernes ved avslutning; prosjektfiler
+Kommandoen kjører i terminalen. Miljøet fjernes ved avslutning; filer i katalogmounts
 beholdes. Se [midlertidig kjøring](docs/usage.md#midlertidig-kjøring).
 
 Standardutskrift er for mennesker. Bruk `abx --json status` for maskinlesbare
@@ -153,7 +155,7 @@ resultater og [JSON-kontrakten](docs/usage.md#utskrift-og-automatisering) ved au
 | [Planlagt CLI](docs/features/session-lifecycle/spec.md) | Vedtatte krav til videre arbeid; ikke implementert |
 
 Full avinstallasjon gjøres med `sudo scripts/uninstall.sh`.
-Kommandoen stopper miljøene, overfører agentbox-eide prosjektfiler til deg og
+Kommandoen stopper miljøene, overfører agentbox-eide filer i katalogmounts til deg og
 fjerner installasjon og tjenestebruker. Se [avinstallasjon](docs/installation.md#avinstallasjon).
 
 Linked worktrees og separat profillagring støttes ikke. Verifiserte

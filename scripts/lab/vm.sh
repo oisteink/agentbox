@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Disposable KVM lab; no access to host project directories is shared with the VM.
+# Disposable KVM lab; no access to host mount directories is shared with the VM.
 set -euo pipefail
 umask 077
 

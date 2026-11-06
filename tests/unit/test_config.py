@@ -11,7 +11,7 @@ def config():
     return {
         "name": "example-dev",
         "image": "codex",
-        "mounts": [{"project": "example", "target": "/home/agent/src/example"}],
+        "mounts": [{"source": "example", "target": "/home/agent/src/example"}],
         "network": {"allow": [{"host": "api.example.com", "port": 443}]},
     }
 
@@ -44,7 +44,7 @@ def test_rejects_unsafe_configuration(config, key, value):
         parse(config)
 
 
-@pytest.mark.parametrize("target", ["/", "/etc", "/dev/log", "/home/agent", "/a/../etc", "/a,b"])
+@pytest.mark.parametrize("target", ["/", "/etc", "/dev/log", "/a/../etc", "/a,b"])
 def test_rejects_mount_targets(config, target):
     config["mounts"][0]["target"] = target
     with pytest.raises(AgentboxError):
@@ -138,7 +138,7 @@ def test_saved_configuration_defaults_to_home(monkeypatch, tmp_path):
     path = tmp_path / ".config/agentbox/environments/saved.yaml"
     path.parent.mkdir(parents=True)
     path.touch()
-    # A project file must not shadow a saved short name from the trusted directory.
+    # A mount file must not shadow a saved short name from the trusted directory.
     (tmp_path / "saved").write_text("untrusted local file")
     assert resolve_file("saved") == path
 
@@ -155,3 +155,8 @@ def test_persistence_default_and_explicit_choice(config):
     config["persistent"] = False
     assert parse(config).persistent is False
     assert parse(config).to_dict()["persistent"] is False
+
+
+def test_mount_can_cover_container_home(config):
+    config["mounts"][0]["target"] = "/home/agent"
+    assert parse(config).workdir == "/home/agent"

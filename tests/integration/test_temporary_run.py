@@ -10,10 +10,10 @@ from conftest import cli
 
 @pytest.mark.parametrize("operation", ["run", "shell"])
 @pytest.mark.parametrize("exit_code", [0, 17])
-def test_temporary_command_output_exit_and_project_preservation(lab, exit_code, operation):
-    project, path = lab.project()
+def test_temporary_command_output_exit_and_mount_preservation(lab, exit_code, operation):
+    mount, path = lab.mount()
     name, config = lab.configuration(
-        project,
+        mount,
         persistent=operation != "shell",
         command=[
             "python3",
@@ -47,8 +47,8 @@ def test_temporary_command_output_exit_and_project_preservation(lab, exit_code, 
 
 
 def test_temporary_run_rejects_existing_name_without_changes(lab):
-    project, path = lab.project()
-    name = lab.start(project, command=["sh", "-c", "touch /workspace/must-not-run"])
+    mount, path = lab.mount()
+    name = lab.start(mount, command=["sh", "-c", "touch /workspace/must-not-run"])
     before = lab.state(name)["resources"]
     result = cli("run", str(lab.environments[name]), check=False)
     assert result.returncode == 2 and "already exists" in result.stderr
@@ -58,9 +58,9 @@ def test_temporary_run_rejects_existing_name_without_changes(lab):
 
 
 def test_temporary_run_terminal_input_and_size(lab):
-    project, _ = lab.project()
+    mount, _ = lab.mount()
     name, config = lab.configuration(
-        project,
+        mount,
         command=[
             "python3",
             "-c",
@@ -88,10 +88,10 @@ def test_temporary_run_terminal_input_and_size(lab):
 def test_temporary_run_ctrl_c_cleans_up_without_blocking_other_environment(
     lab, terminal, operation
 ):
-    project, path = lab.project()
-    other = lab.start(project)
+    mount, path = lab.mount()
+    other = lab.start(mount)
     name, config = lab.configuration(
-        project,
+        mount,
         persistent=operation != "shell",
         command=["sh", "-c", "touch /workspace/run-ready; sleep 60"],
     )
@@ -145,8 +145,8 @@ def test_temporary_run_ctrl_c_cleans_up_without_blocking_other_environment(
 
 
 def test_stop_removes_nonpersistent_environment(lab):
-    project, path = lab.project()
-    name = lab.start(project, persistent=False)
+    mount, path = lab.mount()
+    name = lab.start(mount, persistent=False)
     cli("exec", name, "--", "sh", "-c", "touch /home/agent/dirty /workspace/kept")
     assert json.loads(cli("stop", name).stdout)["status"] == "removed"
     lab.assert_removed(name)

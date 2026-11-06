@@ -3,7 +3,7 @@ import stat
 
 import pytest
 
-from agentbox import projects, uninstall
+from agentbox import mounts, uninstall
 from agentbox.errors import AgentboxError
 
 
@@ -13,13 +13,13 @@ def test_acl_cleanup_preserves_other_entries_and_masks():
         "default:user::rwx\ndefault:user:123:rwx\ndefault:user:456:r--\n"
         "default:group::r-x\ndefault:mask::r-x\ndefault:other::---\n"
     )
-    result = uninstall.remove_service_acl(before, 123)
+    result = mounts.remove_service_acl(before, 123)
     assert "user:123:" not in result
     assert result == before.replace("default:user:123:rwx\n", "").replace("user:123:rwx\n", "")
 
 
 def test_tree_scan_does_not_follow_links_or_nested_mounts(tmp_path, monkeypatch):
-    root = tmp_path / "project"
+    root = tmp_path / "mount"
     root.mkdir()
     (root / "file").write_text("code")
     outside = tmp_path / "outside"
@@ -29,7 +29,7 @@ def test_tree_scan_does_not_follow_links_or_nested_mounts(tmp_path, monkeypatch)
     nested = root / "mount"
     nested.mkdir()
     (nested / "hidden").touch()
-    monkeypatch.setattr(projects, "_mounts", lambda: {str(nested)})
+    monkeypatch.setattr(mounts, "_mounts", lambda: {str(nested)})
     nodes = uninstall.inspect_tree(root)
     assert {node["relative"] for node in nodes} == {".", "file", "link"}
     assert next(node for node in nodes if node["relative"] == "link")["symlink"]
@@ -41,25 +41,27 @@ def test_open_node_rejects_replaced_file(tmp_path):
     node = next(node for node in nodes if node["relative"] == "file")
     (tmp_path / "file").rename(tmp_path / "old-file")
     (tmp_path / "file").touch()
-    with pytest.raises(AgentboxError, match="Project changed"):
+    with pytest.raises(AgentboxError, match="Mount changed"):
         with uninstall.open_node(tmp_path, node):
             pytest.fail("Replaced file was accepted")
 
 
 def test_affected_hardlink_refused_before_cleanup(tmp_path):
-    root = tmp_path / "project"
+    root = tmp_path / "mount"
     root.mkdir()
     outside = tmp_path / "outside"
     outside.write_text("keep")
     os.link(outside, root / "shared")
-    entries = {"project": {"path": str(root), "identity": projects.identity(root)}}
+    entries = {
+        "source": {"type": "directory", "path": str(root), "identity": mounts.identity(root)}
+    }
     with pytest.raises(AgentboxError, match="Hard-linked shared file"):
-        uninstall.prepare_projects(entries, os.getuid(), os.getuid())
+        uninstall.prepare_mounts(entries, os.getuid(), os.getuid())
     assert outside.read_text() == "keep"
 
 
 def test_symlink_cleanup_transfers_link_without_changing_target(tmp_path, monkeypatch):
-    root = tmp_path / "project"
+    root = tmp_path / "mount"
     root.mkdir()
     outside = tmp_path / "outside"
     outside.write_text("keep")
@@ -70,7 +72,7 @@ def test_symlink_cleanup_transfers_link_without_changing_target(tmp_path, monkey
     monkeypatch.setattr(
         uninstall, "transfer_owner", lambda fd, uid, gid: transferred.append(os.fstat(fd))
     )
-    uninstall.clean_projects([(root, nodes)], os.getuid(), 99999, 99999)
+    uninstall.clean_mounts([(root, nodes)], os.getuid(), 99999, 99999)
     assert any(stat.S_ISLNK(meta.st_mode) for meta in transferred)
     assert outside.read_text() == "keep"
     assert link.is_symlink()
@@ -105,25 +107,25 @@ def test_dry_run_lock_does_not_create_directory_or_file(tmp_path):
 
 
 def test_parent_cleanup_preserves_manual_acl_changes(tmp_path, monkeypatch):
-    root = tmp_path / "project"
+    root = tmp_path / "mount"
     root.mkdir()
     fd = os.open(tmp_path, os.O_PATH | os.O_DIRECTORY)
     try:
         before = "user::rwx\ngroup::---\nother::---\n"
-        current = projects.named_acl(projects.named_acl(before, 12345, "--x"), 12346, "r--")
+        current = mounts.named_acl(mounts.named_acl(before, 12345, "--x"), 12346, "r--")
         written = []
-        monkeypatch.setattr(projects, "read_acl", lambda fd: current)
-        monkeypatch.setattr(projects, "write_acl", lambda fd, acl: written.append(acl))
+        monkeypatch.setattr(mounts, "read_acl", lambda fd: current)
+        monkeypatch.setattr(mounts, "write_acl", lambda fd, acl: written.append(acl))
         journal = {
             "parents": {
                 str(tmp_path): {
                     "before": before,
-                    "after": projects.named_acl(before, 12345, "--x"),
-                    "identity": projects.identity(tmp_path),
+                    "after": mounts.named_acl(before, 12345, "--x"),
+                    "identity": mounts.identity(tmp_path),
                 }
             }
         }
         uninstall.clean_parents(journal, [root], 12345, os.getuid())
-        assert written == [uninstall.remove_service_acl(current, 12345)]
+        assert written == [mounts.remove_service_acl(current, 12345)]
     finally:
         os.close(fd)
