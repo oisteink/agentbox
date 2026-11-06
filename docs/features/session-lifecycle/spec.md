@@ -32,6 +32,12 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
 - --keep-running lar containeren kjøre etter avsluttet kommando. Den stoppes
   eksplisitt med `abx stop NAVN`. Gjentatt bruk av flagget gir ingen teller
   eller ekstra eierskap.
+- Keep-running er ett felles flagg i miljøets gjeldende kjøretilstand. Enhver
+  start/exec med --keep-running kan sette det, også mens andre kjøringer er
+  aktive. Kjøringer uten flagget nullstiller det ikke. Når siste kjøring
+  avsluttes, leses gjeldende flagg før automatisk stopp avgjøres; et tidligere
+  snapshot ved oppstart skal ikke overstyre en senere setting av flagget.
+  Eksplisitt stop overstyrer flagget og avslutter kjøreperioden.
 - `persistent` gjelder containerlaget ved stopp, ikke om miljøet skal stå og
   kjøre. Standard er true: stopp beholder laget, hjemmet og innloggingen.
   Med false fjernes miljøets runtime-ressurser ved stopp.
@@ -247,9 +253,9 @@ Status: felles føring avklart; detaljformat avklares under kommandogjennomgange
 ## Åpent før implementasjon
 
 - Konkrete mekanismer for registrering/opprydding av aktive kjøringer,
-  oppdagelse av krasjede klienter og --keep-running fra en annen kjøring
-  mens oppstarteren er aktiv, avklares i research/plan. Modellen med oversikt
-  over aktive kjøringer og vanlig stopp etter siste kjøring er avklart.
+  og oppdagelse av krasjede klienter avklares i research/plan. Modellen med
+  oversikt over aktive kjøringer og vanlig stopp etter siste kjøring er
+  avklart, med et felles keep-running-flagg som kan settes underveis.
 - Hvordan oppskriftsendringer oppdages, avklares i research/plan. Automatisk
   bygg ved manglende/endret imageoppskrift og erstatning ved imagebytte er
   avklart. Miljøkonfigurasjonsendringer gjelder ved neste oppstart, med
