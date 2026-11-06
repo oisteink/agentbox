@@ -112,6 +112,10 @@ Ingen implementasjon eller nye testløp startes mens brukerflyten diskuteres.
   uten --name eller --path. Utdata viser at registreringen er OK, eller
   konkret hva som er feil. Dette gjelder både menneskemodus og --json;
   JSON følger den felles kontrakten for strukturert suksess eller feil.
+- Mount add kan reaktivere en tilbakekalt registrering med samme navn og
+  samme kilde, både vertskatalog og Docker-volum. Samme navn med en annen
+  kilde gir konflikt. Check --fix og doctor --fix respekterer tilbakekalling
+  og skal ikke automatisk gjenåpne tilgangen.
 - `abx mount list` viser navn, katalogsti og registreringsstatus
   (aktiv/tilbakekalt) i tabell. --json gir tilsvarende strukturerte data.
 - `abx mount check NAVN` kontrollerer katalogidentitet og rettigheter for
