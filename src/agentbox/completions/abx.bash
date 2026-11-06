@@ -3,7 +3,7 @@ _abx()
 {
   local cur="${COMP_WORDS[COMP_CWORD]}" prev="${COMP_WORDS[COMP_CWORD-1]}"
   local action="${COMP_WORDS[1]}" operation="" choices="" kind="" value
-  local i start=2 positional=0
+  local i start=2 positional=0 separated=0
   COMPREPLY=()
 
   local -a words=("${COMP_WORDS[@]}")
@@ -21,7 +21,7 @@ _abx()
   fi
 
   if (( COMP_CWORD == 1 )); then
-    choices="doctor status image validate mount proxy start run stop remove shell logs login-api-key exec completion --help --json --yes"
+    choices="doctor status image validate mount proxy start run stop remove logs login-api-key exec completion --help --json --yes"
   elif [[ "$action" == image ]]; then
     if (( COMP_CWORD == 2 )); then
       choices="list new edit build inspect remove --help --json --yes"
@@ -52,15 +52,29 @@ _abx()
       kind=environments
       start=3
     fi
-  elif [[ "$prev" == --key-file ]] || { [[ "$action" == start || "$action" == run || "$action" == exec || "$action" == validate ]] && (( COMP_CWORD == 2 )) && [[ "$cur" != -* ]]; }; then
+  elif [[ "$prev" == --key-file ]]; then
     compopt -o filenames
     mapfile -t COMPREPLY < <(compgen -f -- "$cur")
-    if [[ "$action" == start || "$action" == run || "$action" == exec || "$action" == validate ]] && [[ "$prev" != --key-file && "$cur" != */* ]]; then
-      while IFS= read -r value; do
-        [[ -n "$value" && "$value" == "$cur"* && ! -e "$value" ]] && COMPREPLY+=("$value")
-      done < <(abx completion --names configs 2>/dev/null)
-    fi
     return
+  elif [[ "$action" == start || "$action" == run || "$action" == exec || "$action" == validate ]] && [[ "$cur" != -* ]]; then
+    for (( i=2; i<COMP_CWORD; i++ )); do
+      case "${COMP_WORDS[i]}" in
+        --keep-running|--json|--yes) ;;
+        *) positional=1 ;;
+      esac
+    done
+    if (( ! positional )); then
+      compopt -o filenames
+      mapfile -t COMPREPLY < <(compgen -f -- "$cur")
+      if [[ "$cur" != */* ]]; then
+        while IFS= read -r value; do
+          [[ -n "$value" && "$value" == "$cur"* && ! -e "$value" ]] && COMPREPLY+=("$value")
+        done < <(abx completion --names configs 2>/dev/null)
+      fi
+      return
+    fi
+    choices="--help --json --yes"
+    [[ "$action" == start || "$action" == exec ]] && choices="--keep-running $choices"
   elif [[ "$action" == mount ]]; then
     if (( COMP_CWORD == 2 )); then
       choices="add list check revoke remove --help --json --yes"
@@ -80,8 +94,9 @@ _abx()
     fi
   else
     case "$action" in
-      start|run|exec|validate) choices="--help --json --yes" ;;
-      stop|remove|shell) kind=environments; choices="--help --json --yes" ;;
+      start|exec) choices="--keep-running --help --json --yes" ;;
+      run|validate) choices="--help --json --yes" ;;
+      stop|remove) kind=environments; choices="--help --json --yes" ;;
       logs) kind=environments; choices="--proxy --help --json --yes" ;;
       login-api-key) kind=environments; choices="--key-file --help --json --yes" ;;
       completion) choices="bash --help --json --yes" ;;
@@ -92,12 +107,12 @@ _abx()
   for (( i=start; i<COMP_CWORD; i++ )); do
     case "${COMP_WORDS[i]}" in
       --key-file) (( i++ )) ;;
-      --key-file=*|--volume|--fix|--proxy|-h|--help|--json|--yes) ;;
-      --) break ;;
+      --key-file=*|--volume|--fix|--proxy|--keep-running|-h|--help|--json|--yes) ;;
+      --) separated=1; break ;;
       *) positional=1 ;;
     esac
   done
-  if [[ "$action" == exec ]] && (( positional )); then
+  if [[ "$action" == exec ]] && { (( separated )) || { (( positional )) && [[ -n "$cur" && "$cur" != -* ]]; }; }; then
     return
   fi
   if [[ "$cur" == -* || -z "$kind" ]] || (( positional )); then

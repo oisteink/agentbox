@@ -60,9 +60,11 @@ Image build sperres av kjørende brukere; image remove også av stoppede.
 Start/run/exec bygger ved endret/manglende input. Stoppet miljø erstattes ved
 nytt image/config, med bevarte mounts. Exec bruker CONFIG og valgt konkret
 agent-ID; på kjørende agent gjenåpner exec aldri en stoppet proxy.
-`abx run MILJØFIL` kjører kommandoen midlertidig i terminalen og fjerner
-miljøet ved avslutning; katalogmounts beholdes. Med `persistent: false`
-klargjør start i bakgrunnen; shell og stop fjerner miljøet.
+Start/exec klargjør og stopper etter siste automatiske kjøring. --keep-running
+er en delt latch frem til stop. Persistent false fjerner runtime ved stopp.
+Run bruker en unik midlertidig instans; katalog-/volummounts beholdes.
+Aktive kjøringer bindes til generation, agent-ID og klient-/helperidentitet.
+Ukjent exec-launch sperrer restart av samme ID; launch-intent overlever stop.
 `scripts/lab/check.sh` installerer og bygger aktuell kilde inne i laben og
 kjører livssyklus/proxy sekvensielt. `--uninstall` velger avinstallasjon sist.
 

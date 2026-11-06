@@ -113,7 +113,7 @@ Miljøfiler beholdes og kan brukes når kilden igjen er aktiv.
 ## Miljøkonfigurasjon
 
 `abx start FIL.yaml` leser miljønavnet fra `name` i miljøfilen.
-Kommandoer som `shell` og `stop` bruker miljønavnet; exec bruker miljøfil eller kortnavn.
+Stop/remove/logs bruker miljønavnet; start/exec/run bruker miljøfil eller kortnavn.
 `start`, `run`, `exec`, `validate` og `proxy apply` støtter også kortnavn uten filending fra
 `~/.config/agentbox/environments/` (eller `$XDG_CONFIG_HOME/agentbox/environments/`).
 `.yaml` og `.yml` støttes. Hvis begge matcher, kreves eksplisitt filvalg.
@@ -130,8 +130,8 @@ små bokstaver, tall og bindestrek, maksimalt 48 tegn.
 | `image` | Påkrevd lokalt oppskriftsnavn, for eksempel `codex` eller `js` |
 | `mounts` | 1 til 32 registrerte mounts, hvert med `source`, absolutt `target` og `mode` (`rw` som standard eller `ro`) |
 | `workdir` | Sti inne i valgt mount; standard er første mountmål. Undermapper i katalogmounts må finnes |
-| `persistent` | Boolsk, standard `true`. Med `false` fjerner `shell` miljøet etter kommandoen; `stop` fjerner det også |
-| `command` | 1 til 128 ikke-tomme argumenter; standard `["bash"]`. Kjøres av `shell` og `run`, uten shelltolking |
+| `persistent` | Boolsk, standard `true`. True bevarer laget ved stopp; false fjerner runtime. Keep-running styrer om miljøet skal forbli kjørende |
+| `command` | 1 til 128 ikke-tomme argumenter; standard `["bash"]`. Kjøres av start og run, uten shelltolking |
 | `network.allow` | Liste over eksakte `host`/`port`-par, maksimalt 128. Tom som standard |
 | `credentials` | Maksimalt 32 regler med `host`, `port: 443`, `header` og `env`; tom som standard. Se [tokenreglene](#api-tokens-på-proxysiden) |
 | `resources.cpus` | 0,1 til 128; standard 2 CPU |
@@ -173,7 +173,8 @@ exitstatus, også ved ikke-null status. Ingen bygg skjer direkte ved edit.
 `image build NAVN` bygger i dedikert rootless Docker. Kjørende brukere sperrer
 bygg; stoppede brukere gjør det ikke. Brukssjekken følger konkrete container-
 referanser, også etter tagflytting, uten å klassifisere avledede images ut fra
-arvede image-labels. Kontrolloperasjonens lås dekker sjekk og bygg.
+arvede image-labels. Kontrolloperasjonens lås dekker sjekk og bygg. Samtidige automatiske bygg
+kan gjenbruke et allerede bygget image med eksakt samme mottatte digest.
 
 Inputdigest beregnes fra mottatt tars sti/type/modus/lenkemål og filbytes, uten
 mtime/eier/padding. Samme funksjon brukes lokalt. Stamp lagres som imagelabel;
@@ -246,54 +247,70 @@ velges eksplisitt for trafikk fra miljøet.
 
 | Operasjon | Oppførsel |
 | --- | --- |
-| `start FIL.yaml` | Leser miljønavnet fra filen, validerer miljø og mounts, oppretter nettverk og proxy før agent; uendret kjørende miljø gjenbrukes |
-| `run FIL.yaml` | Kjører command én gang i terminalen i et nytt miljø; fjerner containere, nettverk og containerlag ved avslutning eller Ctrl-C; filer i katalogmounts beholdes |
-| `shell` | Kjører miljøets konfigurerte kommando; med `persistent: false` fjernes miljøet etterpå, også ved feil eller Ctrl-C |
-| `exec CONFIG -- KOMMANDO` | Bygger/starter ved behov og kjører argumentlisten i valgt konkret agentcontainer; beholder kjørende proxytilstand |
-| `stop` | Med `persistent: true` stoppes agent og proxy og containerlaget beholdes; med `false` fjernes miljøet. Mount-registreringer beholdes |
-| `remove` | Fjerner miljøets containere, nettverk og logger; filer i katalogmounts og ACL-er beholdes |
-| `status` | Viser registrert miljøoppsett og observert containertilstand |
-| `logs` | Viser et begrenset utsnitt av agentutdata eller proxylogg med `--proxy` |
+| `start CONFIG [--keep-running]` | Klargjør ved behov og kjører lagret `command`; siste automatiske kjøring stopper miljøet |
+| `exec CONFIG [--keep-running] -- KOMMANDO` | Samme livssyklus med eksplisitte argumenter |
+| `run CONFIG` | Egen unik midlertidig instans; fjerner bare egne runtime-ressurser |
+| `stop NAVN` | Overstyrer aktive kjøringer og keep-running; true bevarer laget, false fjerner runtime |
+| `remove NAVN` | Fjerner runtime og containerlag; miljøfil og registrerte mountdata beholdes |
+| `status` | Viser runtime, observert containertilstand, aktive kjøringer og keep-running |
+| `logs NAVN` | Begrenset agentutdata; `--proxy` velger proxyloggen |
 
-Et stoppet miljø gjenopptas med uendret konfigurasjon og vertsadresser.
+Start/exec deler en aktiv kjøreperiode bundet til full agent-ID og en separat
+tilfeldig generation-ID. Flere kjøringer registreres individuelt. Den siste
+avslutningen stopper bare en automatisk oppstartet periode med tom sesjonsmap
+og keep-running=false. Flagget er én delt latch, satt av enhver kjøring og
+lest fra gjeldende tilstand ved siste avslutning. Fravær av flagget nullstiller
+ikke latchen. Eksisterende kjørende miljø uten automatisk eierskap beholdes.
+Eksplisitt stop/remove invaliderer perioden før Docker-mutasjon. En gammel
+avslutning påvirker ikke ny periode, også ved samme container-ID.
 
-Med `persistent: true` beholdes containerens `/home/agent`, innlogging og
-installerte filer, også ved manuell gjenopptak etter daemonrestart. Automatisk oppstart av miljøer
-etter vertsreboot finnes ikke.
+`persistent` styrer laget ved stopp. True bevarer hjem, innlogging og installerte
+filer ved uendret oppsett. False fjerner agent/proxy/nettverk/logger ved stopp,
+men kan brukes flere ganger med keep-running frem til stop. Katalog-/volummounts
+beholdes i begge tilfeller. Endret image, profil, klientvariabeltilstand eller
+vertsadresse gir erstatning av stoppet container med bevart mountdata.
+Kjørende miljø beholder sitt oppsett og proxytilstand med pending-beskjed.
+Start bruker lagret command; exec bruker den eksplisitte argumentlisten.
 
-Endret image, profil, klientvariabeltilstand eller vertsadresse gir automatisk
-erstatning ved oppstart av stoppet miljø. Containerlaget slettes; data i
-katalog-/volummounts består. Nettverk/tokenregler endres med proxy apply uten å slette
-agentlaget. Gjenopptak av stoppet miljø og apply validerer DNS på nytt.
+Run avkorter konfigurasjonens navn til 31 tegn og legger til `-run-` samt
+12 tilfeldige heksadesimalsifre. Navnekollisjon avvises før mutasjon. Instansen
+bruker egen konfigurasjonskopi med persistent=false, vises i status og støtter
+logs/stop/remove mens den finnes. Parallelle run og ordinært miljø fra samme
+fil påvirker ikke hverandres runtime. Filen og mountregistreringene beholdes.
 
-`persistent: false` gir ingen bevart container mellom shell-økter. Start
-klargjør i bakgrunnen og varsler om miljøets levetid. Shell varsler før
-kommandoen kjøres og reserverer én økt under lås. Flere shell-forsøk avvises uten opprydding av
-den aktive økten. Reservasjonen beholdes ved start/proxy apply; etter et
-hardt prosessavbrudd kreves eksplisitt remove. Exec er en ekstra kommando
-og utløser ikke opprydding, men prosessen fjernes sammen med miljøet.
+Klient-/helperidentitet består av PID, proc-starttime, boot-ID og UID. Kontroll-
+siden validerer operatør-UID og beregner egen helperidentitet. Startup-session
+journalføres før runtime-mutasjoner. Watcher rydder døde sesjoner gjennom samme
+finalize som normal avslutning. PermissionError/ukjent observasjon bevarer
+registrering og rapporteres; ENOENT, zombie og identitetsbytte betyr død.
+Keep-running kan bevare prosesser etter klientkrasj. Vertsreboot starter ikke
+miljøer automatisk; det finnes ingen egen sesjonstjeneste.
 
-`run` er alltid midlertidig og avviser eksisterende miljønavn. Kommandoens
-exitkode returneres etter vellykket opprydding; oppryddingsfeil gir feilstatus. Opprettelse og fjerning
-bruker vanlig daemonverifikasjon og lås, mens kommandoen kjøres uten global
-lås. Opprydding etter run og ikke-persistent shell sjekker valgt agent-ID
-mot ny tilstand, slik at et gjenskapt miljø med samme navn ikke fjernes. SIGINT utsettes under kritiske mutasjoner.
-SIGKILL og vertskrasj kan etterlate ressurser som må fjernes eksplisitt.
+Vanlig operasjonslås dekker klargjøring, registrering og en kort exec-launch.
+ExecIDs eller avgrenset exec_create-replay identifiserer exec; event alene er
+ikke oppstartsbevis. Rå exec-inspect fra den faste, verifiserte Unixsocketen
+må matche full exec-ID/container-ID og ha positiv heltalls-PID, eller
+Running=false med heltalls-ExitCode. Bool/null/manglende status godtas ikke.
+Samlet launchfrist er 10 sekunder, fordelt over alle observasjonskall.
+Deretter slippes låsen mens kommandoen kjører. Stdin åpnes først ved input_ready.
 
-Terminalsesjoner i vedvarende miljøer har separat levetid fra miljøet.
-`start` starter oppholdsprosessen, ikke `command`. `run`, `shell` og `exec`
-bruker terminal bare når både CLI-ens stdin og stdout er terminaler og JSON
-ikke er valgt. Uten terminal videresendes stdin, og stdout/stderr holdes atskilt.
-Standardutskrift er for mennesker. `--json` gir JSON Lines med output-hendelser
-og ett terminalt resultat med `ok`, `data` eller `error.code/message`, samt
-`exit_code` for prosesser. Håndterte feil, kommandofeil og håndtert Ctrl-C gir
-CLI-exitkode 0 i JSON-modus. Manglende terminalresultat er ikke suksess.
-`--yes` gir samtykke; maskinmodus spør aldri interaktivt. Detaljert kontrakt
-står i [bruksveiledningen](usage.md#utskrift-og-automatisering).
-Terminalstørrelse og størrelsesendringer videresendes. Kontrolloperasjoner låses,
-tilstand skrives atomisk, og opprydding avgrenses med ressurs-ID-er og
-installasjons-/miljøetiketter. Global Docker-prune brukes ikke. Testavgrensninger
-for krasj og samtidighet står i teststatus.
+Separat launch-intent journalføres før Popen og overlever stop/helperkrasj.
+Uavklart backendutfall stopper miljøet og sperrer samme container-ID til
+bekreftet utfall eller faktisk fjerning. Abx forsøker avklaring i neste
+handling. Persistent lag slettes ikke automatisk ved launch_unknown.
+Tilgang til operatørens proc-metadata kreves; restriktiv hidepid kan hindre bruk.
+Loggskriving og rotasjon bruker et katalog-FD åpnet under låsen, slik at
+fjernet/gjenskapt miljø med samme navn ikke mottar gammel loggtrafikk.
+
+Start, exec og run bruker TTY bare når stdin/stdout er terminaler og JSON ikke
+er valgt. Ellers videresendes stdin med atskilt stdout/stderr. Ctrl-C venter
+på identitetsbundet opprydding. Standardutskrift er for mennesker. `--json`
+gir JSON Lines med output-hendelser og ett resultat med `ok`, `data` eller
+`error.code/message`, samt `exit_code` for prosesser. Resultatet angir miljøets
+faktiske navn. Håndterte feil og Ctrl-C gir CLI-exitkode 0 i JSON-modus.
+Manglende sluttresultat er ikke suksess. `--yes` gir samtykke; maskinmodus spør
+aldri interaktivt. Se [utskriftskontrakten](usage.md#utskrift-og-automatisering).
+Global Docker-prune brukes ikke. Testavgrensninger står i teststatus.
 
 Agentnøkler gis eksplisitt per miljø. `login-api-key` krever en privat fil eid
 av utvikleren og sender nøkkelen via stdin. Kontrollverktøyet logger ikke

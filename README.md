@@ -61,29 +61,29 @@ network:
   allow: []
 ```
 
-Start og åpne miljøet:
+Åpne miljøet:
 
 ```sh
 abx validate example-codex
 abx start example-codex
-abx shell example-codex
 ```
 
 Kortnavnet finner `example-codex.yaml` i `~/.config/agentbox/environments/`.
 Du kan også bruke en eksplisitt YAML-sti, som `abx start ./agentbox.yaml`.
 
-Dette åpner Bash i vertskatalogn med nettverket stengt. Endringer i montert
+Dette åpner Bash i vertskatalogen med nettverket stengt. Endringer i montert
 kode lagres direkte på verten. Miljønavnet beskriver planlagt Codex-bruk;
 start med Bash for å kontrollere filtilgang. Følg
 [bruksveiledningen](docs/usage.md) for nettverk, Codex-innlogging og daglig bruk.
 
-`exit` lukker skallet. `abx stop example-codex` stopper miljøet og beholder
-hjem og innlogging. `abx remove example-codex` sletter containerlaget,
+`exit` lukker skallet; siste aktive kjøring stopper miljøet og beholder hjem
+og innlogging. `abx start example-codex --keep-running` lar miljøet kjøre
+frem til `abx stop example-codex`. `abx remove example-codex` sletter containerlaget,
 inkludert innlogging og verktøyoppsett. Monterte filer i katalogmounts beholdes.
 
 Sett `persistent: false` i miljøfilen for et nytt containerlag ved hver økt.
 Eksplisitte mounts bevares.
-`start` klargjør miljøet; `shell` kjører kommandoen og fjerner deretter miljøet.
+Start/exec fjerner et slikt miljø ved siste avslutning, uten keep-running.
 Filer i katalogmounts beholdes. Se [miljø uten bevart containerlag](docs/usage.md#miljø-uten-bevart-containerlag).
 
 ## API-nøkler via proxyen
@@ -114,10 +114,9 @@ du bruker et annet navn. Nettverkstillatelsene og aliaset er allerede lagt inn.
 read -rsp 'Context7 API-nøkkel: ' context7_api_key
 printf '\n'
 export context7_api_key
-abx start context7-codex
 abx exec context7-codex -- codex mcp add context7 \
   --url https://mcp.context7.com/mcp --bearer-token-env-var CONTEXT7_TOKEN
-abx shell context7-codex
+abx start context7-codex
 ```
 
 Codex sin egen kontoinnlogging gjøres separat med
@@ -128,7 +127,7 @@ dette; containerlaget erstattes og eksplisitte mounts beholdes.
 Se [brukerveiledningen](docs/usage.md#api-tokens-i-proxyen) for tilbakekalling
 og begrensninger.
 
-For midlertidig kjøring, bruk en miljøfil med ledig navn:
+Kjør samme miljøfil i en separat midlertidig instans:
 
 ```sh
 abx run ./task.yaml

@@ -20,7 +20,7 @@ def test_volume_profiles_survive_remove_run_and_image_change(lab):
             {"source": profile, "target": "/readonly-profile", "mode": "ro"},
         ],
     )
-    cli("start", str(path))
+    cli("start", "--keep-running", str(path))
     cli("exec", name, "--", "sh", "-c", "printf retained > /home/agent/.config/tool/config")
     assert cli("exec", name, "--", "cat", "/readonly-profile/config").stdout == "retained"
     assert (
@@ -42,7 +42,7 @@ def test_volume_profiles_survive_remove_run_and_image_change(lab):
     lab.assert_removed(name)
     data["image"] = "codex"
     path.write_text(yaml.safe_dump(data))
-    cli("start", str(path))
+    cli("start", "--keep-running", str(path))
     assert cli("exec", name, "--", "cat", "/home/agent/.config/tool/config").stdout == "retained"
     cli("remove", name)
     removed = machine("mount", "remove", profile)[-1]
@@ -62,11 +62,11 @@ def test_nonpersistent_home_uses_explicit_volume(lab):
         mounts=[{"source": home, "target": "/home/agent"}],
         command=["sh", "-c", 'test "$HOME" = /home/agent; echo retained > "$HOME/marker"'],
     )
-    cli("start", str(path))
+    cli("start", "--keep-running", str(path))
     first = lab.state(name)["resources"]["agent"]
-    cli("shell", name)
+    cli("stop", name)
     lab.assert_removed(name)
-    cli("start", str(path))
+    cli("start", "--keep-running", str(path))
     assert lab.state(name)["resources"]["agent"] != first
     assert cli("exec", name, "--", "cat", "/home/agent/marker").stdout == "retained\n"
     cli("stop", name)
@@ -167,7 +167,7 @@ def test_directory_revoke_keeps_open_handle_and_fix_does_not_reactivate(lab):
     cli("stop", name)
     assert machine("start", str(lab.environments[name]))[-1]["error"]["code"] == "mount_unavailable"
     cli("mount", "add", source, str(root))
-    cli("start", str(lab.environments[name]))
+    cli("start", "--keep-running", str(lab.environments[name]))
     assert cli("exec", name, "--", "cat", "/workspace/data").stdout == "retained"
     cli("mount", "revoke", source)
     cli("remove", name)

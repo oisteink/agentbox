@@ -52,8 +52,11 @@ def test_installed_json_interrupt_cleans_temporary_environment(lab):
         stderr=subprocess.PIPE,
         text=True,
     ) as process:
-        first = json.loads(process.stdout.readline())
-        assert first["type"] == "output" and "ready" in first["data"]
+        while True:
+            first = json.loads(process.stdout.readline())
+            assert first["type"] == "output"
+            if first["stream"] == "stdout" and "ready" in first["data"]:
+                break
         process.send_signal(signal.SIGINT)
         process.wait(timeout=30)
         output = process.stdout.read()

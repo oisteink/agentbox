@@ -10,7 +10,6 @@ fortsatt må fastsettes i research og plan.
 
 | Område | Oppgave |
 | --- | --- |
-| Samle start, exec og run med automatisk livssyklus | [#11](https://github.com/oisteink/agentbox/issues/11) |
 | Gjør proxyoppgradering og nødstopp pålitelige | [#12](https://github.com/oisteink/agentbox/issues/12) |
 | Administrer miljøfiler, status og logger | [#15](https://github.com/oisteink/agentbox/issues/15) |
 | Samle diagnose og reparasjon i doctor | [#17](https://github.com/oisteink/agentbox/issues/17) |
@@ -20,54 +19,10 @@ erstatning samordnes; doctor gjenbruker operasjonene fra mounts og images.
 
 ## Kjøring og persistens
 
-- Normal bruk starter nødvendige ressurser automatisk. Brukeren skal ikke
-  henvises til en annen kommando når abx har informasjonen som trengs.
-- Shell fjernes helt fra CLI-en, uten alias. Start kjører miljøets
-  konfigurerte kommando; exec kjører en annen eksplisitt kommando.
-- Start, exec, run, validate og proxy apply bruker samme config-oppslag.
-  Kortnavn hentes fra ~/.config/agentbox/environments/ med øvrig XDG-støtte;
-  eksplisitt filsti bruker den angitte filen. Manglende eller tvetydig filvalg
-  gir en konkret feil.
-- `abx start CONFIG [--keep-running]` bygger image ved behov, oppretter eller
-  starter miljøet og kjører miljøets konfigurerte kommando i terminalen.
-- `abx exec CONFIG [--keep-running] -- KOMMANDO` har samme livssyklus, med
-  en eksplisitt kommando. Interaktiv terminal velges automatisk når det passer.
-  Pipet stdin skal videresendes uten TTY; stdout skal kunne omdirigeres.
-- Start/exec registreres som aktive kjøringer knyttet til konkret container.
-  Når abx starter containeren for slike kjøringer, stoppes den automatisk
-  etter at siste aktive kjøring er ferdig, med mindre --keep-running gjelder.
-  Oppstarterens avslutning skal ikke avbryte andre aktive kjøringer.
-  En container som allerede står og kjører utenfor denne automatiske
-  livssyklusen, stoppes ikke av en kjøring som bare bruker den.
-- Oversikten registrerer kjøringene fremfor bare et antall, slik at en
-  krasjet klient kan oppdages. Registrering og avgjørelse om vanlig stopp
-  samordnes under lås og bindes til containeridentitet; en gammel kjøring
-  skal ikke stoppe en erstatningscontainer med samme navn.
-- --keep-running lar containeren kjøre etter avsluttet kommando. Den stoppes
-  eksplisitt med `abx stop NAVN`. Gjentatt bruk av flagget gir ingen teller
-  eller ekstra eierskap.
-- Keep-running er ett felles flagg i miljøets gjeldende kjøretilstand. Enhver
-  start/exec med --keep-running kan sette det, også mens andre kjøringer er
-  aktive. Kjøringer uten flagget nullstiller det ikke. Når siste kjøring
-  avsluttes, leses gjeldende flagg før automatisk stopp avgjøres; et tidligere
-  snapshot ved oppstart skal ikke overstyre en senere setting av flagget.
-  Eksplisitt stop overstyrer flagget og avslutter kjøreperioden.
-- `persistent` gjelder containerlaget ved stopp, ikke om miljøet skal stå og
-  kjøre. Standard er true: stopp beholder laget, hjemmet og innloggingen.
-  Med false fjernes miljøets runtime-ressurser ved stopp.
-- Et ikke-persistent miljø kan startes med --keep-running, brukes til flere
-  kommandoer/økter i samme container og til slutt fjernes med stop.
-- `abx run CONFIG` bruker alltid et nytt, separat midlertidig miljø og fjerner
-  bare dette etter bruk. Et eksisterende miljø fra samme konfigurasjon berøres ikke.
-- Hver run-instans får et automatisk unikt navn, eksempelvis analyse-run-a1b2.
-  Navnet vises ved oppstart og i status mens instansen finnes, og kan brukes
-  med logs, stop og nødstopp. Flere run fra samme konfigurasjon kan kjøre
-  samtidig. Etter opprydding fjernes instansen fra status; den opprinnelige
-  miljøkonfigurasjonen og eventuelt vanlig miljø beholdes.
-- `abx remove NAVN` rydder både persistente og ikke-persistente miljøer, også
-  kjørende. Allerede fjernede ressurser krever ingen handling.
-- Stopp/fjerning sletter ikke miljøkonfigurasjon, filer i mounts eller
-  mount-registreringer. Fjerning av containerlaget sletter hjem/innlogging.
+Videre arbeid bruker den implementerte [livssyklusen](../../usage.md#avbrutte-kjøringer)
+med aktive kjøringer, delt keep-running og separate run-instans­er. Nødstopp
+må overstyre registreringer og håndtere journalførte launch-intents uten
+å gjenopprette en stoppet generasjon.
 
 ## Miljøfiler, status og logger
 
@@ -75,7 +30,7 @@ erstatning samordnes; doctor gjenbruker operasjonene fra mounts og images.
   aldri er startet eller har fått containeren fjernet. Oversikten viser
   miljønavn, status (kjører/stoppet/ikke opprettet) og persistens.
 - `abx status NAVN` viser detaljer for ett miljø: tilstand, persistens, image,
-  mounts/mounts og nettverkstilganger, også uten opprettet container.
+  mounts og nettverkstilganger, også uten opprettet container.
 - `abx logs NAVN` viser siste utsnitt av agentloggen; `--proxy` velger
   proxyloggen. `-f` / `--follow` følger nye logghendelser fortløpende for
   begge loggtyper. Ctrl-C avslutter loggvisningen uten å stoppe miljøet.
@@ -147,7 +102,7 @@ volumsletting, tilbakekalling og samtykke for fjerning av kildebrukere.
 Livssyklusarbeidet bruker [image-klargjøringen](../../usage.md#lokale-maler-redigering-og-bygg)
 med lokale maler, inputdigest, bygg ved behov og erstatning av stoppede
 containere. Pending endrer ikke kjørende agent/proxy. Exec er bundet til valgt
-agent-ID; nye eierskaps-/keep-running-regler skal bevare denne grensen.
+agent-ID; øvrige kontrolloperasjoner skal bevare denne grensen.
 
 ## Completion og miljøredigering
 
@@ -196,11 +151,5 @@ og ett sluttresultat når visningen avsluttes.
 
 ## Åpent før implementasjon
 
-- Konkrete mekanismer for registrering/opprydding av aktive kjøringer,
-  og oppdagelse av krasjede klienter avklares i research/plan. Modellen med
-  oversikt over aktive kjøringer og vanlig stopp etter siste kjøring er
-  avklart, med et felles keep-running-flagg som kan settes underveis.
-- Detaljer for config-/navneoppslag, isolerte run-navn, avbrudd og feilbaner
-  avklares i research/plan.
 - Mekanisme for å oppdage endret proxykode og ta nytt proxyimage i bruk ved
   oppgradering er ikke valgt. Den må håndtere at gamle proxycontainere finnes.

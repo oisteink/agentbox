@@ -69,7 +69,7 @@ def test_local_image_build_context_and_use_guard(lab):
     cli("exec", env, "--", "test", "!", "-e", "/recipe/ignored")
     (recipe / "marker").write_text("second")
     assert json.loads(cli("image", "list").stdout)[name]["status"] == "stale"
-    pending = cli("start", str(lab.environments[env]))
+    pending = cli("start", "--keep-running", str(lab.environments[env]))
     assert "next startup" in pending.stderr
     assert lab.state(env)["resources"]["agent"] == original
     assert cli("exec", env, "--", "cat", "/recipe/marker").stdout == "first"
@@ -83,7 +83,7 @@ def test_local_image_build_context_and_use_guard(lab):
     assert first != second
     assert cli("image", "remove", name, check=False).returncode != 0
     assert env in json.loads(cli("image", "inspect", name).stdout)["environments"]
-    cli("start", str(lab.environments[env]))
+    cli("start", "--keep-running", str(lab.environments[env]))
     assert lab.state(env)["resources"]["agent"] != original
     assert cli("exec", env, "--", "cat", "/recipe/marker").stdout == "second"
     assert cli("exec", env, "--", "cat", "/profile/data").stdout == "retained\n"
@@ -124,10 +124,10 @@ def test_edit_image_uses_operator_editor_and_returns_status(lab):
     assert json.loads(cli("image", "inspect", name).stdout)["status"] == "unbuilt"
 
 
-def test_exec_exit_status_and_configured_shell(lab):
+def test_exec_exit_status_and_configured_start(lab):
     mount, _ = lab.mount()
-    env = lab.start(mount, command=["python3", "-c", "print('configured-shell')"])
-    assert cli("shell", env).stdout == "configured-shell\n"
+    env = lab.start(mount, command=["python3", "-c", "print('configured-start')"])
+    assert cli("start", str(lab.environments[env])).stdout == "configured-start\n"
     result = cli(
         "exec",
         env,
@@ -245,7 +245,7 @@ def test_acl_repair_and_revocation_leave_other_mount_working(lab):
     assert json.loads(cli("mount", "list").stdout)[other]["status"] == "revoked"
     cli("stop", env)
     cli("mount", "add", other, str(other_path))
-    cli("start", str(lab.environments[env]))
+    cli("start", "--keep-running", str(lab.environments[env]))
     assert cli("exec", env, "--", "cat", "/readonly/marker").stdout == "other mount"
     cli(
         "exec",
@@ -302,12 +302,12 @@ def test_stop_start_preserves_container_and_home(lab):
     env = lab.start(mount)
     before = lab.state(env)["resources"]
     cli("exec", env, "--", "sh", "-c", "printf home-survives > /home/agent/marker")
-    cli("start", str(lab.environments[env]))
+    cli("start", "--keep-running", str(lab.environments[env]))
     assert lab.state(env)["resources"] == before  # Running start is idempotent, too.
     cli("stop", env)
     cli("stop", env)
     assert lab.state(env)["containers"] == {"agent": "exited", "proxy": "exited"}
-    cli("start", str(lab.environments[env]))
+    cli("start", "--keep-running", str(lab.environments[env]))
     assert lab.state(env)["resources"]["agent"] == before["agent"]
     assert cli("exec", env, "--", "cat", "/home/agent/marker").stdout == "home-survives"
     assert cli("exec", env, "--", "cat", "/workspace/code").stdout == "mount survives"
@@ -323,11 +323,11 @@ def test_changed_profile_waits_for_restart_and_recreates_container(lab):
     modified = yaml.safe_load(config.read_text())
     modified["resources"]["pids"] = 128
     config.write_text(yaml.safe_dump(modified))
-    assert "next startup" in cli("start", str(config)).stderr
+    assert "next startup" in cli("start", "--keep-running", str(config)).stderr
     assert lab.state(env)["resources"]["agent"] == before
     assert cli("exec", env, "--", "cat", "/home/agent/marker").stdout == "retained"
     cli("stop", env)
-    cli("start", str(config))
+    cli("start", "--keep-running", str(config))
     assert lab.state(env)["resources"]["agent"] != before
     cli("exec", env, "--", "test", "!", "-e", "/home/agent/marker")
     assert cli("exec", env, "--", "cat", "/sys/fs/cgroup/pids.max").stdout == "128\n"
@@ -456,6 +456,6 @@ def test_daemon_restart_preserves_home(lab):
         time.sleep(0.2)
     else:
         pytest.fail("daemon/address guard did not recover")
-    cli("start", str(lab.environments[env]))
+    cli("start", "--keep-running", str(lab.environments[env]))
     assert lab.state(env)["resources"]["agent"] == before
     assert cli("exec", env, "--", "cat", "/home/agent/marker").stdout == "retained"

@@ -361,3 +361,33 @@ def test_running_recipe_reference_survives_tag_movement(reference):
     with pytest.raises(AgentboxError) as error:
         images.build(docker, "test", "js", build_context(), environments=environments)
     assert error.value.code == "image_in_use" and not docker.mutations
+
+
+def test_automatic_build_reuses_exact_digest_built_by_another_session(recipes, monkeypatch):
+    images.new("shared")
+    source = io.BytesIO()
+    images.archive("shared", source)
+    source.seek(0)
+    digest = images.fingerprint_archive(source)
+    details = {
+        "Id": "sha256:shared",
+        "Architecture": "amd64",
+        "Config": {
+            "Labels": {
+                "agentbox.installation": "install",
+                "agentbox.image": "shared",
+                "agentbox.recipe-digest": digest,
+            }
+        },
+    }
+    docker = SimpleNamespace()
+    monkeypatch.setattr(images, "managed", lambda *args, **kwargs: details)
+    monkeypatch.setattr(
+        images, "inspect", lambda *args, **kwargs: {"digest": digest, "id": details["Id"]}
+    )
+    monkeypatch.setattr(
+        images, "require_recipe_idle", lambda *args, **kwargs: pytest.fail("No actual build needed")
+    )
+    assert (
+        images.build(docker, "install", "shared", source, if_needed=True)["id"] == "sha256:shared"
+    )

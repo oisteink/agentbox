@@ -99,16 +99,29 @@ Skriptet bruker systemets Python uavhengig av den installerte CLI-en.
 Vanlige kontrolloperasjoner får ikke denne root-tilgangen. Se
 [avinstallasjon](installation.md#avinstallasjon) for omfang og filrydding.
 
-Med standardverdien `persistent: true` bevarer `stop` containerlaget, inkludert
-verktøyoppsett og innlogging. Med `false` fjerner både avsluttet `shell` og
-`stop` miljøet; neste `start` oppretter en ny container fra imaget.
-Et bevart miljø kan startes igjen med uendret konfigurasjon. Nettverk/tokenregler aktiveres med `proxy apply` uten å
-slette hjemmet. Endret image, konfigurasjon, klientvariabeltilstand eller
-vertsadresse gir automatisk ny container ved oppstart av stoppet miljø.
-Umontert hjem og innlogging slettes da, mens katalog-/volummounts består.
-Kjørende miljø beholdes med pending-beskjed. Exec på kjørende agent gjenåpner
-ikke en stoppet proxy. Valgt agent-ID binder klargjøring til kommandoen.
-Data i eksplisitte mounts består. Miljøer startes ikke automatisk etter vertsreboot.
+Start/exec klargjør og registrerer aktive kjøringer under én operasjonslås.
+Hver kjøreperiode har generation-ID og full agent-ID, en sessions-map og én
+keep-running-latch. Klient/helper bindes til PID/starttime/boot-ID/UID.
+Startup-session lagres før runtime-mutasjon. Kontrollhjelperen bekrefter
+konkret exec-PID eller endelig exitstatus gjennom read-only Engine-inspeksjon
+på den faste Unixsocketen før låsen slippes. Kommandoen og PTY-strømmingen
+bruker DockerCLI uten global lås. Loggoperasjoner bruker åpnet katalog-FD.
+
+Siste automatiske kjøring stopper miljøet når sessions-map er tom og latchen
+ikke er satt. Eksplisitt stop invaliderer perioden og overstyrer begge.
+Watcher rydder døde klienter med samme finalize som normal avslutning.
+Uavklart exec-launch lagres separat og sperrer samme container-ID frem til
+bekreftelse eller faktisk fjerning. Unknown/PermissionError i proc-observasjon
+bevarer sesjonen. Se [livssyklusvalget](decisions.md#automatisk-livssyklus).
+
+Persistent true bevarer laget ved stopp; false fjerner runtime. Keep-running
+kan beholde begge typer frem til eksplisitt stop. Run lager en unik synlig
+instans med persistent=false; vanlige miljøer og parallelle run påvirkes ikke.
+Endret image, konfigurasjon, klientvariabeltilstand eller vertsadresse gir
+ny container ved oppstart av stoppet miljø. Mountdata beholdes. Kjørende
+agent/proxy beholdes uendret med pending-beskjed; start/exec åpner ikke en
+stoppet proxy. Proxy apply aktiverer eksplisitte nettverks-/tokenendringer.
+Miljøer starter ikke automatisk etter vertsreboot.
 
 Agenten kjører med droppede capabilities, `no-new-privileges`, ressursgrenser
 og en strengere Moby-seccomp-profil som blant annet blokkerer nye Unix-sockets.
@@ -119,20 +132,11 @@ kjerne. Ved utbrudd med tjenestebrukerens rettigheter gjelder all tilgang
 `agentbox` har, inkludert andre registrerte mounts og allment lesbare filer.
 Felles daemonbruker gir ikke separat vertsisolering mellom miljøene.
 
-Midlertidig kjøring med `run` bruker samme opprettelse og terminalkjøring som
-`start`/`exec`. `shell` med `persistent: false` deler den samme identitetsbundne
-oppryddingen. Den reserverer én shell-økt under lås; en samtidig shell avvises.
-Kommandoen kjøres uten global lås. Ved hardt avbrudd beholdes reservasjonen
-til eksplisitt fjerning, så et delvis brukt hjem ikke gjenbrukes av ny shell. Kontrollhjelperen fjerner miljøet ved avslutning. Oppryddingen
-leser ny tilstand under lås og verifiserer agent-ID før fjerning. CLI-en venter
-på opprydding ved Ctrl-C; et hardt prosessavbrudd eller vertskrasj kan etterlate
-ressurser som må fjernes eksplisitt.
-
 ## Avgrensninger
 
 Se [teststatus](test-results.md) for labprøver, manuell bruk og testavgrensninger.
-Linked worktrees med Git-metadata utenfor arbeidsmappen og separat
-profillagring støttes ikke.
+Linked worktrees med Git-metadata utenfor valgte mounts støttes ikke.
+Profiler kan bevares med eksplisitte katalog-/volummounts.
 
 ## Teknisk grunnlag
 

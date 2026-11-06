@@ -11,8 +11,8 @@ feilmeldinger på stderr. `abx validate MILJØFIL` skriver `OK` eller en konkret
 feil. En kommando som kjøres i miljøet, gir sin exitkode tilbake til skallet.
 
 Bruk `--json` for maskinlesbar utskrift. Flagget kan stå før kommandoen eller
-på kommandonivå; for `exec` må det stå før miljønavnet. Alt etter miljønavnet
-er kommandoargumenter. `--` skiller eksplisitt mellom abx og kommandoen.
+på kommandonivå. For exec står abx-flagg før `--`; alt etter `--` er
+kommandoargumenter, også flagg som heter `--json` eller `--keep-running`.
 
 ```sh
 abx --json status
@@ -192,7 +192,6 @@ Bruk `command: ["bash"]` for å åpne et vanlig skall mens du prøver filtilgang
 ```sh
 abx validate example-codex
 abx start example-codex
-abx shell example-codex
 ```
 
 `start`, `run`, `exec`, `validate` og `proxy apply` finner kortnavn uten filending under
@@ -205,96 +204,94 @@ Eksplisitte stier fungerer, eksempelvis `abx start ./agentbox.yaml`.
 Et filnavn med ending, som `abx start example-codex.yaml`, bruker en lokal
 fil hvis den finnes, ellers samme filnavn i standardkatalogen.
 
-Miljønavnet hentes fra `name` i YAML-filen. Filnavnet velger du selv. `start`
-klargjør miljøet med en oppholdsprosess. `shell` kjører `command` fra miljøets
-lagrede konfigurasjon, som kan være Codex eller Bash. Du kan åpne Bash
-separat uten å endre konfigurasjonen; exec bygger og starter ved behov:
-
-```sh
-abx exec example-codex -- bash
-```
-
-Med standardinnstillingen `persistent: true` lukker du terminalsesjonen ved å
-avslutte programmet eller skallet. Miljøet fortsetter å kjøre. Åpne det igjen med `abx shell example-codex`.
-
-```sh
-abx status
-abx stop example-codex
-```
-
-Et stoppet miljø gjenopptas med samme `start`-kommando og miljøfil. Ved endret
-image, konfigurasjon eller vertsadresse erstattes containerlaget; eksplisitte
-mounts beholdes. Kjørende miljøer beholder sitt oppsett med pending-beskjed.
-Exec bruker samme filoppslag som start, velger en konkret container og lar
-miljøet kjøre videre etter kommandoen. På allerede kjørende agent beholder
-exec proxyen stoppet hvis du har brukt proxy stop. Miljøene startes ikke
-automatisk etter vertsreboot.
-
-## Miljø uten bevart containerlag
-
-Sett dette på toppnivå i miljøfilen:
-
-```yaml
-persistent: false
-```
-
-Standardverdien er `true`. Med `false` klargjør `start` miljøet i bakgrunnen
-og varsler om at det er midlertidig. `shell` varsler før den kjører miljøets
-kommando og fjerner miljøet når kommandoen avsluttes, også ved feil og Ctrl-C:
+Miljønavnet hentes fra `name` i YAML-filen. `start` klargjør miljøet og kjører
+filens `command` i terminalen. `exec` kjører en eksplisitt kommando, med samme
+klargjøring og opprydding:
 
 ```sh
 abx start example-codex
-abx shell example-codex
+abx exec example-codex -- bash
+abx exec example-codex -- echo Bananmaskinoperator
 ```
 
-Etter fjerning oppretter neste `start` en ny container fra imaget. Containerlag
-og logger fra økten slettes; data i eksplisitte katalog-/volummounts beholdes.
-Det gjelder også hjem og profiler som er montert inn.
-`stop` fjerner også et slikt miljø, selv om du ikke har kjørt `shell`.
+Avslutt programmet eller skallet for å avslutte kjøringen. Når siste aktive
+kjøring er ferdig, stopper abx miljøet det selv startet. Flere terminaler kan
+bruke samme miljø samtidig. Den første som avslutter, stopper ikke de andre.
+Med standardverdien `persistent: true` beholdes containerlaget, hjem og
+innlogging ved stopp. Neste start gjenopptar laget når oppsettet er uendret.
 
-Bare én `shell` kan kjøre i miljøet om gangen. `exec` kan brukes til ekstra
-kommandoer i det klargjorte miljøet; det utløser ikke opprydding. Når `shell`
-avsluttes, fjernes hele miljøet, inkludert eventuelle ekstra prosesser.
-`run` fjerner alltid miljøet, uansett verdien av `persistent`.
+Bruk `--keep-running` for å beholde miljøet kjørende etter kommandoen:
 
-Ved SIGKILL eller vertskrasj kan ressurser gjenstå. En allerede reservert
-shell-økt gjenbrukes ikke; fjern miljøet med `abx remove NAVN` og start på nytt.
-Endret `persistent` tas i bruk ved neste oppstart av stoppet miljø, med nytt
-containerlag og bevarte eksplisitte mounts.
+```sh
+abx start example-codex --keep-running
+abx exec example-codex --keep-running -- echo klar
+abx stop example-codex
+```
+
+Flagget gjelder hele den aktuelle kjøreperioden. Enhver start/exec kan sette
+det; gjentatt bruk gir ingen teller. Kjøringer uten flagget nullstiller det
+ikke. `stop` stopper miljøet selv om kjøringer er aktive eller flagget er satt.
+Et miljø som allerede kjører uten automatisk eierskap, beholdes også.
+`status` viser antall aktive kjøringer og om miljøet skal beholdes kjørende.
+
+Endret image, konfigurasjon eller vertsadresse kan erstatte containerlaget
+ved neste oppstart av stoppet miljø; eksplisitte mounts beholdes. Kjørende
+miljø beholder oppsettet og gir beskjed om ventende endringer. Start bruker
+da den lagrede kommandoen; exec bruker argumentene du oppgir etter `--`.
+Start/exec gjenåpner ikke en proxy du har stoppet mens agenten kjører.
+`proxy apply` aktiverer eksplisitte nettverks-/tokenendringer.
+Miljøer starter ikke automatisk etter vertsreboot.
+
+## Miljø uten bevart containerlag
+
+Sett `persistent: false` på toppnivå i miljøfilen. Ved stopp fjernes
+containere, nettverk, containerlag og logger. Registrerte mounts og volumdata
+beholdes. Start varsler om at miljøet er ikke-persistent.
+
+```sh
+abx start example-codex
+```
+
+Neste start gir en ny container. Med `--keep-running` kan du bruke samme
+ikke-persistente container til flere kommandoer og økter frem til eksplisitt
+`abx stop example-codex`. Flere aktive kjøringer deler den til siste avslutning.
 
 ## Midlertidig kjøring
 
-`abx run FIL.yaml` kjører miljøfilens `command` én gang i terminalen og
-fjerner deretter agent, proxy, nettverk og containerlag. Monterte filer i katalogmounts
-beholdes. Lagre dette som `task.yaml`; det bruker lokalt `codex`-image og
-registrert mount `example`:
-
-```yaml
-name: example-task
-image: codex
-command: ["bash"]
-mounts:
-  - source: example
-    target: /workspace
-```
+`abx run CONFIG` kjører filens kommando i en separat midlertidig instans og
+fjerner instansen etter bruk, uansett filens `persistent`. Et vanlig miljø
+fra samme fil og andre run-instans­er fortsetter uavhengig.
 
 ```sh
-abx run ./task.yaml
+abx run example-codex
 ```
 
-`run` støtter samme kortnavn og miljøfiler som `start`. Kommandoen kjøres i
-forgrunnen med automatisk opprydding.
+Instansen får et navn som `example-codex-run-a1b2c3d4e5f6`. Navnet vises ved
+oppstart, i status og i JSON-sluttresultatet. Det kan brukes med logs, stop
+og remove mens instansen finnes. Lange miljønavn avkortes slik at hele
+instansnavnet holder seg innen 48 tegn. Etter opprydding forsvinner raden.
+Miljøfilen, mount-registreringer og mountdata beholdes.
 
-Bruk et ledig miljønavn. Et eksisterende miljø med samme navn avvises uten
-endringer. Kommandoens exitkode returneres etter opprydding. Ctrl-C avbryter
-kjøringen og venter på oppryddingen; oppryddingsfeil gir feilstatus.
-Containerlaget og miljøets logger slettes; eksplisitte mounts består. Legg filer som
-skal beholdes i mountene. Ved SIGKILL eller vertskrasj kan ressurser
-gjenstå; kontroller `abx status` og fjern miljøet med `abx remove NAVN`.
+Når stdin og stdout er terminaler, brukes en interaktiv terminal. Ellers
+videresendes stdin, med atskilt stdout/stderr. Dette gjelder start, exec og run.
+Kommandoens exitkode returneres etter opprydding; JSON bruker `exit_code` i
+resultatet. Ctrl-C avslutter kjøringen og venter på opprydding.
 
-Når både stdin og stdout er terminaler, brukes en interaktiv terminal. Ellers
-videresendes stdin uten terminal, og kommandoens stdout og stderr holdes atskilt.
-Utdata lagres også i en privat, størrelsesbegrenset logg hos tjenestebrukeren.
+## Avbrutte kjøringer
+
+Den eksisterende vakten oppdager døde klienter og kontrollhjelpere gjennom
+Linux-prosessidentitet. Den rydder siste automatiske kjøring, men respekterer
+`--keep-running` og andre aktive kjøringer. Så lenge miljøet blir stående,
+kan containerprosesser fortsette etter klientavbrudd eller krasj. `stop`
+avslutter dem.
+
+Hvis Docker-oppstarten av en kommando ikke kan bekreftes, stoppes miljøet.
+`launch_unknown` betyr at samme container-ID ikke kan startes igjen før
+Docker bekrefter utfallet. Abx forsøker avklaringen i neste handling. Ved
+fortsatt ukjent utfall kan eksplisitt remove fjerne containeren; det sletter
+containerlaget. Et persistent lag slettes ikke automatisk for å skjule feilen.
+Mountdata beholdes. Tilgang til operatørens prosessmetadata under `/proc`
+kreves; manglende observasjon rapporteres og regnes ikke som en død sesjon.
 
 ## Innlogging og verktøyoppsett
 
@@ -310,7 +307,7 @@ Tillat innloggingsmetodens nødvendige destinasjoner først. Bruk
 fillagring. Vertens keyring, personlige Codex-oppsett, miljøvariabler og
 SSH-agent deles ikke automatisk inn.
 
-API-nøkkel kan gis fra en privat fil på verten:
+Til et kjørende miljø kan API-nøkkel gis fra en privat fil på verten:
 
 ```sh
 chmod 600 /sti/til/privat-nokkelfil
@@ -436,7 +433,8 @@ Nye klientnavn og tom/ikke-tom overgang krever ny agentcontainer. Start av
 stoppet miljø erstatter containeren automatisk; eksplisitte mounts består.
 Proxy apply fjerner gammel proxy og avviser slik overgang på samme agent.
 Kjørende start/exec beholder oppsettet med pending-beskjed, uten å gjenåpne
-en stoppet proxy. Bruk proxy stop for umiddelbar lokal tilbakekalling.
+en stoppet proxy. Bruk proxy stop for lokal tilbakekalling.
+Kontrolloperasjoner deler lås; et pågående imagebygg kan forsinke stoppet.
 **`remove` sletter containerlaget; data i eksplisitte mounts beholdes.**
 Runtime-navn som `HOME`, `PATH`, proxy- og CA-variabler er reservert på
 klientsiden av et alias. Kilden på verten kan ha et annet navn.
@@ -497,9 +495,9 @@ abx proxy apply example-codex
 
 | Handling | Filer i katalogmounts på verten | Containerens hjem, innlogging og installerte filer |
 | --- | --- | --- |
-| Avslutte `shell` med `persistent: true` | Beholdes | Beholdes; miljøet kjører videre |
-| Avslutte `exec` | Beholdes | Beholdes til miljøet fjernes |
-| Avslutte `shell` med `persistent: false` | Beholdes | Slettes sammen med miljøet og dets logger |
+| Siste start/exec avsluttes, persistent true | Beholdes | Beholdes; miljøet stopper uten keep-running |
+| Siste start/exec avsluttes, persistent false | Beholdes | Slettes uten keep-running |
+| Start/exec med keep-running | Beholdes | Beholdes frem til eksplisitt stop/remove |
 | Avslutte `run`, også med Ctrl-C | Beholdes | Slettes sammen med miljøet og dets logger |
 | `stop` og `start` med `persistent: true` og uendret oppsett | Beholdes | Beholdes |
 | `stop` med `persistent: false` | Beholdes | Slettes |
@@ -622,7 +620,7 @@ Kjørende brukere sperrer bygg. Stoppede brukere tillater bygg; du trenger ikke
 fjerne miljøene først. Ved neste oppstart tas nytt image i bruk ved å erstatte
 stoppet container. Umonterte profiler og annet containerinnhold kan da forsvinne;
 bevar data i katalog-/volummounts. Et kjørende miljø beholdes med beskjed om at
-endringer venter til neste oppstart. `exec` åpner ikke en proxy som er stoppet
+endringer venter til neste oppstart. Start/exec åpner ikke en proxy som er stoppet
 på et allerede kjørende miljø.
 
 Remove fjerner bygget image/tag og beholder oppskriften. Både kjørende og
@@ -650,7 +648,7 @@ abx start example-codex
 `proxy stop` fjerner proxycontaineren og dens tokenmetadata, mens agentens
 containerlag beholdes. Uendret eksplisitt start eller proxy apply kan opprette
 proxyen på nytt. Ved pending beholder start den eksisterende proxytilstanden.
-Exec på kjørende agent beholder trafikken blokkert. Eksporter nødvendige
+Start/exec på kjørende agent beholder trafikken blokkert. Eksporter nødvendige
 tokenvariabler før gjenopptak. Oppdatering av
 kontrollkoden gjøres med installeren etter at miljøene er stoppet.
 
@@ -690,8 +688,8 @@ fjerning av miljøet; `remove` sletter containerlaget og umonterte profiler.
 
 | Feil | Årsak og neste steg |
 | --- | --- |
-| `Environment is not running` | Mount-registrering starter ikke et miljø. Bruk `start FIL.yaml` før `shell` |
+| `launch_unknown` | Abx kan ikke bekrefte en tidligere exec; samme container-ID startes ikke før utfallet er kjent. Se [avbrutte kjøringer](#avbrutte-kjøringer) |
 | `Working directory must be inside a registered mount` | Sett `workdir` lik `mounts[].target` eller en eksisterende undermappe |
 | `No two collision-free /28 subnets` | Velg et ledig adresseområde etter [installasjonsveiledningen](installation.md#velg-adresseområde) |
-| `Host addresses changed` | Adressevakten har stoppet miljøet; fjerning og ny opprettelse kreves |
+| `Host addresses changed` | Vakten har stoppet miljøet. Neste start validerer oppsettet og kan erstatte laget; mountdata beholdes |
 | Verktøy trenger Unix-sockets | Profilen blokkerer nye Unix-sockets. Velg kompatible verktøy; ikke svekk isoleringen automatisk |

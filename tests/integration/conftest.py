@@ -16,9 +16,11 @@ import yaml
 
 def cli(*arguments, check=True, **kwargs):
     """Use the public machine interface for metadata; preserve process assertions."""
-    metadata = arguments[0] not in ("run", "shell", "exec", "logs", "completion") and not (
+    metadata = arguments[0] not in ("start", "run", "exec", "logs", "completion") and not (
         arguments[:2] == ("image", "edit")
     )
+    if arguments[0] in ("start", "exec", "run"):
+        kwargs.setdefault("input", "")
     result = subprocess.run(
         ["/usr/local/bin/abx", *(["--json"] if metadata else []), *arguments],
         check=False,
@@ -113,7 +115,8 @@ class Lab:
 
     def start(self, mount, *, image="smoke", **overrides):
         name, path = self.configuration(mount, image=image, **overrides)
-        assert json.loads(cli("start", str(path)).stdout)["status"] == "running"
+        cli("start", str(path), "--keep-running")
+        assert self.state(name)["status"] == "running"
         return name
 
     def state(self, name):
@@ -153,7 +156,18 @@ class Lab:
 
     def cleanup(self):
         errors = []
-        for name in reversed(self.environments):
+        names = list(self.environments)
+        try:
+            names.extend(
+                name
+                for name in json.loads(cli("status").stdout)
+                if any(
+                    name.startswith(configured[:31] + "-run-") for configured in self.environments
+                )
+            )
+        except (ValueError, OSError, subprocess.SubprocessError) as exc:
+            errors.append(f"list temporary instances: {exc}")
+        for name in reversed(names):
             try:
                 result = cli("remove", name, check=False)
                 if result.returncode:

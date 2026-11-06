@@ -8,13 +8,21 @@ import pytest
 from conftest import cli
 
 
-@pytest.mark.parametrize("operation", ["run", "shell"])
+def instances(configured):
+    return {
+        name: entry
+        for name, entry in json.loads(cli("status").stdout).items()
+        if name.startswith(configured[:31] + "-run-")
+    }
+
+
+@pytest.mark.parametrize("operation", ["run", "start"])
 @pytest.mark.parametrize("exit_code", [0, 17])
 def test_temporary_command_output_exit_and_mount_preservation(lab, exit_code, operation):
     mount, path = lab.mount()
     name, config = lab.configuration(
         mount,
-        persistent=operation != "shell",
+        persistent=False,
         command=[
             "python3",
             "-c",
@@ -27,34 +35,31 @@ def test_temporary_command_output_exit_and_mount_preservation(lab, exit_code, op
             "argument with spaces;$(touch unwanted)",
         ],
     )
-    original = None
-    if operation == "shell":
-        started = cli("start", str(config))
-        assert "Non-persistent" in started.stderr
-        original = lab.state(name)["resources"]["agent"]
-    result = cli(operation, name if operation == "shell" else str(config), check=False)
-    assert result.returncode == exit_code, result.stderr
-    assert "task-stdout" in result.stdout and "task-stderr" in result.stderr
-    assert (path / "kept").read_text() == "argument with spaces;$(touch unwanted)"
-    assert not (path / "unwanted").exists()
-    lab.assert_removed(name)
-    if operation == "shell":
-        assert "Non-persistent" in result.stderr
-        cli("start", str(config))
-        assert lab.state(name)["resources"]["agent"] != original
-        assert cli("shell", name, check=False).returncode == exit_code
+    for _ in range(2):
+        result = cli(operation, str(config), check=False)
+        assert result.returncode == exit_code, result.stderr
+        assert "task-stdout" in result.stdout and "task-stderr" in result.stderr
+        assert (path / "kept").read_text() == "argument with spaces;$(touch unwanted)"
+        assert not (path / "unwanted").exists()
         lab.assert_removed(name)
+        assert not instances(name)
+    if operation == "start":
+        assert "non-persistent" in result.stderr
+    else:
+        assert "Temporary instance:" in result.stderr
 
 
-def test_temporary_run_rejects_existing_name_without_changes(lab):
+def test_run_is_independent_of_existing_environment(lab):
     mount, path = lab.mount()
-    name = lab.start(mount, command=["sh", "-c", "touch /workspace/must-not-run"])
+    name = lab.start(mount, command=["sh", "-c", "echo task > /workspace/result"])
     before = lab.state(name)["resources"]
-    result = cli("run", str(lab.environments[name]), check=False)
-    assert result.returncode == 2 and "already exists" in result.stderr
+    cli("exec", name, "--", "touch", "/home/agent/original")
+    result = cli("run", str(lab.environments[name]))
+    assert result.returncode == 0 and "Temporary instance:" in result.stderr
     assert lab.state(name)["resources"] == before
-    assert not (path / "must-not-run").exists()
-    cli("exec", name, "--", "true")
+    assert not instances(name)
+    assert (path / "result").read_text() == "task\n"
+    cli("exec", name, "--", "test", "-e", "/home/agent/original")
 
 
 def test_temporary_run_terminal_input_and_size(lab):
@@ -78,26 +83,22 @@ def test_temporary_run_terminal_input_and_size(lab):
         timeout=120,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "size=83x33" in result.stdout
-    assert "reply:tupni-lanimret" in result.stdout
+    assert "size=83x33" in result.stdout and "reply:tupni-lanimret" in result.stdout
     lab.assert_removed(name)
+    assert not instances(name)
 
 
-@pytest.mark.parametrize("operation", ["run", "shell"])
+@pytest.mark.parametrize("operation", ["run", "start"])
 @pytest.mark.parametrize("terminal", [False, True])
-def test_temporary_run_ctrl_c_cleans_up_without_blocking_other_environment(
-    lab, terminal, operation
-):
+def test_temporary_ctrl_c_cleans_up_without_blocking_other_environment(lab, terminal, operation):
     mount, path = lab.mount()
     other = lab.start(mount)
     name, config = lab.configuration(
         mount,
-        persistent=operation != "shell",
+        persistent=False,
         command=["sh", "-c", "touch /workspace/run-ready; sleep 60"],
     )
-    if operation == "shell":
-        cli("start", str(config))
-    arguments = ["/usr/local/bin/abx", operation, name if operation == "shell" else str(config)]
+    arguments = ["/usr/local/bin/abx", operation, str(config)]
     if terminal:
         arguments = ["script", "-q", "-e", "-c", shlex.join(arguments), "/dev/null"]
     process = subprocess.Popen(
@@ -108,38 +109,37 @@ def test_temporary_run_ctrl_c_cleans_up_without_blocking_other_environment(
         text=True,
         start_new_session=True,
     )
+    current = name
     try:
-        for _ in range(100):
+        for _ in range(200):
             if (path / "run-ready").exists():
                 break
             assert process.poll() is None
             time.sleep(0.1)
         else:
             pytest.fail("Temporary command did not start")
-        assert name in json.loads(cli("status", timeout=5).stdout)
-        if operation == "shell":
-            original = lab.state(name)["resources"]["agent"]
-            cli("start", str(config))
-            cli("proxy", "apply", str(config))
-            state = lab.state(name)
-            assert state["shell_active"] is True
-            assert state["resources"]["agent"] == original
-            rejected = cli("shell", name, check=False, timeout=5)
-            assert rejected.returncode == 2 and "already claimed" in rejected.stderr
+        if operation == "run":
+            active = instances(name)
+            assert len(active) == 1
+            current = next(iter(active))
+        state = lab.state(current)
+        assert len(state["runtime"]["sessions"]) == 1
+        assert not state["runtime"]["keep_running"]
         cli("exec", other, "--", "true", timeout=5)
         if terminal:
             process.stdin.write("\x03")
             process.stdin.flush()
         else:
-            process.send_signal(signal.SIGINT)  # Target the CLI, not its entire process group.
+            process.send_signal(signal.SIGINT)
         stdout, stderr = process.communicate(timeout=30)
         assert process.returncode == 130, stdout + stderr
         assert "Traceback" not in stdout + stderr
-        lab.assert_removed(name)
+        lab.assert_removed(current)
+        assert not instances(name)
         cli("exec", other, "--", "true")
     finally:
         if process.poll() is None:
-            cli("remove", name, check=False)
+            cli("remove", current, check=False)
             process.terminate()
             process.wait(timeout=10)
 

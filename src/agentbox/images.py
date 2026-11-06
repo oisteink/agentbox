@@ -265,12 +265,20 @@ def inspect(docker, installation, name, *, environments=None, digest=None, users
     return result
 
 
-def build(docker, installation, name, source, *, environments=None):
+def build(docker, installation, name, source, *, environments=None, if_needed=False):
     if source is None:
         raise AgentboxError("Image build requires a local build context")
     details = managed(docker, installation, name, required=False)
+    digest = fingerprint_archive(source) if if_needed else None
+    if (
+        if_needed
+        and details
+        and (details["Config"].get("Labels") or {}).get("agentbox.recipe-digest") == digest
+    ):
+        profile(details)
+        return inspect(docker, installation, name, environments=environments)
     require_recipe_idle(docker, installation, name, details, environments or {}, running_only=True)
-    digest = fingerprint_archive(source)
+    digest = digest or fingerprint_archive(source)
     # A directory context lets Docker apply .dockerignore itself. BuildKit's
     # uploaded tar context bypasses that filtering.
     with tempfile.TemporaryDirectory(prefix="agentbox-build-") as context:

@@ -19,8 +19,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def run(*args, check=True):
-    return subprocess.run(args, check=check, text=True, capture_output=True, timeout=180)
+def run(*args, check=True, source=None):
+    return subprocess.run(
+        args, check=check, text=True, capture_output=True, timeout=180, input=source
+    )
 
 
 def test_full_uninstall_keeps_mounts_and_returns_ownership():
@@ -96,7 +98,7 @@ def test_full_uninstall_keeps_mounts_and_returns_ownership():
                 }
             )
         )
-        run("abx", "start", str(cfg))
+        run("abx", "start", str(cfg), "--keep-running", source="")
         run(
             "abx",
             "exec",
